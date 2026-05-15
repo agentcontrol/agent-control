@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from agent_control_telemetry import clear_trace_context_provider, set_trace_context_provider
 
@@ -791,6 +792,126 @@ class TestStepName:
             assert captured_steps[1]["name"] == "custom_tool_name"
             # THEN: Step should still be detected as tool type
             assert captured_steps[0]["type"] == "tool"
+
+
+class TestEvaluateSessionContext:
+    """Tests for session context forwarding in the decorator evaluation path."""
+
+    @pytest.mark.asyncio
+    async def test_evaluate_forwards_session_target_and_client_state(self):
+        """The decorator path should use the same session target as evaluate_controls()."""
+        from agent_control.control_decorators import _evaluate
+        from agent_control.runtime_auth import RuntimeTokenCache
+        from agent_control_models import EvaluationResult
+
+        captured_client_kwargs = {}
+        captured_eval_kwargs = {}
+        runtime_token_cache = RuntimeTokenCache()
+
+        class FakeClient:
+            def __init__(self, **kwargs):
+                captured_client_kwargs.update(kwargs)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+        async def fake_check_evaluation_with_local(**kwargs):
+            captured_eval_kwargs.update(kwargs)
+            return EvaluationResult(is_safe=True, confidence=1.0)
+
+        with (
+            patch("agent_control.control_decorators.AgentControlClient", FakeClient),
+            patch(
+                "agent_control.control_decorators.check_evaluation_with_local",
+                side_effect=fake_check_evaluation_with_local,
+            ),
+            patch("agent_control.control_decorators.state.api_key", "session-key"),
+            patch("agent_control.control_decorators.state.api_key_header", "X-Custom-Key"),
+            patch(
+                "agent_control.control_decorators.state.runtime_token_cache",
+                runtime_token_cache,
+            ),
+            patch("agent_control.control_decorators.state.target_type", "env"),
+            patch("agent_control.control_decorators.state.target_id", "prod"),
+        ):
+            result = await _evaluate(
+                agent_name="agent",
+                step={"type": "llm", "name": "chat", "input": "hello"},
+                stage="pre",
+                server_url="http://server.test",
+                controls=[{"id": 1, "name": "control", "control": {}}],
+            )
+
+        assert result["is_safe"] is True
+        assert captured_client_kwargs["api_key"] == "session-key"
+        assert captured_client_kwargs["api_key_header"] == "X-Custom-Key"
+        assert captured_client_kwargs["runtime_token_cache"] is runtime_token_cache
+        assert captured_eval_kwargs["target_type"] == "env"
+        assert captured_eval_kwargs["target_id"] == "prod"
+
+    @pytest.mark.asyncio
+    async def test_fallback_server_evaluation_uses_runtime_path(self):
+        from agent_control.control_decorators import _evaluate
+        from agent_control.runtime_auth import RuntimeTokenCache
+
+        captured_post_kwargs = {}
+
+        class FakeClient:
+            def __init__(self, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return None
+
+        async def failing_local_evaluation(**kwargs):
+            raise RuntimeError("local failure")
+
+        async def fake_post_evaluation_request(client, **kwargs):
+            del client
+            captured_post_kwargs.update(kwargs)
+            request = httpx.Request("POST", "https://agent-control.test/api/v1/evaluation")
+            return httpx.Response(
+                200,
+                json={"is_safe": True, "confidence": 1.0},
+                request=request,
+            )
+
+        with (
+            patch("agent_control.control_decorators.AgentControlClient", FakeClient),
+            patch(
+                "agent_control.control_decorators.check_evaluation_with_local",
+                side_effect=failing_local_evaluation,
+            ),
+            patch(
+                "agent_control.control_decorators._post_evaluation_request",
+                side_effect=fake_post_evaluation_request,
+            ),
+            patch("agent_control.control_decorators.state.api_key", "session-key"),
+            patch("agent_control.control_decorators.state.api_key_header", "X-Custom-Key"),
+            patch(
+                "agent_control.control_decorators.state.runtime_token_cache",
+                RuntimeTokenCache(),
+            ),
+            patch("agent_control.control_decorators.state.target_type", "env"),
+            patch("agent_control.control_decorators.state.target_id", "prod"),
+        ):
+            result = await _evaluate(
+                agent_name="agent",
+                step={"type": "llm", "name": "chat", "input": "hello"},
+                stage="pre",
+                server_url="http://server.test",
+                controls=[{"id": 1, "name": "control", "control": {}}],
+            )
+
+        assert result["is_safe"] is True
+        assert captured_post_kwargs["target_type"] == "env"
+        assert captured_post_kwargs["target_id"] == "prod"
 
 
 # =============================================================================

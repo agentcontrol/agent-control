@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import require_admin_key
+from ..auth_framework import Operation, Principal, require_operation
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -195,12 +195,17 @@ async def _render_and_validate_template_input(
     template_input: TemplateControlInput,
     *,
     db: AsyncSession,
+    namespace_key: str,
     enabled: bool = True,
 ) -> ControlDefinition:
     """Render a template-backed input and validate evaluator config."""
     rendered = render_template_control_input(template_input, enabled=enabled)
     try:
-        await _validate_control_definition(rendered.control, db)
+        await _validate_control_definition(
+            rendered.control,
+            db,
+            namespace_key=namespace_key,
+        )
     except APIValidationError as exc:
         raise remap_template_api_error(
             exc,
@@ -214,6 +219,7 @@ async def _materialize_control_input(
     control_input: ControlDefinition | TemplateControlInput,
     *,
     db: AsyncSession,
+    namespace_key: str,
     current_payload: object | None = None,
     control_id: int | None = None,
 ) -> ControlDefinition | UnrenderedTemplateControl:
@@ -226,10 +232,11 @@ async def _materialize_control_input(
             return await _render_and_validate_template_input(
                 control_input,
                 db=db,
+                namespace_key=namespace_key,
                 enabled=enabled,
             )
 
-        # Incomplete values — only allowed for new controls or already-unrendered
+        # Incomplete values - only allowed for new controls or already-unrendered
         # templates.  Updating a rendered control with incomplete values is
         # rejected to prevent silently stripping rendered fields.
         current_is_rendered = (
@@ -244,6 +251,7 @@ async def _materialize_control_input(
             return await _render_and_validate_template_input(
                 control_input,
                 db=db,
+                namespace_key=namespace_key,
                 enabled=enabled,
             )
 
@@ -262,12 +270,19 @@ async def _materialize_control_input(
             raise RuntimeError("control_id is required for template-backed raw updates")
         raise _template_backed_raw_update_conflict(control_id)
 
-    await _validate_control_definition(control_input, db)
+    await _validate_control_definition(
+        control_input,
+        db,
+        namespace_key=namespace_key,
+    )
     return control_input
 
 
 async def _validate_control_definition(
-    control_def: ControlDefinition, db: AsyncSession
+    control_def: ControlDefinition,
+    db: AsyncSession,
+    *,
+    namespace_key: str,
 ) -> None:
     """Validate evaluator config for definitions referencing known global evaluators.
 
@@ -296,7 +311,10 @@ async def _validate_control_definition(
             agent_data = agent_data_by_name.get(agent_namespace)
             if agent_data is None:
                 agent_result = await db.execute(
-                    select(Agent).where(Agent.name == agent_namespace)
+                    select(Agent).where(
+                        Agent.name == agent_namespace,
+                        Agent.namespace_key == namespace_key,
+                    )
                 )
                 agent = agent_result.scalars().first()
                 if agent is None:
@@ -443,9 +461,11 @@ async def _validate_control_definition(
     summary="Render a control template preview",
     response_description="Rendered control preview",
 )
+# Rendering is part of the authoring flow, so require create access.
 async def render_control_template(
     request: RenderControlTemplateRequest,
     db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> RenderControlTemplateResponse:
     """Render a template-backed control without persisting it."""
     control_def = await _render_and_validate_template_input(
@@ -454,6 +474,7 @@ async def render_control_template(
             template_values=request.template_values,
         ),
         db=db,
+        namespace_key=principal.namespace_key,
         enabled=True,
     )
     return RenderControlTemplateResponse(control=control_def)
@@ -461,13 +482,14 @@ async def render_control_template(
 
 @router.put(
     "",
-    dependencies=[Depends(require_admin_key)],
     response_model=CreateControlResponse,
     summary="Create a new control",
     response_description="Created control ID",
 )
 async def create_control(
-    request: CreateControlRequest, db: AsyncSession = Depends(get_async_db)
+    request: CreateControlRequest,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> CreateControlResponse:
     """
     Create a new control with a unique name.
@@ -489,7 +511,10 @@ async def create_control(
     control_service = ControlService(db)
 
     # Uniqueness check
-    if await control_service.active_control_name_exists(request.name):
+    namespace_key = principal.namespace_key
+    if await control_service.active_control_name_exists(
+        request.name, namespace_key=namespace_key
+    ):
         raise ConflictError(
             error_code=ErrorCode.CONTROL_NAME_CONFLICT,
             detail=f"Control with name '{request.name}' already exists",
@@ -498,10 +523,18 @@ async def create_control(
             hint="Choose a different name or update the existing control.",
         )
 
-    control_def = await _materialize_control_input(request.data, db=db)
+    control_def = await _materialize_control_input(
+        request.data,
+        db=db,
+        namespace_key=namespace_key,
+    )
     control_data = _serialize_control_data(control_def)
 
-    control = control_service.create_control(name=request.name, data=control_data)
+    control = control_service.create_control(
+        namespace_key=namespace_key,
+        name=request.name,
+        data=control_data,
+    )
     try:
         await control_service.create_version(
             control,
@@ -549,6 +582,7 @@ async def create_control(
     summary="Get control definition JSON schema",
     response_description="JSON schema for ControlDefinition",
 )
+# Public schema metadata: no tenant state, no auth operation.
 async def get_control_schema() -> GetControlSchemaResponse:
     """Return the canonical JSON schema for ControlDefinition."""
     return GetControlSchemaResponse(
@@ -563,7 +597,9 @@ async def get_control_schema() -> GetControlSchemaResponse:
     response_description="Control metadata and configuration",
 )
 async def get_control(
-    control_id: int, db: AsyncSession = Depends(get_async_db)
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> GetControlResponse:
     """
     Retrieve a control by ID including its name and configuration data.
@@ -578,7 +614,9 @@ async def get_control(
     Raises:
         HTTPException 404: Control not found
     """
-    control = await ControlService(db).get_active_control_or_404(control_id)
+    control = await ControlService(db).get_active_control_or_404(
+        control_id, namespace_key=principal.namespace_key
+    )
     control_data = _parse_stored_control_data(
         control.data,
         control_name=control.name,
@@ -600,7 +638,9 @@ async def get_control(
     response_description="Control data payload",
 )
 async def get_control_data(
-    control_id: int, db: AsyncSession = Depends(get_async_db)
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> GetControlDataResponse:
     """
     Retrieve the configuration data for a control.
@@ -618,7 +658,9 @@ async def get_control_data(
         HTTPException 404: Control not found
         HTTPException 422: Control data is corrupted
     """
-    control = await ControlService(db).get_active_control_or_404(control_id)
+    control = await ControlService(db).get_active_control_or_404(
+        control_id, namespace_key=principal.namespace_key
+    )
     control_data = _parse_stored_control_data(
         control.data,
         control_name=control.name,
@@ -640,9 +682,15 @@ async def list_control_versions(
     ),
     limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
     db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> ListControlVersionsResponse:
     """List control versions ordered newest-first using cursor-based pagination."""
-    page = await ControlService(db).list_versions(control_id, cursor=cursor, limit=limit)
+    page = await ControlService(db).list_versions(
+        control_id,
+        namespace_key=principal.namespace_key,
+        cursor=cursor,
+        limit=limit,
+    )
 
     return ListControlVersionsResponse(
         versions=[
@@ -673,9 +721,12 @@ async def get_control_version(
     control_id: int,
     version_num: int,
     db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> GetControlVersionResponse:
     """Return a specific control version, including its raw persisted snapshot."""
-    version = await ControlService(db).get_version_or_404(control_id, version_num)
+    version = await ControlService(db).get_version_or_404(
+        control_id, version_num, namespace_key=principal.namespace_key
+    )
     return GetControlVersionResponse(
         version_num=version.version_num,
         event_type=version.event_type,
@@ -687,7 +738,6 @@ async def get_control_version(
 
 @router.put(
     "/{control_id}/data",
-    dependencies=[Depends(require_admin_key)],
     response_model=SetControlDataResponse,
     summary="Update control configuration data",
     response_description="Success confirmation",
@@ -696,6 +746,7 @@ async def set_control_data(
     control_id: int,
     request: SetControlDataRequest,
     db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_UPDATE)),
 ) -> SetControlDataResponse:
     """
     Update the configuration data for a control.
@@ -716,11 +767,14 @@ async def set_control_data(
         HTTPException 500: Database error during update
     """
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    control = await control_service.get_active_control_or_404(
+        control_id, namespace_key=principal.namespace_key, for_update=True
+    )
 
     control_def = await _materialize_control_input(
         request.data,
         db=db,
+        namespace_key=principal.namespace_key,
         current_payload=control.data,
         control_id=control_id,
     )
@@ -757,8 +811,11 @@ async def set_control_data(
     summary="Validate control configuration",
     response_description="Validation result",
 )
+# Validation uses the authoring path, so require create access.
 async def validate_control_data(
-    request: ValidateControlDataRequest, db: AsyncSession = Depends(get_async_db)
+    request: ValidateControlDataRequest,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
 ) -> ValidateControlDataResponse:
     """
     Validate control configuration data without saving it.
@@ -772,7 +829,11 @@ async def validate_control_data(
     """
     # Validate mirrors create: complete template values trigger a full render,
     # incomplete values validate structure only (matching unrendered create).
-    await _materialize_control_input(request.data, db=db)
+    await _materialize_control_input(
+        request.data,
+        db=db,
+        namespace_key=principal.namespace_key,
+    )
     return ValidateControlDataResponse(success=True)
 
 
@@ -798,6 +859,7 @@ async def list_controls(
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
     tag: str | None = Query(None, description="Filter by tag"),
     db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> ListControlsResponse:
     """
     List all controls with optional filtering and cursor-based pagination.
@@ -823,7 +885,9 @@ async def list_controls(
         GET /controls?limit=10&enabled=true&step_type=tool
     """
     control_service = ControlService(db)
+    namespace_key = principal.namespace_key
     page = await control_service.list_controls_page(
+        namespace_key=namespace_key,
         cursor=cursor,
         limit=limit,
         name=name,
@@ -835,7 +899,8 @@ async def list_controls(
         tag=tag,
     )
     usage_by_control_id = await control_service.list_control_usage(
-        [control.id for control in page.controls]
+        [control.id for control in page.controls],
+        namespace_key=namespace_key,
     )
 
     # Build summaries (filtering already done at DB level)
@@ -884,7 +949,6 @@ async def list_controls(
 
 @router.delete(
     "/{control_id}",
-    dependencies=[Depends(require_admin_key)],
     response_model=DeleteControlResponse,
     summary="Delete a control",
     response_description="Deletion confirmation with dissociation info",
@@ -897,6 +961,7 @@ async def delete_control(
         "If false, fail if control is associated with any policy or agent.",
     ),
     db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_DELETE)),
 ) -> DeleteControlResponse:
     """
     Delete a control by ID.
@@ -919,13 +984,18 @@ async def delete_control(
     """
     control_service = ControlService(db)
     bindings_service = ControlBindingsService(db)
-    control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    namespace_key = principal.namespace_key
+    control = await control_service.get_active_control_or_404(
+        control_id, namespace_key=namespace_key, for_update=True
+    )
 
-    associations = await control_service.list_control_associations(control_id)
+    associations = await control_service.list_control_associations(
+        control_id, namespace_key=namespace_key
+    )
     associated_policy_ids = associations.policy_ids
     associated_agent_names = associations.agent_names
     target_binding_ids = await bindings_service.list_binding_ids_for_control(
-        namespace_key=control.namespace_key, control_id=control_id
+        namespace_key=namespace_key, control_id=control_id
     )
 
     if (
@@ -982,13 +1052,15 @@ async def delete_control(
     dissociated_from_policies: list[int] = []
     dissociated_from_agents: list[str] = []
     if associated_policy_ids or associated_agent_names:
-        dissociated = await control_service.remove_all_control_associations(control_id)
+        dissociated = await control_service.remove_all_control_associations(
+            control_id, namespace_key=namespace_key
+        )
         dissociated_from_policies = dissociated.policy_ids
         dissociated_from_agents = dissociated.agent_names
     detached_target_bindings: list[int] = []
     if target_binding_ids:
         detached_target_bindings = await bindings_service.delete_bindings_for_control(
-            namespace_key=control.namespace_key, control_id=control_id
+            namespace_key=namespace_key, control_id=control_id
         )
     if dissociated_from_policies or dissociated_from_agents or detached_target_bindings:
         _logger.info(
@@ -1035,7 +1107,6 @@ async def delete_control(
 
 @router.patch(
     "/{control_id}",
-    dependencies=[Depends(require_admin_key)],
     response_model=PatchControlResponse,
     summary="Update control metadata",
     response_description="Updated control information",
@@ -1044,6 +1115,7 @@ async def patch_control(
     control_id: int,
     request: PatchControlRequest,
     db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_UPDATE)),
 ) -> PatchControlResponse:
     """
     Update control metadata (name and/or enabled status).
@@ -1067,7 +1139,10 @@ async def patch_control(
         HTTPException 500: Database error during update
     """
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(control_id, for_update=True)
+    namespace_key = principal.namespace_key
+    control = await control_service.get_active_control_or_404(
+        control_id, namespace_key=namespace_key, for_update=True
+    )
     parsed_control = _parse_stored_control_data(
         control.data,
         control_name=control.name,
@@ -1082,6 +1157,7 @@ async def patch_control(
         # Check for name collision
         if await control_service.active_control_name_exists(
             request.name,
+            namespace_key=namespace_key,
             exclude_control_id=control_id,
         ):
             raise ConflictError(

@@ -188,6 +188,32 @@ const templateBackedControl: Control = {
   } as Control['control'],
 };
 
+const unrenderedTemplateControl = {
+  id: 11,
+  name: 'Unrendered Template Guard',
+  control: {
+    enabled: false,
+    template: {
+      description: 'Template without supplied values',
+      definition_template: {
+        description: 'Deny when input matches pattern',
+        execution: 'server',
+        scope: {
+          stages: ['pre'],
+        },
+        condition: {
+          selector: { path: 'input' },
+          evaluator: {
+            name: 'regex',
+            config: { pattern: '\\bsecret\\b' },
+          },
+        },
+        action: { decision: 'deny' },
+      },
+    },
+  },
+} as unknown as Control;
+
 const controlsList: Control[] = [
   {
     id: 1,
@@ -258,12 +284,21 @@ const controlsWithTemplateList: Control[] = [
   templateBackedControl,
 ];
 
+const controlsWithUnrenderedTemplateList: Control[] = [
+  ...controlsList,
+  unrenderedTemplateControl,
+];
+
 const controlsResponse: AgentControlsResponse = {
   controls: controlsList,
 };
 
 const controlsWithTemplateResponse: AgentControlsResponse = {
   controls: controlsWithTemplateList,
+};
+
+const controlsWithUnrenderedTemplateResponse: AgentControlsResponse = {
+  controls: controlsWithUnrenderedTemplateList,
 };
 
 // Control summaries for GET /api/v1/controls (list all controls)
@@ -621,7 +656,9 @@ export const mockData = {
   agentWithSteps: agentWithStepsResponse,
   controls: controlsResponse,
   controlsWithTemplate: controlsWithTemplateResponse,
+  controlsWithUnrenderedTemplate: controlsWithUnrenderedTemplateResponse,
   templateControl: templateBackedControl,
+  unrenderedTemplateControl,
   listControls: listControlsResponse,
   templateControlSummary: templateControlSummary,
   evaluators: evaluatorsResponse,

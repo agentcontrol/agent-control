@@ -1,14 +1,34 @@
 """Tests for API key authentication."""
 
 import uuid
+from typing import Any
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from agent_control_server import __version__ as server_version
+from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.config import auth_settings
 
 from .utils import VALID_CONTROL_PAYLOAD
+
+
+class _RecordingAuthorizer:
+    """Test authorizer that records the operation requested by a route."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request
+        self.calls.append((operation, context))
+        return Principal(namespace_key="default")
 
 
 class TestHealthEndpoint:
@@ -40,9 +60,7 @@ class TestProtectedEndpoints:
     def test_missing_api_key_returns_401(self, unauthenticated_client: TestClient) -> None:
         """Given no API key, when requesting protected endpoint, then returns 401."""
         # When:
-        response = unauthenticated_client.get(
-            "/api/v1/agents/00000000-0000-0000-0000-000000000000"
-        )
+        response = unauthenticated_client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")
 
         # Then:
         assert response.status_code == 401
@@ -111,6 +129,20 @@ class TestEvaluatorsEndpoint:
         # Then:
         assert response.status_code == 401
 
+    def test_evaluators_use_auth_framework_provider(self, app: object) -> None:
+        """Given a custom authorizer, when listing evaluators, then route uses it."""
+        # Given:
+        authorizer = _RecordingAuthorizer()
+        set_authorizer(authorizer)
+        client = TestClient(app, raise_server_exceptions=True)
+
+        # When:
+        response = client.get("/api/v1/evaluators")
+
+        # Then:
+        assert response.status_code == 200
+        assert authorizer.calls == [(Operation.EVALUATORS_READ, None)]
+
 
 class TestAuthDisabled:
     """When auth is disabled, all requests should succeed."""
@@ -120,21 +152,15 @@ class TestAuthDisabled:
         """Disable auth for tests in this class."""
         monkeypatch.setattr(auth_settings, "api_key_enabled", False)
 
-    def test_no_key_allowed_when_disabled(
-        self, unauthenticated_client: TestClient
-    ) -> None:
+    def test_no_key_allowed_when_disabled(self, unauthenticated_client: TestClient) -> None:
         """Given auth disabled, when requesting without API key, then request succeeds."""
         # When:
-        response = unauthenticated_client.get(
-            "/api/v1/agents/00000000-0000-0000-0000-000000000000"
-        )
+        response = unauthenticated_client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")
 
         # Then: (404 for non-existent resource, but NOT 401)
         assert response.status_code == 404
 
-    def test_evaluators_accessible_when_disabled(
-        self, unauthenticated_client: TestClient
-    ) -> None:
+    def test_evaluators_accessible_when_disabled(self, unauthenticated_client: TestClient) -> None:
         """Given auth disabled, when listing evaluators without API key, then returns 200."""
         # When:
         response = unauthenticated_client.get("/api/v1/evaluators")
@@ -264,9 +290,7 @@ class TestAdminWriteEndpointAuthorization:
         init_response = admin_client.post("/api/v1/agents/initAgent", json=init_payload)
         assert init_response.status_code == 200
 
-        set_policy_response = admin_client.post(
-            f"/api/v1/agents/{agent_name}/policy/{policy_id}"
-        )
+        set_policy_response = admin_client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
         assert set_policy_response.status_code == 200
 
 
@@ -344,9 +368,7 @@ class TestAuthMisconfiguration:
     def test_misconfigured_returns_500(self, unauthenticated_client: TestClient) -> None:
         """Given auth enabled but no keys configured, when requesting, then returns 500."""
         # When:
-        response = unauthenticated_client.get(
-            "/api/v1/agents/00000000-0000-0000-0000-000000000000"
-        )
+        response = unauthenticated_client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")
 
         # Then:
         assert response.status_code == 500
@@ -360,6 +382,7 @@ class TestOptionalApiKey:
 
     def _make_optional_app(self) -> TestClient:
         from fastapi import Depends, FastAPI
+
         from agent_control_server.auth import optional_api_key
 
         app = FastAPI()
@@ -374,7 +397,9 @@ class TestOptionalApiKey:
 
         return TestClient(app)
 
-    def test_optional_api_key_auth_disabled_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_optional_api_key_auth_disabled_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Given: auth disabled
         monkeypatch.setattr(auth_settings, "api_key_enabled", False)
 
@@ -386,7 +411,9 @@ class TestOptionalApiKey:
         assert response.status_code == 200
         assert response.json()["auth"] is False
 
-    def test_optional_api_key_missing_header_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_optional_api_key_missing_header_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Given: auth enabled with configured keys
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
         monkeypatch.setattr(auth_settings, "api_keys", "user-key")
@@ -402,7 +429,9 @@ class TestOptionalApiKey:
         assert response.status_code == 200
         assert response.json()["auth"] is False
 
-    def test_optional_api_key_invalid_header_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_optional_api_key_invalid_header_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Given: auth enabled with configured keys
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
         monkeypatch.setattr(auth_settings, "api_keys", "user-key")
@@ -418,7 +447,9 @@ class TestOptionalApiKey:
         assert response.status_code == 200
         assert response.json()["auth"] is False
 
-    def test_optional_api_key_admin_header_sets_admin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_optional_api_key_admin_header_sets_admin(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Given: auth enabled with admin key
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
         monkeypatch.setattr(auth_settings, "api_keys", "user-key")
@@ -449,6 +480,7 @@ class TestOptionalApiKey:
 
         # When: requiring admin key on an endpoint
         from fastapi import Depends, FastAPI
+
         from agent_control_server.auth import require_admin_key
 
         local_app = FastAPI()
@@ -483,6 +515,7 @@ class TestApiKeyHelpers:
     def test_get_api_key_from_header_extracts_value(self) -> None:
         # Given: a route that returns raw API key header
         from fastapi import Depends, FastAPI
+
         from agent_control_server.auth import get_api_key_from_header
 
         app = FastAPI()
@@ -503,6 +536,7 @@ class TestApiKeyHelpers:
     def test_get_api_key_from_header_allows_missing(self) -> None:
         # Given: a route that returns raw API key header
         from fastapi import Depends, FastAPI
+
         from agent_control_server.auth import get_api_key_from_header
 
         app = FastAPI()

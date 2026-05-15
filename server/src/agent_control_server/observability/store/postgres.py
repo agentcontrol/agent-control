@@ -106,11 +106,17 @@ class PostgresEventStore(EventStore):
         """
         self.session_maker = session_maker
 
-    async def store(self, events: list[ControlExecutionEvent]) -> int:
+    async def store(
+        self,
+        events: list[ControlExecutionEvent],
+        *,
+        namespace_key: str,
+    ) -> int:
         """Store raw events in PostgreSQL.
 
         Uses batch insert with ON CONFLICT DO NOTHING for idempotency.
-        The simplified schema stores only 4 columns:
+        The simplified schema stores only a few indexed columns:
+        - namespace_key (tenant partition)
         - control_execution_id (PK)
         - timestamp (indexed)
         - agent_name (indexed)
@@ -118,6 +124,7 @@ class PostgresEventStore(EventStore):
 
         Args:
             events: List of control execution events to store
+            namespace_key: Namespace that owns the events
 
         Returns:
             Number of events successfully stored
@@ -125,13 +132,14 @@ class PostgresEventStore(EventStore):
         if not events:
             return 0
 
-        # Build values for batch insert (only 4 columns)
+        # Build values for batch insert.
         values = []
         for event in events:
             # Serialize the full event to JSONB
             event_data = event.model_dump(mode="json")
 
             values.append({
+                "namespace_key": namespace_key,
                 "control_execution_id": event.control_execution_id,
                 "timestamp": event.timestamp,
                 "agent_name": event.agent_name,
@@ -139,16 +147,16 @@ class PostgresEventStore(EventStore):
             })
 
         async with self.session_maker() as session:
-            # Batch insert with minimal columns
+            # Batch insert with minimal indexed columns plus JSONB event data.
             await session.execute(
                 text("""
                     INSERT INTO control_execution_events (
-                        control_execution_id, timestamp, agent_name, data
+                        namespace_key, control_execution_id, timestamp, agent_name, data
                     ) VALUES (
-                        :control_execution_id, :timestamp, :agent_name,
+                        :namespace_key, :control_execution_id, :timestamp, :agent_name,
                         CAST(:data AS JSONB)
                     )
-                    ON CONFLICT (control_execution_id) DO NOTHING
+                    ON CONFLICT (namespace_key, control_execution_id) DO NOTHING
                 """),
                 values,
             )
@@ -161,9 +169,11 @@ class PostgresEventStore(EventStore):
         self,
         agent_name: str,
         time_range: timedelta,
+        *,
         control_id: int | None = None,
         include_timeseries: bool = False,
         bucket_size: timedelta | None = None,
+        namespace_key: str,
     ) -> StatsResult:
         """Query stats aggregated at query time from raw events.
 
@@ -179,6 +189,7 @@ class PostgresEventStore(EventStore):
             control_id: Optional control ID to filter by
             include_timeseries: Whether to include time-series data
             bucket_size: Bucket size for time-series (required if include_timeseries=True)
+            namespace_key: Namespace whose events should be queried
 
         Returns:
             StatsResult with per-control and total statistics
@@ -187,6 +198,7 @@ class PostgresEventStore(EventStore):
         cutoff = now - time_range
 
         params: dict = {
+            "namespace_key": namespace_key,
             "agent_name": agent_name,
             "cutoff": cutoff,
         }
@@ -208,7 +220,8 @@ class PostgresEventStore(EventStore):
                 WITH filtered_events AS (
                     SELECT timestamp, data
                     FROM control_execution_events
-                    WHERE agent_name = :agent_name
+                    WHERE namespace_key = :namespace_key
+                      AND agent_name = :agent_name
                       AND timestamp >= :cutoff
                       {control_filter}
                 ),
@@ -277,7 +290,8 @@ class PostgresEventStore(EventStore):
                     NULL::timestamptz as bucket,
                     {SQL_STATS_AGGREGATIONS}
                 FROM control_execution_events
-                WHERE agent_name = :agent_name
+                WHERE namespace_key = :namespace_key
+                  AND agent_name = :agent_name
                   AND timestamp >= :cutoff
                   {control_filter}
                 GROUP BY data->>'control_id', data->>'control_name'
@@ -380,7 +394,12 @@ class PostgresEventStore(EventStore):
         else:
             return f"{total_seconds} seconds"
 
-    async def query_events(self, query: EventQueryRequest) -> EventQueryResponse:
+    async def query_events(
+        self,
+        query: EventQueryRequest,
+        *,
+        namespace_key: str,
+    ) -> EventQueryResponse:
         """Query raw events with filters and pagination.
 
         Supports filtering by trace_id, span_id, agent_name, control_ids,
@@ -396,8 +415,8 @@ class PostgresEventStore(EventStore):
             EventQueryResponse with matching events and pagination info
         """
         # Build WHERE clauses and params
-        where_clauses = []
-        params: dict = {}
+        where_clauses = ["namespace_key = :namespace_key"]
+        params: dict = {"namespace_key": namespace_key}
 
         # Indexed columns (use direct comparison)
         if query.control_execution_id:

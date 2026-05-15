@@ -45,6 +45,10 @@ type TemplateEditContentProps = {
 
 type EditorMode = 'params' | 'json';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Editor for template-backed controls. Shows the parameter form by default,
  * with a toggle to edit the full template JSON.
@@ -58,7 +62,18 @@ export function TemplateEditContent({
   // Access template fields via cast — these exist at runtime but aren't in the
   // generated API types yet. Will be cleaned up after type regeneration.
   const definitionRaw = control.control as Record<string, unknown>;
-  const template = definitionRaw.template as TemplateControlInput['template'];
+  const template = useMemo(() => {
+    const rawControl = control.control as Record<string, unknown>;
+    const templateRaw = isRecord(rawControl.template)
+      ? rawControl.template
+      : {};
+    return {
+      ...templateRaw,
+      parameters: isRecord(templateRaw.parameters)
+        ? templateRaw.parameters
+        : {},
+    } as TemplateControlInput['template'];
+  }, [control.control]);
   const storedValues = definitionRaw.template_values as
     | Record<string, TemplateValue>
     | undefined;
@@ -116,12 +131,12 @@ export function TemplateEditContent({
   // Dynamically extract parameter names from the current JSON text so
   // completions update as the user edits the parameters block.
   const templateParameterNames = useMemo(() => {
-    if (editorMode !== 'json') return Object.keys(template.parameters);
+    if (editorMode !== 'json') return Object.keys(template.parameters ?? {});
     try {
       const parsed = JSON.parse(jsonText) as TemplateControlInput;
       return Object.keys(parsed?.template?.parameters ?? {});
     } catch {
-      return Object.keys(template.parameters);
+      return Object.keys(template.parameters ?? {});
     }
   }, [editorMode, jsonText, template.parameters]);
 

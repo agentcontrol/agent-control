@@ -39,7 +39,12 @@ from agent_control_models import Step, normalize_action
 from agent_control_telemetry import get_trace_context_from_provider
 
 from agent_control import AgentControlClient
-from agent_control.evaluation import check_evaluation_with_local
+from agent_control._state import state
+from agent_control.evaluation import (
+    _post_evaluation_request,
+    _resolve_session_target,
+    check_evaluation_with_local,
+)
 from agent_control.observability import (
     get_logger,
     log_control_evaluation,
@@ -269,7 +274,14 @@ async def _evaluate(
     if span_id:
         headers["X-Span-Id"] = span_id
 
-    async with AgentControlClient(base_url=server_url) as client:
+    target_type, target_id = _resolve_session_target(None, None)
+
+    async with AgentControlClient(
+        base_url=server_url,
+        api_key=state.api_key,
+        api_key_header=state.api_key_header,
+        runtime_token_cache=state.runtime_token_cache,
+    ) as client:
         # If we have controls, use local evaluation which handles both SDK and server controls
         if controls is not None:
             try:
@@ -282,6 +294,8 @@ async def _evaluate(
                     step=step_obj,
                     stage=stage,  # type: ignore
                     controls=controls,
+                    target_type=target_type,
+                    target_id=target_id,
                     trace_id=trace_id,
                     span_id=span_id,
                     event_agent_name=event_agent_name,
@@ -369,14 +383,21 @@ async def _evaluate(
                 )
 
         # Fallback: server-only evaluation
-        response = await client.http_client.post(
-            "/api/v1/evaluation",
-            json={
-                "agent_name": str(agent_name),
-                "step": step,
-                "stage": stage
-            },
+        payload = {
+            "agent_name": str(agent_name),
+            "step": step,
+            "stage": stage,
+        }
+        if target_type is not None and target_id is not None:
+            payload["target_type"] = target_type
+            payload["target_id"] = target_id
+
+        response = await _post_evaluation_request(
+            client,
+            request_payload=payload,
             headers=headers,
+            target_type=target_type,
+            target_id=target_id,
         )
         response.raise_for_status()
         result_dict: dict[str, Any] = response.json()

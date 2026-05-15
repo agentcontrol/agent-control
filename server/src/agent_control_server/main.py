@@ -17,7 +17,7 @@ from fastapi.openapi.utils import get_openapi
 from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from . import __version__ as server_version
-from .auth import get_api_key_from_header, require_api_key
+from .auth import get_api_key_from_header
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal
 from .endpoints.agents import router as agent_router
@@ -252,7 +252,7 @@ app.add_exception_handler(APIError, api_error_handler)  # type: ignore[arg-type]
 # Register handler for FastAPI's RequestValidationError (Pydantic validation)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
 
-# Register handler for standard HTTPException (legacy code, FastAPI internals)
+# Register handler for standard HTTPException (older routes, FastAPI internals)
 app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
 
 # Register catch-all handler for unexpected exceptions
@@ -261,30 +261,33 @@ app.add_exception_handler(Exception, generic_exception_handler)
 # API v1 prefix for all routes
 api_v1_prefix = f"{settings.api_prefix}/{settings.api_version}"
 
-# Protected routes (require valid API key)
+# API routers. Routers migrated to the auth framework mount the
+# non-validating header extractor only so OpenAPI advertises X-API-Key;
+# each endpoint's ``require_operation`` dependency owns authn + authz.
 app.include_router(
     agent_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 app.include_router(
     policy_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 app.include_router(
+    # Endpoint dependencies handle auth; this advertises X-API-Key.
     control_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 app.include_router(
     # The auth framework on each endpoint owns authentication and
     # authorization for control bindings, so this router is mounted
-    # without the legacy router-level gate. See ``auth_framework`` for
+    # without the router-level auth gate. See ``auth_framework`` for
     # the provider contract. ``get_api_key_from_header`` is a non-
     # validating extractor (``auto_error=False``); it is attached purely
     # so the generated OpenAPI spec advertises the X-API-Key requirement
-    # on these routes — without it, downstream SDK generators would treat
+    # on these routes - without it, downstream SDK generators would treat
     # the routes as unauthenticated.
     control_binding_router,
     prefix=api_v1_prefix,
@@ -300,32 +303,43 @@ app.include_router(
     dependencies=[Depends(get_api_key_from_header)],
 )
 app.include_router(
+    # Endpoint dependencies handle auth; this advertises X-API-Key.
     control_template_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 app.include_router(
     evaluation_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 
 app.include_router(
     evaluator_router,
     prefix=api_v1_prefix,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(get_api_key_from_header)],
 )
 
-# Observability routes (already has auth dependency in router)
 app.include_router(
     observability_router,
     prefix=api_v1_prefix,
+    dependencies=[Depends(get_api_key_from_header)],
 )
 
-# System routes (config, login, logout) — no auth required
+# System routes (config, login, logout) - no auth required
 app.include_router(
     system_router,
     prefix=settings.api_prefix,
+)
+
+
+JSON_VALUE_SCHEMA_NAMES = (
+    "JSONValue",
+    "JSONValue-Input",
+    "JSONValue-Output",
+    "JsonValue",
+    "JsonValue-Input",
+    "JsonValue-Output",
 )
 
 
@@ -342,8 +356,20 @@ def custom_openapi() -> dict[str, Any]:
     )
 
     schemas = openapi_schema.get("components", {}).get("schemas", {})
-    if "JSONValue" in schemas:
-        schemas["JSONValue"] = {"description": "Any JSON value"}
+    for schema_name in JSON_VALUE_SCHEMA_NAMES:
+        if schema_name in schemas:
+            schemas[schema_name] = {"description": "Any JSON value"}
+
+    # This route is intentionally public metadata. FastAPI still emits inherited
+    # API-key security for it, so patch only this operation in the generated spec.
+    controls_schema_path = f"{api_v1_prefix}/controls/schema"
+    controls_schema_operation = (
+        openapi_schema.get("paths", {})
+        .get(controls_schema_path, {})
+        .get("get")
+    )
+    if isinstance(controls_schema_operation, dict):
+        controls_schema_operation["security"] = []
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema

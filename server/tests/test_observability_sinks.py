@@ -21,13 +21,13 @@ class DummyAsyncSink:
 
 
 class DummyStore:
-    async def store(self, events):  # type: ignore[no-untyped-def]
+    async def store(self, events, *, namespace_key: str):  # type: ignore[no-untyped-def]
         return len(events)
 
     async def query_stats(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         raise NotImplementedError
 
-    async def query_events(self, query):  # type: ignore[no-untyped-def]
+    async def query_events(self, query, *, namespace_key: str):  # type: ignore[no-untyped-def]
         raise NotImplementedError
 
     async def close(self) -> None:

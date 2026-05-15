@@ -4,9 +4,8 @@ Wired to the runtime resolution path. Reads a Bearer token from the
 ``Authorization`` header, verifies the signature against the runtime
 secret, checks the token's scope covers the requested operation, and
 returns a :class:`Principal` carrying the bound target. When a
-``context_builder`` on the dependency surfaces ``target_type`` /
-``target_id``, the provider also enforces that they match the token's
-binding — runtime endpoints get the request-target check for free.
+``context_builder`` on the dependency must surface matching
+``target_type`` / ``target_id`` values for target-bound tokens.
 """
 
 from __future__ import annotations
@@ -55,25 +54,20 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
                 hint="Request a token with the required scope.",
             )
 
-        if context is not None:
-            requested_target_type = context.get("target_type")
-            requested_target_id = context.get("target_id")
-            if requested_target_type is not None and requested_target_type != claims.target_type:
-                raise ForbiddenError(
-                    error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                    detail=(
-                        "Runtime token target_type does not match the request."
-                    ),
-                    hint="Re-exchange a token bound to the request target.",
-                )
-            if requested_target_id is not None and requested_target_id != claims.target_id:
-                raise ForbiddenError(
-                    error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                    detail=(
-                        "Runtime token target_id does not match the request."
-                    ),
-                    hint="Re-exchange a token bound to the request target.",
-                )
+        requested_target_type = context.get("target_type") if context is not None else None
+        requested_target_id = context.get("target_id") if context is not None else None
+        if requested_target_type != claims.target_type:
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail="Runtime token target_type does not match the request.",
+                hint="Re-exchange a token bound to the request target.",
+            )
+        if requested_target_id != claims.target_id:
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail="Runtime token target_id does not match the request.",
+                hint="Re-exchange a token bound to the request target.",
+            )
 
         return Principal(
             namespace_key=claims.namespace_key,

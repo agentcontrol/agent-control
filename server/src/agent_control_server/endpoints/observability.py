@@ -5,7 +5,7 @@ This module provides endpoints for:
 2. Event queries (POST /events/query) - Query raw events by trace_id, etc.
 3. Stats (GET /stats) - Aggregated statistics for dashboards
 
-All endpoints require API key authentication.
+All endpoints declare operation-based auth dependencies.
 
 Dependencies are stored on app.state during server lifespan (see main.py):
 - app.state.event_ingestor: EventIngestor
@@ -27,7 +27,7 @@ from agent_control_models import (
 )
 from fastapi import APIRouter, Depends, Request
 
-from ..auth import require_api_key
+from ..auth_framework import Operation, Principal, require_operation
 from ..observability.ingest.base import EventIngestor
 from ..observability.store.base import (
     EventStore,
@@ -42,7 +42,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/observability",
     tags=["observability"],
-    dependencies=[Depends(require_api_key)],
 )
 
 
@@ -72,10 +71,15 @@ def get_event_store(request: Request) -> EventStore:
 # =============================================================================
 
 
-@router.post("/events", status_code=202, response_model=BatchEventsResponse)
+@router.post(
+    "/events",
+    status_code=202,
+    response_model=BatchEventsResponse,
+)
 async def ingest_events(
     request: BatchEventsRequest,
     ingestor: EventIngestor = Depends(get_event_ingestor),
+    principal: Principal = Depends(require_operation(Operation.OBSERVABILITY_WRITE)),
 ) -> BatchEventsResponse:
     """
     Ingest batched control execution events.
@@ -91,7 +95,10 @@ async def ingest_events(
     """
     start_time = time.perf_counter()
 
-    result = await ingestor.ingest(request.events)
+    result = await ingestor.ingest(
+        request.events,
+        namespace_key=principal.namespace_key,
+    )
 
     duration_ms = (time.perf_counter() - start_time) * 1000
     logger.debug(
@@ -121,10 +128,14 @@ async def ingest_events(
 # =============================================================================
 
 
-@router.post("/events/query", response_model=EventQueryResponse)
+@router.post(
+    "/events/query",
+    response_model=EventQueryResponse,
+)
 async def query_events(
     request: EventQueryRequest,
     store: EventStore = Depends(get_event_store),
+    principal: Principal = Depends(require_operation(Operation.OBSERVABILITY_READ)),
 ) -> EventQueryResponse:
     """
     Query raw control execution events.
@@ -150,7 +161,7 @@ async def query_events(
     Returns:
         EventQueryResponse with matching events and pagination info
     """
-    return await store.query_events(request)
+    return await store.query_events(request, namespace_key=principal.namespace_key)
 
 
 # =============================================================================
@@ -158,12 +169,16 @@ async def query_events(
 # =============================================================================
 
 
-@router.get("/stats", response_model=StatsResponse)
+@router.get(
+    "/stats",
+    response_model=StatsResponse,
+)
 async def get_stats(
     agent_name: str,
     time_range: TimeRange = "5m",
     include_timeseries: bool = False,
     store: EventStore = Depends(get_event_store),
+    principal: Principal = Depends(require_operation(Operation.OBSERVABILITY_READ)),
 ) -> StatsResponse:
     """
     Get agent-level aggregated statistics.
@@ -190,6 +205,7 @@ async def get_stats(
         control_id=None,
         include_timeseries=include_timeseries,
         bucket_size=bucket_size,
+        namespace_key=principal.namespace_key,
     )
 
     return StatsResponse(
@@ -207,13 +223,17 @@ async def get_stats(
     )
 
 
-@router.get("/stats/controls/{control_id}", response_model=ControlStatsResponse)
+@router.get(
+    "/stats/controls/{control_id}",
+    response_model=ControlStatsResponse,
+)
 async def get_control_stats(
     control_id: int,
     agent_name: str,
     time_range: TimeRange = "5m",
     include_timeseries: bool = False,
     store: EventStore = Depends(get_event_store),
+    principal: Principal = Depends(require_operation(Operation.OBSERVABILITY_READ)),
 ) -> ControlStatsResponse:
     """
     Get statistics for a single control.
@@ -240,6 +260,7 @@ async def get_control_stats(
         control_id=control_id,
         include_timeseries=include_timeseries,
         bucket_size=bucket_size,
+        namespace_key=principal.namespace_key,
     )
 
     # Get control name from the stats (should be exactly one)
@@ -266,7 +287,10 @@ async def get_control_stats(
 # =============================================================================
 
 
-@router.get("/status")
+@router.get(
+    "/status",
+    dependencies=[Depends(require_operation(Operation.OBSERVABILITY_READ))],
+)
 async def get_status(request: Request) -> dict:
     """
     Get observability system status.

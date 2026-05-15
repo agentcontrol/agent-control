@@ -9,24 +9,32 @@ packaged migration layout.
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from unittest.mock import MagicMock
 
 import pytest
-from alembic.script import ScriptDirectory
-
 from agent_control_server import migrate
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 
 @pytest.fixture
-def stub_config(monkeypatch: pytest.MonkeyPatch) -> object:
-    """Replace bundled-config building with a sentinel object.
+def stub_config(monkeypatch: pytest.MonkeyPatch) -> Config:
+    """Replace runtime config building with a lightweight Alembic config.
 
     Lets dispatch tests verify which Alembic command was called and
-    what config was passed without needing real migration assets.
+    what config was passed without touching real migration assets or DB locks.
     """
-    sentinel = object()
-    monkeypatch.setattr(migrate, "_bundled_config", lambda: sentinel)
+    sentinel = Config()
+    sentinel.set_main_option("sqlalchemy.url", "sqlite:///agent-control-test.db")
+
+    @contextmanager
+    def fake_runtime_bundled_config() -> Iterator[Config]:
+        yield sentinel
+
+    monkeypatch.setattr(migrate, "_runtime_bundled_config", fake_runtime_bundled_config)
     return sentinel
 
 
@@ -37,7 +45,7 @@ def _patch_command(monkeypatch: pytest.MonkeyPatch, name: str) -> MagicMock:
 
 
 def test_main_default_runs_upgrade_head(
-    stub_config: object, monkeypatch: pytest.MonkeyPatch
+    stub_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     upgrade = _patch_command(monkeypatch, "upgrade")
     rc = migrate.main([])
@@ -46,7 +54,7 @@ def test_main_default_runs_upgrade_head(
 
 
 def test_main_bare_upgrade_runs_upgrade_head(
-    stub_config: object, monkeypatch: pytest.MonkeyPatch
+    stub_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     upgrade = _patch_command(monkeypatch, "upgrade")
     rc = migrate.main(["upgrade"])
@@ -55,7 +63,7 @@ def test_main_bare_upgrade_runs_upgrade_head(
 
 
 def test_main_explicit_upgrade_revision(
-    stub_config: object, monkeypatch: pytest.MonkeyPatch
+    stub_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     upgrade = _patch_command(monkeypatch, "upgrade")
     rc = migrate.main(["upgrade", "abc123"])
@@ -64,7 +72,7 @@ def test_main_explicit_upgrade_revision(
 
 
 def test_main_upgrade_supports_sql(
-    stub_config: object, monkeypatch: pytest.MonkeyPatch
+    stub_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     upgrade = _patch_command(monkeypatch, "upgrade")
     rc = migrate.main(["upgrade", "head", "--sql"])
@@ -82,7 +90,7 @@ def test_main_bare_downgrade_requires_explicit_revision(
 
 
 def test_main_explicit_downgrade_revision(
-    stub_config: object, monkeypatch: pytest.MonkeyPatch
+    stub_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     downgrade = _patch_command(monkeypatch, "downgrade")
     rc = migrate.main(["downgrade", "abc123"])
@@ -91,7 +99,7 @@ def test_main_explicit_downgrade_revision(
 
 
 def test_main_downgrade_supports_sql(
-    stub_config: object, monkeypatch: pytest.MonkeyPatch
+    stub_config: Config, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     downgrade = _patch_command(monkeypatch, "downgrade")
     rc = migrate.main(["downgrade", "-1", "--sql"])
@@ -101,7 +109,7 @@ def test_main_downgrade_supports_sql(
 
 @pytest.mark.parametrize("op", ["current", "history", "heads"])
 def test_main_query_commands(
-    stub_config: object, monkeypatch: pytest.MonkeyPatch, op: str
+    stub_config: Config, monkeypatch: pytest.MonkeyPatch, op: str
 ) -> None:
     cmd = _patch_command(monkeypatch, op)
     rc = migrate.main([op])
@@ -147,7 +155,7 @@ def test_main_rejects_extra_positional_args(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_main_returns_nonzero_for_command_errors(
-    stub_config: object, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    stub_config: Config, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     upgrade = _patch_command(monkeypatch, "upgrade")
     upgrade.side_effect = RuntimeError("database unavailable")

@@ -5,11 +5,13 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from agent_control_models.observability import ControlExecutionEvent, EventQueryRequest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from agent_control_models.observability import ControlExecutionEvent, EventQueryRequest
+from agent_control_server.models import DEFAULT_NAMESPACE_KEY
 from agent_control_server.observability.store.postgres import PostgresEventStore
+
 from .conftest import async_engine, engine
 
 
@@ -90,24 +92,26 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     ]
 
     # When: storing events
-    await store.store(events)
+    await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
     # When: querying events filtered by control_id
     query = EventQueryRequest(agent_name=agent_name, control_ids=[1], limit=10, offset=0)
-    resp = await store.query_events(query)
+    resp = await store.query_events(query, namespace_key=DEFAULT_NAMESPACE_KEY)
     # Then: only matching events are returned
     assert resp.total == 2
     assert all(e.control_id == 1 for e in resp.events)
 
     # When: querying events filtered by trace_id
     query = EventQueryRequest(trace_id="a" * 32, limit=10, offset=0)
-    resp = await store.query_events(query)
+    resp = await store.query_events(query, namespace_key=DEFAULT_NAMESPACE_KEY)
     # Then: only matching events are returned
     assert resp.total == 2
     assert all(e.trace_id == "a" * 32 for e in resp.events)
 
     # When: querying stats
-    stats = await store.query_stats(agent_name, timedelta(hours=1))
+    stats = await store.query_stats(
+        agent_name, timedelta(hours=1), namespace_key=DEFAULT_NAMESPACE_KEY
+    )
     # Then: totals and action counts are aggregated correctly
     assert stats.total_executions == 3
     assert stats.total_matches == 2
@@ -116,10 +120,101 @@ async def test_postgres_event_store_query_events_and_stats() -> None:
     assert stats.action_counts == {"observe": 2}
 
     # When: querying stats with a control filter
-    filtered_stats = await store.query_stats(agent_name, timedelta(hours=1), control_id=1)
+    filtered_stats = await store.query_stats(
+        agent_name,
+        timedelta(hours=1),
+        control_id=1,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+    )
     # Then: only the requested control is returned
     assert len(filtered_stats.stats) == 1
     assert filtered_stats.stats[0].control_id == 1
+
+
+@pytest.mark.asyncio
+async def test_postgres_event_store_scopes_queries_by_namespace() -> None:
+    session_maker = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    store = PostgresEventStore(session_maker)
+
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    now = datetime.now(UTC)
+    event_a = _event(
+        agent_name=agent_name,
+        control_id=1,
+        action="observe",
+        matched=True,
+        timestamp=now,
+        trace_id="a" * 32,
+    )
+    event_b = _event(
+        agent_name=agent_name,
+        control_id=2,
+        action="deny",
+        matched=True,
+        timestamp=now,
+        trace_id="b" * 32,
+    )
+
+    await store.store([event_a], namespace_key="tenant-a")
+    await store.store([event_b], namespace_key="tenant-b")
+
+    query = EventQueryRequest(agent_name=agent_name, limit=10, offset=0)
+    events_a = await store.query_events(query, namespace_key="tenant-a")
+    stats_a = await store.query_stats(
+        agent_name,
+        timedelta(hours=1),
+        namespace_key="tenant-a",
+    )
+
+    assert [event.control_id for event in events_a.events] == [1]
+    assert stats_a.total_executions == 1
+    assert stats_a.stats[0].control_id == 1
+
+
+@pytest.mark.asyncio
+async def test_postgres_event_store_idempotency_is_scoped_by_namespace() -> None:
+    session_maker = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    store = PostgresEventStore(session_maker)
+
+    shared_execution_id = str(uuid4())
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    now = datetime.now(UTC)
+    event_a = _event(
+        control_execution_id=shared_execution_id,
+        agent_name=agent_name,
+        control_id=1,
+        action="observe",
+        matched=True,
+        timestamp=now,
+        trace_id="a" * 32,
+    )
+    event_b = _event(
+        control_execution_id=shared_execution_id,
+        agent_name=agent_name,
+        control_id=2,
+        action="deny",
+        matched=True,
+        timestamp=now,
+        trace_id="b" * 32,
+    )
+
+    await store.store([event_a], namespace_key="tenant-a")
+    await store.store([event_b], namespace_key="tenant-b")
+
+    query = EventQueryRequest(agent_name=agent_name, limit=10, offset=0)
+    events_a = await store.query_events(query, namespace_key="tenant-a")
+    events_b = await store.query_events(query, namespace_key="tenant-b")
+
+    assert [event.control_id for event in events_a.events] == [1]
+    assert [event.control_id for event in events_b.events] == [2]
 
 
 @pytest.mark.asyncio
@@ -133,7 +228,7 @@ async def test_postgres_event_store_store_empty_returns_zero() -> None:
     store = PostgresEventStore(session_maker)
 
     # When: storing an empty event list
-    stored = await store.store([])
+    stored = await store.store([], namespace_key=DEFAULT_NAMESPACE_KEY)
 
     # Then: zero events are reported as stored
     assert stored == 0
@@ -184,7 +279,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
         ),
     ]
 
-    await store.store(events)
+    await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
     # When: querying with all supported filters
     query = EventQueryRequest(
@@ -202,7 +297,7 @@ async def test_postgres_event_store_query_events_all_filters() -> None:
         limit=10,
         offset=0,
     )
-    resp = await store.query_events(query)
+    resp = await store.query_events(query, namespace_key=DEFAULT_NAMESPACE_KEY)
 
     # Then: only the matching event is returned
     assert resp.total == 1
@@ -252,9 +347,12 @@ async def test_postgres_event_store_normalizes_legacy_advisory_rows() -> None:
 
     # When: querying with the canonical observe filter
     resp = await store.query_events(
-        EventQueryRequest(agent_name=agent_name, actions=["observe"], limit=10, offset=0)
+        EventQueryRequest(agent_name=agent_name, actions=["observe"], limit=10, offset=0),
+        namespace_key=DEFAULT_NAMESPACE_KEY,
     )
-    stats = await store.query_stats(agent_name, timedelta(hours=1))
+    stats = await store.query_stats(
+        agent_name, timedelta(hours=1), namespace_key=DEFAULT_NAMESPACE_KEY
+    )
 
     # Then: the legacy row is returned and normalized to observe
     assert resp.total == 1
@@ -303,7 +401,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_observe_counts
     ]
 
     # When: storing events
-    await store.store(events)
+    await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
     # When: querying stats with timeseries enabled
     stats = await store.query_stats(
@@ -311,6 +409,7 @@ async def test_postgres_event_store_timeseries_includes_steer_and_observe_counts
         time_range=timedelta(hours=1),
         include_timeseries=True,
         bucket_size=timedelta(minutes=1),
+        namespace_key=DEFAULT_NAMESPACE_KEY,
     )
 
     # Then: action counts include steer and observe
@@ -383,7 +482,10 @@ async def test_postgres_event_store_parses_string_json_rows() -> None:
     store = PostgresEventStore(DummySessionMaker(rows))
 
     # When: querying events
-    resp = await store.query_events(EventQueryRequest(limit=10, offset=0))
+    resp = await store.query_events(
+        EventQueryRequest(limit=10, offset=0),
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+    )
 
     # Then: the JSON string is parsed into ControlExecutionEvent
     assert resp.total == 1

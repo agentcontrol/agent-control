@@ -36,7 +36,7 @@ import { Result } from "../types/fp.js";
  * See the GET-by-id docstring for the authorization scope: this route
  * is namespace-wide because the target identifiers are not available
  * before the binding is loaded. Use ``PUT /by-key`` for target-scoped
- * upserts that forward the target to the authorizer.
+ * upserts that include the target in the request context.
  */
 export function controlBindingsUpdate(
   client: AgentControlSDKCore,

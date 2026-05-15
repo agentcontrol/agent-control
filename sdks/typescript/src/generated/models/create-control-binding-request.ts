@@ -22,7 +22,7 @@ export type CreateControlBindingRequest = {
    */
   targetId: string;
   /**
-   * Opaque attachment kind (caller-defined; e.g. 'env', 'log_stream').
+   * Opaque attachment kind (caller-defined; e.g. 'environment', 'session').
    */
   targetType: string;
 };

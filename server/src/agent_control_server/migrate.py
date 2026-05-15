@@ -9,13 +9,36 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import shutil
 import sys
+import tempfile
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import cast
 
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Connection
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.pool import NullPool
 
 import agent_control_server
+from agent_control_server.config import db_config
+
+LOGGER = logging.getLogger(__name__)
+_MIGRATION_LOCK_CLASS_ID = 0x4143544C  # "ACTL"
+_MIGRATION_LOCK_OBJECT_ID = 0x4D494752  # "MIGR"
+_MIGRATION_LOCK_POLL_SECONDS = 2.0
+_DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS = 600.0
+_MIGRATION_LOCK_TIMEOUT_ENV = "AGENT_CONTROL_MIGRATION_LOCK_TIMEOUT_SECONDS"
+_MIGRATION_LOCK_PARAMS = {
+    "class_id": _MIGRATION_LOCK_CLASS_ID,
+    "object_id": _MIGRATION_LOCK_OBJECT_ID,
+}
 
 
 def _bundled_config() -> Config:
@@ -31,6 +54,108 @@ def _bundled_config() -> Config:
     cfg = Config(str(ini_path))
     cfg.set_main_option("script_location", str(alembic_dir).replace("%", "%%"))
     return cfg
+
+
+@contextmanager
+def _runtime_bundled_config() -> Iterator[Config]:
+    cfg = _bundled_config()
+    if not isinstance(cfg, Config):
+        yield cast(Config, cfg)
+        return
+
+    bundled_script_location = cfg.get_main_option("script_location")
+    if bundled_script_location is None:
+        raise RuntimeError("Bundled Alembic script_location is not configured.")
+
+    with tempfile.TemporaryDirectory(prefix="agent-control-alembic-") as tmp:
+        script_location = Path(tmp) / "_alembic"
+        shutil.copytree(bundled_script_location, script_location)
+        for injected_init in (script_location / "versions").rglob("__init__.py"):
+            injected_init.unlink()
+        cfg.set_main_option("script_location", str(script_location).replace("%", "%%"))
+        yield cfg
+
+
+def _migration_url(cfg: Config) -> str:
+    configured_url = cfg.get_main_option("sqlalchemy.url")
+    if configured_url:
+        return configured_url
+    return db_config.get_url()
+
+
+def _migration_lock_timeout_seconds() -> float:
+    raw_timeout = os.getenv(_MIGRATION_LOCK_TIMEOUT_ENV)
+    if raw_timeout is None:
+        return _DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
+
+    try:
+        timeout = float(raw_timeout)
+    except ValueError as exc:
+        raise RuntimeError(f"{_MIGRATION_LOCK_TIMEOUT_ENV} must be a number.") from exc
+
+    if timeout <= 0:
+        raise RuntimeError(f"{_MIGRATION_LOCK_TIMEOUT_ENV} must be greater than zero.")
+    return timeout
+
+
+def _acquire_migration_lock(connection: Connection, timeout_seconds: float) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    logged_wait = False
+
+    while True:
+        acquired = bool(
+            connection.execute(
+                text("SELECT pg_try_advisory_lock(:class_id, :object_id)"),
+                _MIGRATION_LOCK_PARAMS,
+            ).scalar_one()
+        )
+        if acquired:
+            LOGGER.info("Acquired Agent Control migration advisory lock.")
+            return
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(
+                f"Timed out after {timeout_seconds:g}s waiting for Agent Control "
+                "migration advisory lock."
+            )
+
+        if not logged_wait:
+            LOGGER.info("Waiting for another Agent Control migration to finish.")
+            logged_wait = True
+        time.sleep(min(_MIGRATION_LOCK_POLL_SECONDS, remaining))
+
+
+@contextmanager
+def _serialized_migration(cfg: Config, *, enabled: bool) -> Iterator[None]:
+    if not enabled:
+        yield
+        return
+
+    url = _migration_url(cfg)
+    if make_url(url).get_backend_name() != "postgresql":
+        yield
+        return
+
+    engine = create_engine(url, future=True, poolclass=NullPool)
+    try:
+        with engine.connect() as connection:
+            _acquire_migration_lock(connection, _migration_lock_timeout_seconds())
+            try:
+                yield
+            finally:
+                released = bool(
+                    connection.execute(
+                        text("SELECT pg_advisory_unlock(:class_id, :object_id)"),
+                        _MIGRATION_LOCK_PARAMS,
+                    ).scalar_one()
+                )
+                if released:
+                    LOGGER.info("Released Agent Control migration advisory lock.")
+                else:
+                    LOGGER.warning("Agent Control migration advisory lock was not held at release.")
+    finally:
+        engine.dispose()
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -78,19 +203,21 @@ def main(argv: list[str] | None = None) -> int:
     _configure_logging()
 
     try:
-        cfg = _bundled_config()
-        if parsed.command == "upgrade":
-            command.upgrade(cfg, parsed.revision, sql=parsed.sql)
-        elif parsed.command == "downgrade":
-            command.downgrade(cfg, parsed.revision, sql=parsed.sql)
-        elif parsed.command == "current":
-            command.current(cfg)
-        elif parsed.command == "history":
-            command.history(cfg)
-        elif parsed.command == "heads":
-            command.heads(cfg)
-        else:  # pragma: no cover - argparse guarantees this cannot happen.
-            parser.error("missing command")
+        with _runtime_bundled_config() as cfg:
+            should_lock = parsed.command in {"upgrade", "downgrade"} and not parsed.sql
+            with _serialized_migration(cfg, enabled=should_lock):
+                if parsed.command == "upgrade":
+                    command.upgrade(cfg, parsed.revision, sql=parsed.sql)
+                elif parsed.command == "downgrade":
+                    command.downgrade(cfg, parsed.revision, sql=parsed.sql)
+                elif parsed.command == "current":
+                    command.current(cfg)
+                elif parsed.command == "history":
+                    command.history(cfg)
+                elif parsed.command == "heads":
+                    command.heads(cfg)
+                else:  # pragma: no cover - argparse guarantees this cannot happen.
+                    parser.error("missing command")
     except Exception as exc:
         print(f"agent-control-migrate: {exc}", file=sys.stderr)
         return 1

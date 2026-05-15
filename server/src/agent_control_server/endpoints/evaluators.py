@@ -3,8 +3,10 @@
 from typing import Any
 
 from agent_control_engine import list_evaluators
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+
+from ..auth_framework import Operation, require_operation
 
 router = APIRouter(prefix="/evaluators", tags=["evaluators"])
 
@@ -25,6 +27,7 @@ class EvaluatorInfo(BaseModel):
     response_model=dict[str, EvaluatorInfo],
     summary="List available evaluators",
     response_description="Dictionary of evaluator name to evaluator info",
+    dependencies=[Depends(require_operation(Operation.EVALUATORS_READ))],
 )
 async def get_evaluators() -> dict[str, EvaluatorInfo]:
     """List all available evaluators.

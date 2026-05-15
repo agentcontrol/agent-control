@@ -18,9 +18,35 @@ import uuid
 from copy import deepcopy
 from typing import Any
 
+import pytest
+from agent_control_server.auth_framework import Operation, Principal, set_authorizer
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 from .utils import VALID_CONTROL_PAYLOAD, canonicalize_control_payload
+
+
+class RecordingAuthorizer:
+    """Authorizer that records operation/context pairs for endpoint contract tests."""
+
+    def __init__(self, *, target_namespace_key: str = "default") -> None:
+        self.calls: list[tuple[Operation, dict[str, Any] | None]] = []
+        self.target_namespace_key = target_namespace_key
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request
+        self.calls.append((operation, context))
+        namespace_key = (
+            self.target_namespace_key
+            if operation is Operation.CONTROL_BINDINGS_READ and context is not None
+            else "default"
+        )
+        return Principal(namespace_key=namespace_key, is_admin=True)
 
 
 def _agent_payload(
@@ -115,7 +141,7 @@ def _list_effective_via_get(
 # ---------------------------------------------------------------------------
 
 
-def test_initAgent_with_target_merges_direct_and_target_controls(
+def test_init_agent_with_target_merges_direct_and_target_controls(
     client: TestClient,
 ) -> None:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
@@ -134,7 +160,7 @@ def test_initAgent_with_target_merges_direct_and_target_controls(
     assert returned_ids == {direct_id, target_id_ctrl}
 
 
-def test_initAgent_newly_created_with_target_picks_up_pre_existing_bindings(
+def test_init_agent_newly_created_with_target_picks_up_pre_existing_bindings(
     client: TestClient,
 ) -> None:
     """Bindings can pre-exist the agent row.
@@ -154,7 +180,7 @@ def test_initAgent_newly_created_with_target_picks_up_pre_existing_bindings(
     assert returned_ids == [pre_existing]
 
 
-def test_initAgent_partial_target_pair_rejected(client: TestClient) -> None:
+def test_init_agent_partial_target_pair_rejected(client: TestClient) -> None:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     payload = _agent_payload(agent_name)
     payload["target_type"] = "env"  # target_id omitted
@@ -162,12 +188,28 @@ def test_initAgent_partial_target_pair_rejected(client: TestClient) -> None:
     assert resp.status_code == 422
 
 
+def test_init_agent_with_target_requires_target_read_authorization(
+    client: TestClient,
+) -> None:
+    authorizer = RecordingAuthorizer()
+    set_authorizer(authorizer)
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+
+    body = _register_agent(client, agent_name, target_type="env", target_id="prod")
+
+    assert body["created"] is True
+    assert (
+        Operation.CONTROL_BINDINGS_READ,
+        {"target_type": "env", "target_id": "prod"},
+    ) in authorizer.calls
+
+
 # ---------------------------------------------------------------------------
 # GET /agents/{name}/controls contract.
 # ---------------------------------------------------------------------------
 
 
-def test_get_agent_controls_with_target_matches_initAgent_response(
+def test_get_agent_controls_with_target_matches_init_agent_response(
     client: TestClient,
 ) -> None:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
@@ -198,6 +240,45 @@ def test_get_agent_controls_partial_target_pair_returns_400(
         params={"target_type": "env"},  # target_id missing
     )
     assert resp.status_code == 400
+
+
+def test_get_agent_controls_with_target_requires_target_read_authorization(
+    client: TestClient,
+) -> None:
+    authorizer = RecordingAuthorizer()
+    set_authorizer(authorizer)
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    _register_agent(client, agent_name)
+    authorizer.calls.clear()
+
+    ids = _list_effective_via_get(
+        client,
+        agent_name,
+        target_type="env",
+        target_id="prod",
+    )
+
+    assert ids == []
+    assert (Operation.AGENTS_READ, None) in authorizer.calls
+    assert (
+        Operation.CONTROL_BINDINGS_READ,
+        {"target_type": "env", "target_id": "prod"},
+    ) in authorizer.calls
+
+
+def test_get_agent_controls_rejects_target_namespace_mismatch(
+    client: TestClient,
+) -> None:
+    set_authorizer(RecordingAuthorizer(target_namespace_key="other-ns"))
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    _register_agent(client, agent_name)
+
+    resp = client.get(
+        f"/api/v1/agents/{agent_name}/controls",
+        params={"target_type": "env", "target_id": "prod"},
+    )
+
+    assert resp.status_code == 403, resp.text
 
 
 def test_get_agent_controls_no_target_omits_target_bindings(
@@ -232,9 +313,9 @@ def test_target_binding_de_duplicated_against_direct_attachment(
 async def _insert_agent_in_namespace(async_db, *, name: str, namespace_key: str) -> None:
     """Insert an Agent row directly so the test can simulate a foreign namespace.
 
-    The endpoint's ``get_namespace_key`` returns the default namespace; this
-    helper sidesteps the resolver to seed an agent that the request-time
-    code path should not be able to reach.
+    The default test authorizer returns the default namespace; this helper
+    sidesteps the authorizer to seed an agent that the request-time code
+    path should not be able to reach.
     """
     from agent_control_server.models import Agent
 
@@ -243,11 +324,10 @@ async def _insert_agent_in_namespace(async_db, *, name: str, namespace_key: str)
     await async_db.commit()
 
 
-import pytest  # noqa: E402  (kept local; the rest of the file is sync)
-
-
 @pytest.mark.asyncio
-async def test_get_agent_controls_cross_namespace_returns_404(client: TestClient, async_db) -> None:
+async def test_get_agent_controls_cross_namespace_returns_404(
+    client: TestClient, async_db
+) -> None:
     """Agent existing only in another namespace must not surface here.
 
     The merged-resolver contract is namespace-scoped end-to-end; if the

@@ -20,6 +20,8 @@ from agent_control_server.auth_framework.providers import (
     AccessLevel,
     HeaderAuthProvider,
     HttpUpstreamAuthProvider,
+    LocalJwtVerifyProvider,
+    NoAuthProvider,
 )
 from agent_control_server.auth_framework.providers.header import (
     DEFAULT_OPERATION_ACCESS,
@@ -27,6 +29,7 @@ from agent_control_server.auth_framework.providers.header import (
 from agent_control_server.auth_framework.providers.http_upstream import (
     HttpUpstreamConfig,
 )
+from agent_control_server.config import auth_settings
 from agent_control_server.errors import (
     APIError,
     AuthenticationError,
@@ -48,6 +51,16 @@ def _build_request(
     return request
 
 
+def _clear_auth_settings_cache() -> None:
+    for attr in (
+        "_parsed_api_keys",
+        "_parsed_admin_api_keys",
+        "_all_valid_keys",
+        "_all_admin_keys",
+    ):
+        auth_settings.__dict__.pop(attr, None)
+
+
 # 32-byte test secret (HS256 wants >= 32 bytes; shorter raises a warning).
 _TEST_SECRET = "test-runtime-secret-12345678901234567890"
 _OTHER_SECRET = "other-runtime-secret-1234567890123456789"
@@ -62,6 +75,35 @@ def test_default_operation_access_covers_every_operation():
     """Every Operation member must declare a default access level."""
     missing = [op for op in Operation if op not in DEFAULT_OPERATION_ACCESS]
     assert not missing, f"Operations missing default access mapping: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# NoAuthProvider
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_no_auth_provider_allows_any_operation():
+    provider = NoAuthProvider(default_namespace_key="ns-local")
+
+    principal = await provider.authorize(
+        _build_request(),
+        Operation.CONTROLS_DELETE,
+    )
+
+    assert principal == Principal(namespace_key="ns-local")
+
+
+@pytest.mark.asyncio
+async def test_no_auth_provider_grants_runtime_exchange_scope():
+    provider = NoAuthProvider()
+
+    principal = await provider.authorize(
+        _build_request(),
+        Operation.RUNTIME_TOKEN_EXCHANGE,
+    )
+
+    assert principal.scopes == (Operation.RUNTIME_USE.value,)
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +143,7 @@ async def test_header_provider_public_returns_default_namespace():
 
 
 @pytest.mark.asyncio
-async def test_header_provider_authenticated_calls_legacy_validator():
+async def test_header_provider_authenticated_calls_local_validator():
     provider = HeaderAuthProvider()
     expected_client = MagicMock(is_admin=False, key_id="abc12345")
 
@@ -228,6 +270,94 @@ async def test_http_upstream_forwards_service_token():
     await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_READ)
 
     assert captured["headers"]["x-custom-token"] == "shh"
+
+
+def test_http_upstream_rejects_service_token_header_collision():
+    with pytest.raises(ValueError, match="service_token_header"):
+        HttpUpstreamConfig(
+            url="https://upstream.example/check",
+            service_token="shh",
+            service_token_header="Authorization",
+        )
+
+
+def test_http_upstream_rejects_extra_forwarded_service_token_header_collision():
+    with pytest.raises(ValueError, match="service_token_header"):
+        HttpUpstreamConfig(
+            url="https://upstream.example/check",
+            service_token="shh",
+            service_token_header="X-Custom-Auth",
+            extra_forward_headers=("x-custom-auth",),
+        )
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_forwards_extra_headers():
+    # Given: a provider configured with an extra header in its forward list
+    captured: dict[str, Any] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"namespace_key": "ns"})
+
+    provider = _build_upstream(
+        factory,
+        config_overrides={"extra_forward_headers": ("X-Deployer-Auth",)},
+    )
+
+    # When: the inbound request carries the extra header
+    inbound = _build_request(headers={"X-Deployer-Auth": "k_abc", "X-API-Key": "k1"})
+    await provider.authorize(inbound, Operation.CONTROL_BINDINGS_READ)
+
+    # Then: both the default and the extra header reach the upstream
+    assert captured["headers"]["x-deployer-auth"] == "k_abc"
+    assert captured["headers"]["x-api-key"] == "k1"
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_default_forward_set_unchanged():
+    # Given: a provider with no extra_forward_headers
+    captured: dict[str, Any] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"namespace_key": "ns"})
+
+    provider = _build_upstream(factory)
+
+    # When: the inbound carries an unlisted header alongside a default one
+    inbound = _build_request(
+        headers={"X-API-Key": "k1", "X-Deployer-Auth": "should-not-forward"}
+    )
+    await provider.authorize(inbound, Operation.CONTROL_BINDINGS_READ)
+
+    # Then: only the default-set header reaches the upstream
+    assert captured["headers"].get("x-api-key") == "k1"
+    assert "x-deployer-auth" not in captured["headers"]
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_extra_forward_dedupes_against_defaults():
+    # Given: extra list duplicates a default header (different case)
+    captured: dict[str, Any] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"namespace_key": "ns"})
+
+    provider = _build_upstream(
+        factory,
+        config_overrides={"extra_forward_headers": ("x-api-key", "Authorization")},
+    )
+
+    # When: inbound has both
+    inbound = _build_request(headers={"X-API-Key": "k1", "Authorization": "Bearer t"})
+    await provider.authorize(inbound, Operation.CONTROL_BINDINGS_READ)
+
+    # Then: each header appears exactly once on the upstream request
+    forwarded = captured["headers"]
+    assert sum(1 for k in forwarded if k.lower() == "x-api-key") == 1
+    assert sum(1 for k in forwarded if k.lower() == "authorization") == 1
 
 
 @pytest.mark.asyncio
@@ -597,6 +727,35 @@ def test_runtime_token_rejects_naive_upstream_expires_at():
         )
 
 
+@pytest.mark.parametrize(
+    "kwargs, message",
+    [
+        ({"actor_id": ""}, "actor_id is required"),
+        ({"target_type": ""}, "target_type is required"),
+        ({"target_id": ""}, "target_id is required"),
+    ],
+)
+def test_runtime_token_rejects_empty_required_claims(kwargs, message):
+    from agent_control_server.auth_framework.runtime_token import (
+        RuntimeTokenError,
+        mint_runtime_token,
+    )
+
+    token_kwargs = {
+        "namespace_key": "default",
+        "actor_id": "actor",
+        "target_type": "target",
+        "target_id": "target-id",
+        "scopes": ("runtime.use",),
+        "secret": _TEST_SECRET,
+        "ttl_seconds": 60,
+    }
+    token_kwargs.update(kwargs)
+
+    with pytest.raises(RuntimeTokenError, match=message):
+        mint_runtime_token(**token_kwargs)
+
+
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():
     """A token without ``domain=runtime`` must be rejected by runtime verify."""
     import jwt
@@ -644,7 +803,11 @@ async def test_local_jwt_provider_returns_target_bound_principal():
     provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
     request = _build_request(headers={"Authorization": f"Bearer {token}"})
 
-    principal = await provider.authorize(request, Operation.RUNTIME_USE)
+    principal = await provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-42"},
+    )
 
     assert principal.target_type == "log_stream"
     assert principal.target_id == "ls-42"
@@ -717,8 +880,37 @@ async def test_local_jwt_provider_carries_token_namespace_to_principal():
     provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
     request = _build_request(headers={"Authorization": f"Bearer {token}"})
 
-    principal = await provider.authorize(request, Operation.RUNTIME_USE)
+    principal = await provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls"},
+    )
     assert principal.namespace_key == "org-7"
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_rejects_missing_target_context():
+    """A target-bound runtime token requires matching request target context."""
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+    from agent_control_server.errors import ForbiddenError
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="a",
+        target_type="log_stream",
+        target_id="bound-target",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
+    request = _build_request(headers={"Authorization": f"Bearer {token}"})
+
+    with pytest.raises(ForbiddenError, match="target_type does not match"):
+        await provider.authorize(request, Operation.RUNTIME_USE)
 
 
 @pytest.mark.asyncio
@@ -885,13 +1077,76 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
             },
         )
     )
-    principal = await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
+    principal = await provider.authorize(
+        _build_request(),
+        Operation.RUNTIME_TOKEN_EXCHANGE,
+        context={"target_type": "log_stream", "target_id": "ls-1"},
+    )
     assert principal.namespace_key == "org-1"
     assert principal.scopes == ("runtime.use", "runtime.read_only")
     assert principal.target_type == "log_stream"
     assert principal.target_id == "ls-1"
     assert principal.grant_expires_at is not None
     assert principal.grant_expires_at.isoformat() == iso_expiry
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_target_grant_mismatch():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-1",
+                "target_type": "log_stream",
+                "target_id": "different",
+            },
+        )
+    )
+
+    with pytest.raises(ForbiddenError, match="does not match"):
+        await provider.authorize(
+            _build_request(),
+            Operation.RUNTIME_TOKEN_EXCHANGE,
+            context={"target_type": "log_stream", "target_id": "requested"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_target_grant_without_context():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-1",
+                "target_type": "log_stream",
+                "target_id": "bound",
+            },
+        )
+    )
+
+    with pytest.raises(ForbiddenError, match="request target is unavailable"):
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_READ)
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_target_grant_with_incomplete_context():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-1",
+                "target_type": "log_stream",
+                "target_id": "bound",
+            },
+        )
+    )
+
+    with pytest.raises(ForbiddenError, match="request target is incomplete"):
+        await provider.authorize(
+            _build_request(),
+            Operation.CONTROL_BINDINGS_READ,
+            context={"target_type": "log_stream"},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -943,6 +1198,225 @@ def test_runtime_ttl_loader_accepts_max(monkeypatch):
         auth_config._load_runtime_ttl_seconds()
         == auth_config._MAX_RUNTIME_TOKEN_TTL_SECONDS
     )
+
+
+def test_build_default_provider_accepts_none_mode(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "none")
+
+    assert isinstance(auth_config._build_default_provider(), NoAuthProvider)
+
+
+def test_build_default_provider_defaults_to_none_when_api_keys_disabled(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.delenv("AGENT_CONTROL_AUTH_MODE", raising=False)
+    monkeypatch.setattr(auth_settings, "api_key_enabled", False)
+
+    assert isinstance(auth_config._build_default_provider(), NoAuthProvider)
+
+
+def test_build_default_provider_rejects_explicit_api_key_without_validator(
+    monkeypatch,
+):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "api_key")
+    monkeypatch.setattr(auth_settings, "api_key_enabled", False)
+
+    with pytest.raises(RuntimeError, match="AGENT_CONTROL_API_KEY_ENABLED=true"):
+        auth_config._build_default_provider()
+
+
+def test_build_default_provider_rejects_explicit_api_key_without_keys(
+    monkeypatch,
+):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "api_key")
+    monkeypatch.setattr(auth_settings, "api_key_enabled", True)
+    monkeypatch.setattr(auth_settings, "api_keys", "")
+    monkeypatch.setattr(auth_settings, "admin_api_keys", "")
+    _clear_auth_settings_cache()
+
+    with pytest.raises(RuntimeError, match="AGENT_CONTROL_API_KEYS"):
+        auth_config._build_default_provider()
+
+
+def test_resolve_runtime_mode_defaults_to_default_without_secret(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    assert auth_config._resolve_runtime_mode() == "default"
+
+
+def test_resolve_runtime_mode_defaults_to_jwt_with_secret(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+
+    assert auth_config._resolve_runtime_mode() == "jwt"
+
+
+def test_configure_runtime_none_installs_no_auth_provider(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "none")
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    auth_config.configure_auth_from_env()
+
+    assert isinstance(get_authorizer(Operation.RUNTIME_USE), NoAuthProvider)
+    assert auth_config.runtime_auth_config() is None
+
+
+def test_configure_runtime_api_key_ignores_jwt_secret(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "api_key")
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+
+    auth_config.configure_auth_from_env()
+
+    assert isinstance(get_authorizer(Operation.RUNTIME_USE), HeaderAuthProvider)
+    assert auth_config.runtime_auth_config() is None
+
+
+def test_configure_runtime_api_key_rejects_without_validator(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "api_key")
+    monkeypatch.setattr(auth_settings, "api_key_enabled", False)
+
+    with pytest.raises(RuntimeError, match="AGENT_CONTROL_RUNTIME_AUTH_MODE=api_key"):
+        auth_config.configure_auth_from_env()
+
+
+def test_configure_runtime_unset_preserves_no_auth_default(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "none")
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    auth_config.configure_auth_from_env()
+
+    assert isinstance(get_authorizer(Operation.RUNTIME_USE), NoAuthProvider)
+    assert auth_config.runtime_auth_config() is None
+
+
+@pytest.mark.asyncio
+async def test_configure_runtime_unset_preserves_http_upstream_default(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", raising=False)
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    try:
+        auth_config.configure_auth_from_env()
+
+        default_provider = get_authorizer(Operation.CONTROLS_READ)
+        runtime_provider = get_authorizer(Operation.RUNTIME_USE)
+        assert isinstance(default_provider, HttpUpstreamAuthProvider)
+        assert runtime_provider is default_provider
+        assert auth_config.runtime_auth_config() is None
+    finally:
+        await auth_config.teardown_auth()
+
+
+@pytest.mark.asyncio
+async def test_configure_http_upstream_management_with_jwt_runtime(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "jwt")
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+
+    try:
+        auth_config.configure_auth_from_env()
+
+        assert isinstance(get_authorizer(Operation.CONTROLS_READ), HttpUpstreamAuthProvider)
+        assert isinstance(get_authorizer(Operation.RUNTIME_USE), LocalJwtVerifyProvider)
+        runtime_config = auth_config.runtime_auth_config()
+        assert runtime_config is not None
+        assert runtime_config.secret == _TEST_SECRET
+    finally:
+        await auth_config.teardown_auth()
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (None, ()),
+        ("", ()),
+        ("   ", ()),
+        ("X-One", ("X-One",)),
+        ("X-One,X-Two", ("X-One", "X-Two")),
+        ("  X-One  ,  X-Two  ", ("X-One", "X-Two")),
+        ("X-One,,X-Two", ("X-One", "X-Two")),
+        ("X-One,x-one,X-One", ("X-One",)),
+        ("X-A,X-B,x-a,X-C,X-b", ("X-A", "X-B", "X-C")),
+    ],
+)
+def test_parse_extra_forward_headers(raw, expected):
+    from agent_control_server.auth_framework.config import _parse_extra_forward_headers
+
+    assert _parse_extra_forward_headers(raw) == expected
+
+
+@pytest.mark.asyncio
+async def test_configure_http_upstream_extra_forward_headers_env(monkeypatch):
+    """Setting the env var threads extra_forward_headers into the provider."""
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv(
+        "AGENT_CONTROL_AUTH_UPSTREAM_EXTRA_FORWARD_HEADERS",
+        "X-Deployer-Auth, X-Deployer-Trace",
+    )
+
+    try:
+        auth_config.configure_auth_from_env()
+        provider = get_authorizer(Operation.CONTROLS_READ)
+        assert isinstance(provider, HttpUpstreamAuthProvider)
+        assert provider._config.extra_forward_headers == (
+            "X-Deployer-Auth",
+            "X-Deployer-Trace",
+        )
+    finally:
+        await auth_config.teardown_auth()
+
+
+def test_configure_runtime_jwt_requires_secret(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "jwt")
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", raising=False)
+
+    with pytest.raises(RuntimeError, match="requires AGENT_CONTROL_RUNTIME_TOKEN_SECRET"):
+        auth_config.configure_auth_from_env()
 
 
 def test_configure_then_reconfigure_clears_runtime_override(monkeypatch):

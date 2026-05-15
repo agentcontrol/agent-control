@@ -23,8 +23,7 @@ export class ControlBindings extends ClientSDK {
    * cursor-based pagination. Bindings are ordered by ID descending
    * (newest first). The cursor is opaque to clients: pass back the
    * ``next_cursor`` value verbatim to fetch the following page. The
-   * storage namespace is resolved by ``get_namespace_key`` so this
-   * listing stays in lockstep with the rest of the server's reads.
+   * storage namespace is resolved from the authenticated request.
    */
   async list(
     request?:
@@ -45,12 +44,8 @@ export class ControlBindings extends ClientSDK {
    * @remarks
    * Attach a control to an opaque external target.
    *
-   * Each binding row is scoped to the request namespace as resolved by
-   * ``get_namespace_key``. The auth chain still runs via
-   * ``require_operation`` for authentication and authorization, but the
-   * storage namespace is taken from the same resolver the rest of the
-   * server uses so binding writes and runtime reads stay in lockstep
-   * until auth-derived namespace resolution lands across every endpoint.
+   * Each binding row is scoped to the namespace associated with the
+   * authenticated request.
    */
   async create(
     request: models.CreateControlBindingRequest,
@@ -109,7 +104,7 @@ export class ControlBindings extends ClientSDK {
    * See the GET-by-id docstring for the authorization scope: this route
    * is namespace-wide because the target identifiers are not available
    * before the binding is loaded. Use ``POST /by-key:delete`` for
-   * target-scoped detach that forwards the target to the authorizer.
+   * target-scoped detach that includes the target in the request context.
    */
   async delete(
     request:
@@ -130,12 +125,11 @@ export class ControlBindings extends ClientSDK {
    * Read a single control binding by surrogate ID.
    *
    * Authorization is namespace-wide: the binding's target identifiers
-   * are not forwarded to the upstream because they are only discoverable
-   * after the row is loaded, and ``require_operation`` is single-pass.
+   * are not available until after the row is loaded.
    * Callers whose authorization model requires per-target permissions
    * should use the natural-key endpoints (``PUT /by-key``,
    * ``POST /by-key:delete``) and the target-filtered list endpoint, all
-   * of which forward ``(target_type, target_id)`` to the authorizer.
+   * of which include ``(target_type, target_id)`` in the request context.
    */
   async get(
     request:
@@ -158,7 +152,7 @@ export class ControlBindings extends ClientSDK {
    * See the GET-by-id docstring for the authorization scope: this route
    * is namespace-wide because the target identifiers are not available
    * before the binding is loaded. Use ``PUT /by-key`` for target-scoped
-   * upserts that forward the target to the authorizer.
+   * upserts that include the target in the request context.
    */
   async update(
     request:

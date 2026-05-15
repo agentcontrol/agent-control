@@ -2,18 +2,18 @@
 
 The runtime auth flow is two-phase: this endpoint is phase one. The
 caller presents a long-lived credential plus ``(target_type,
-target_id)``; the default authorizer (typically
-:class:`HttpUpstreamAuthProvider` in production) authenticates the
+target_id)``; the configured authorization provider authenticates the
 credential and authorizes the implied
-:data:`Operation.RUNTIME_TOKEN_EXCHANGE`. On success, this endpoint
+``runtime.token_exchange`` operation. On success, this endpoint
 mints a short-lived local runtime token bound to the supplied target
 and returns it. Subsequent target-bearing runtime calls present the
 returned token, which is verified locally by
-:class:`LocalJwtVerifyProvider`.
+the runtime JWT provider.
 """
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Any
 
@@ -29,8 +29,14 @@ from ..auth_framework.runtime_token import (
     mint_runtime_token,
 )
 from ..errors import APIError, BadRequestError
+from ..logging_utils import get_logger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_logger = get_logger(__name__)
+
+
+def _log_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
 class RuntimeTokenExchangeRequest(BaseModel):
@@ -39,7 +45,7 @@ class RuntimeTokenExchangeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     target_type: str = Field(
-        ..., description="Opaque target kind (e.g., ``log_stream``).", min_length=1
+        ..., description="Opaque target kind (e.g., ``session``).", min_length=1
     )
     target_id: str = Field(..., description="Opaque target identifier.", min_length=1)
 
@@ -57,7 +63,7 @@ class RuntimeTokenExchangeResponse(BaseModel):
 
 
 async def _exchange_context(request: Request) -> dict[str, Any]:
-    """Surface target identifiers to the authorizer's context.
+    """Surface target identifiers to the authorization context.
 
     Reads the request body once. FastAPI caches the parsed body, so the
     endpoint's own Pydantic body model still binds normally.
@@ -90,11 +96,10 @@ async def runtime_token_exchange(
 ) -> RuntimeTokenExchangeResponse:
     """Mint a short-lived runtime token for the requested target.
 
-    The caller's credential is authenticated and authorized by the
-    installed default authorizer; the resulting :class:`Principal`
-    supplies the actor identity and (when the upstream surfaces it)
-    the grant scopes and expiry. This endpoint then mints a local HS256
-    token whose lifetime cannot outlive the upstream grant.
+    The caller's credential is authenticated and authorized before the
+    resolved principal supplies the actor identity, grant scopes, and
+    expiry. This endpoint then mints a local HS256 token whose lifetime
+    cannot outlive the grant.
 
     Runtime auth must be enabled via
     ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET``; otherwise the endpoint
@@ -130,8 +135,8 @@ async def runtime_token_exchange(
 
     actor_id = principal.caller_id or "anonymous"
     # The exchange endpoint requires the authorizer to explicitly grant
-    # runtime.use. Providers that do not surface scopes (legacy local
-    # provider) supply a normalized grant for ``RUNTIME_TOKEN_EXCHANGE``;
+    # runtime.use. Local providers supply a normalized grant for
+    # ``RUNTIME_TOKEN_EXCHANGE``;
     # upstream providers that return an explicit empty scopes array fail
     # closed here rather than escalating to runtime.use.
     if Operation.RUNTIME_USE.value not in principal.scopes:
@@ -155,7 +160,7 @@ async def runtime_token_exchange(
         )
     except UpstreamGrantExpiredError as exc:
         # Upstream returned a grant whose ``expires_at`` is already in
-        # the past — minting would hand the caller a token that's dead
+        # the past - minting would hand the caller a token that's dead
         # on arrival. Distinguished from the misconfigured case so the
         # error code and status reflect "upstream returned bad data."
         raise APIError(
@@ -176,6 +181,19 @@ async def runtime_token_exchange(
             detail=str(exc),
             hint="Check the runtime token configuration.",
         ) from exc
+
+    _logger.info(
+        "Runtime token exchanged",
+        extra={
+            "namespace_key": claims.namespace_key,
+            "actor_id_hash": _log_hash(claims.actor_id),
+            "target_type": claims.target_type,
+            "target_id": claims.target_id,
+            "scopes": list(claims.scopes),
+            "expires_at": claims.expires_at.isoformat(),
+            "jti": claims.jti,
+        },
+    )
 
     return RuntimeTokenExchangeResponse(
         token=token,

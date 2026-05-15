@@ -39,7 +39,7 @@ export class Agents extends ClientSDK {
    *     limit: Pagination limit (default 20, max 100)
    *     name: Optional name filter (case-insensitive partial match)
    *     db: Database session (injected)
-   *     namespace_key: Resolved namespace for the request
+   *     principal: Authorized request principal
    *
    * Returns:
    *     ListAgentsResponse with agent summaries and pagination info
@@ -80,6 +80,8 @@ export class Agents extends ClientSDK {
    * Args:
    *     request: Agent metadata and step schemas
    *     db: Database session (injected)
+   *     principal: Authorized request principal for the agent create operation
+   *     target_principal: Optional principal from the target binding read check
    *
    * Returns:
    *     InitAgentResponse with created flag and the effective controls
@@ -106,8 +108,7 @@ export class Agents extends ClientSDK {
    * Args:
    *     agent_name: Agent identifier
    *     db: Database session (injected)
-   *     namespace_key: Resolved namespace; agents in another namespace
-   *         return 404 (non-disclosing).
+   *     principal: Authorized request principal
    *
    * Returns:
    *     GetAgentResponse with agent metadata and step list
@@ -140,6 +141,7 @@ export class Agents extends ClientSDK {
    *     agent_name: Agent identifier
    *     request: Lists of step/evaluator identifiers to remove
    *     db: Database session (injected)
+   *     principal: Authorized request principal
    *
    * Returns:
    *     PatchAgentResponse with lists of actually removed items
@@ -185,7 +187,8 @@ export class Agents extends ClientSDK {
    *     target_type: Optional opaque target kind (paired with target_id)
    *     target_id: Optional opaque target identifier (paired with target_type)
    *     db: Database session (injected)
-   *     namespace_key: Namespace scoping for the resolution (injected)
+   *     principal: Authorized request principal for the agent read operation
+   *     target_principal: Optional principal from the target binding read check
    *
    * Returns:
    *     AgentControlsResponse with controls matching the requested state filters
@@ -256,8 +259,7 @@ export class Agents extends ClientSDK {
    *     cursor: Optional cursor for pagination (name of last evaluator from previous page)
    *     limit: Pagination limit (default 20, max 100)
    *     db: Database session (injected)
-   *     namespace_key: Resolved namespace; agents in another namespace
-   *         return 404 (non-disclosing).
+   *     principal: Authorized request principal
    *
    * Returns:
    *     ListEvaluatorsResponse with evaluator schemas and pagination
@@ -287,8 +289,7 @@ export class Agents extends ClientSDK {
    *     agent_name: Agent identifier
    *     evaluator_name: Name of the evaluator
    *     db: Database session (injected)
-   *     namespace_key: Resolved namespace; agents in another namespace
-   *         return 404 (non-disclosing).
+   *     principal: Authorized request principal
    *
    * Returns:
    *     EvaluatorSchemaItem with schema details

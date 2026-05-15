@@ -42,8 +42,7 @@ import { Result } from "../types/fp.js";
  *     cursor: Optional cursor for pagination (name of last evaluator from previous page)
  *     limit: Pagination limit (default 20, max 100)
  *     db: Database session (injected)
- *     namespace_key: Resolved namespace; agents in another namespace
- *         return 404 (non-disclosing).
+ *     principal: Authorized request principal
  *
  * Returns:
  *     ListEvaluatorsResponse with evaluator schemas and pagination

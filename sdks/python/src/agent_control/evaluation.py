@@ -1,8 +1,11 @@
 """Evaluation check operations for Agent Control SDK."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from inspect import iscoroutinefunction
 from typing import Any, Literal, cast
 
+import httpx
 from agent_control_engine import list_evaluators
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
@@ -21,6 +24,8 @@ from .evaluation_events import build_control_execution_events, enqueue_observabi
 from .observability import is_observability_enabled
 from .tracing import get_trace_and_span_ids
 from .validation import ensure_agent_name
+
+_RuntimePostEvaluation = Callable[..., Awaitable[httpx.Response]]
 
 
 @dataclass
@@ -43,12 +48,12 @@ def _resolve_session_target(
 ) -> tuple[str | None, str | None]:
     """Default per-call target from state, and reject mismatches.
 
-    The SDK supports one target per session, fixed at ``init()`` time —
+    The SDK supports one target per session, fixed at ``init()`` time -
     including no-target sessions, where the session target is
     ``(None, None)``. The cached controls (``state.server_controls``) are
     fetched for that session target. A per-call override that disagrees
-    with the session target — including supplying an explicit target on a
-    no-target session — would evaluate against the wrong cache and could
+    with the session target - including supplying an explicit target on a
+    no-target session - would evaluate against the wrong cache and could
     return safe without contacting the server. Reject the mismatch so
     callers re-init when they need to change targets.
 
@@ -118,7 +123,7 @@ def _has_applicable_prefiltered_server_controls(
     parsed_server_controls: list[_ControlAdapter] = []
 
     for control in server_control_payloads:
-        # Skip unrendered template controls — they have no condition to evaluate
+        # Skip unrendered template controls - they have no condition to evaluate
         # and should not trigger the server-call fallback.
         ctrl_data = control.get("control", {})
         if (
@@ -206,6 +211,43 @@ def _cached_server_control_lookup(
     return _build_server_control_lookup(state.server_controls)
 
 
+def _runtime_post_evaluation(client: Any) -> _RuntimePostEvaluation | None:
+    """Return a runtime-evaluation callable when the client exposes one."""
+    runtime_post = getattr(client, "post_runtime_evaluation", None)
+    if not callable(runtime_post) or not iscoroutinefunction(runtime_post):
+        return None
+    return cast(_RuntimePostEvaluation, runtime_post)
+
+
+async def _post_evaluation_request(
+    client: AgentControlClient,
+    *,
+    request_payload: dict[str, Any],
+    headers: dict[str, str] | None,
+    target_type: str | None,
+    target_id: str | None,
+) -> httpx.Response:
+    """Send an evaluation request, using runtime auth when the client supports it."""
+    runtime_post = None
+    if (target_type is not None and target_id is not None) or getattr(
+        client, "runtime_auth_mode", "auto"
+    ) == "jwt":
+        runtime_post = _runtime_post_evaluation(client)
+    if runtime_post is not None:
+        return await runtime_post(
+            json=request_payload,
+            headers=headers,
+            target_type=target_type,
+            target_id=target_id,
+        )
+
+    return await client.http_client.post(
+        "/api/v1/evaluation",
+        json=request_payload,
+        headers=headers,
+    )
+
+
 async def check_evaluation(
     client: AgentControlClient,
     agent_name: str,
@@ -241,10 +283,12 @@ async def check_evaluation(
     )
     request_payload = request.model_dump(mode="json")
 
-    response = await client.http_client.post(
-        "/api/v1/evaluation",
-        json=request_payload,
+    response = await _post_evaluation_request(
+        client,
+        request_payload=request_payload,
         headers=None,
+        target_type=target_type,
+        target_id=target_id,
     )
     response.raise_for_status()
 
@@ -311,7 +355,7 @@ async def check_evaluation_with_local(
     for control in controls:
         control_data = control.get("control", {})
 
-        # Skip unrendered template controls — they cannot be evaluated.
+        # Skip unrendered template controls - they cannot be evaluated.
         if (
             isinstance(control_data, dict)
             and control_data.get("template") is not None
@@ -424,10 +468,12 @@ async def check_evaluation_with_local(
             headers["X-Span-Id"] = resolved_span_id
 
         try:
-            response = await client.http_client.post(
-                "/api/v1/evaluation",
-                json=request_payload,
+            response = await _post_evaluation_request(
+                client,
+                request_payload=request_payload,
                 headers=headers,
+                target_type=target_type,
+                target_id=target_id,
             )
             response.raise_for_status()
             server_result = EvaluationResponse.model_validate(response.json())
@@ -510,7 +556,12 @@ async def evaluate_controls(
     step_obj = Step(**step_dict)  # type: ignore[arg-type]
     resolved_controls = state.server_controls or []
 
-    async with AgentControlClient(base_url=state.server_url, api_key=state.api_key) as client:
+    async with AgentControlClient(
+        base_url=state.server_url,
+        api_key=state.api_key,
+        api_key_header=state.api_key_header,
+        runtime_token_cache=state.runtime_token_cache,
+    ) as client:
         return await check_evaluation_with_local(
             client=client,
             agent_name=agent_name,

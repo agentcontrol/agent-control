@@ -1,5 +1,6 @@
 """Evaluation analysis endpoints."""
 
+import json
 from dataclasses import dataclass
 
 from agent_control_engine.core import ControlEngine
@@ -10,16 +11,15 @@ from agent_control_models import (
     EvaluationResponse,
 )
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import RequireAPIKey
+from ..auth_framework import Operation, Principal, require_operation
 from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
-from ..namespace import get_namespace_key
 from ..services.controls import ControlService
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
@@ -118,6 +118,24 @@ def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationRes
     )
 
 
+async def _evaluation_context(request: Request) -> dict[str, object]:
+    """Surface target identifiers to the runtime authorizer."""
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        _logger.debug("Unable to decode evaluation request body for auth context")
+        return {}
+    if not isinstance(body, dict):
+        return {}
+    target_type = body.get("target_type")
+    target_id = body.get("target_id")
+    if not isinstance(target_type, str) or not isinstance(target_id, str):
+        return {}
+    if not target_type or not target_id:
+        return {}
+    return {"target_type": target_type, "target_id": target_id}
+
+
 @router.post(
     "",
     response_model=EvaluationResponse,
@@ -126,9 +144,10 @@ def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationRes
 )
 async def evaluate(
     request: EvaluationRequest,
-    client: RequireAPIKey,
     db: AsyncSession = Depends(get_async_db),
-    namespace_key: str = Depends(get_namespace_key),
+    principal: Principal = Depends(
+        require_operation(Operation.RUNTIME_USE, context_builder=_evaluation_context)
+    ),
 ) -> EvaluationResponse:
     """Analyze content for safety and control violations.
 
@@ -144,7 +163,7 @@ async def evaluate(
     on the server; SDKs reconstruct and emit those events separately through
     the observability ingestion endpoint.
     """
-    del client  # Authentication is still required by dependency injection.
+    namespace_key = principal.namespace_key
 
     agent_result = await db.execute(
         select(Agent).where(

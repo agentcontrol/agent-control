@@ -11,12 +11,8 @@ These tests verify the check_evaluation_with_local function:
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
-from agent_control.client import AgentControlClient
-from agent_control.evaluation import (
-    _merge_results,
-    check_evaluation_with_local,
-)
 from agent_control_models import (
     ControlMatch,
     EvaluationResponse,
@@ -24,9 +20,58 @@ from agent_control_models import (
     Step,
 )
 
+from agent_control.client import AgentControlClient
+from agent_control.evaluation import (
+    _merge_results,
+    check_evaluation_with_local,
+)
+
 # =============================================================================
 # Test Fixtures
 # =============================================================================
+
+
+class _RuntimeAuthDuckClient:
+    """Minimal custom client that exposes the runtime-auth evaluation method."""
+
+    base_url = "https://agent-control.test"
+
+    def __init__(self) -> None:
+        self.runtime_requests: list[dict[str, Any]] = []
+        self.response = MagicMock()
+        self.response.json.return_value = {"is_safe": True, "confidence": 1.0}
+        self.response.raise_for_status = MagicMock()
+
+    async def post_runtime_evaluation(
+        self,
+        *,
+        json: dict[str, Any],
+        headers: dict[str, str] | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> MagicMock:
+        self.runtime_requests.append(
+            {
+                "json": json,
+                "headers": headers,
+                "target_type": target_type,
+                "target_id": target_id,
+            }
+        )
+        return self.response
+
+
+class _HttpOnlyDuckClient:
+    """Minimal custom client that exposes the normal HTTP evaluation path."""
+
+    base_url = "https://agent-control.test"
+
+    def __init__(self) -> None:
+        self.response = MagicMock()
+        self.response.json.return_value = {"is_safe": True, "confidence": 1.0}
+        self.response.raise_for_status = MagicMock()
+        self.http_client = MagicMock()
+        self.http_client.post = AsyncMock(return_value=self.response)
 
 
 @pytest.fixture
@@ -328,6 +373,120 @@ class TestCheckEvaluationWithLocal:
         assert "/api/v1/evaluation" in str(client.http_client.post.call_args)
 
         assert result.is_safe is True
+
+    @pytest.mark.asyncio
+    async def test_custom_client_with_runtime_method_uses_runtime_auth_path(
+        self, agent_name, llm_payload
+    ) -> None:
+        """Custom clients can opt into runtime auth with post_runtime_evaluation."""
+        controls = [
+            make_control_dict(1, "server_ctrl", execution="server"),
+        ]
+        client = _RuntimeAuthDuckClient()
+
+        result = await check_evaluation_with_local(
+            client=client,  # type: ignore[arg-type]
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+            target_type="log_stream",
+            target_id="ls-1",
+        )
+
+        assert result.is_safe is True
+        assert len(client.runtime_requests) == 1
+        assert client.runtime_requests[0]["target_type"] == "log_stream"
+        assert client.runtime_requests[0]["target_id"] == "ls-1"
+        assert client.runtime_requests[0]["json"]["target_type"] == "log_stream"
+        assert client.runtime_requests[0]["json"]["target_id"] == "ls-1"
+
+    @pytest.mark.asyncio
+    async def test_custom_http_client_without_runtime_mode_uses_normal_path(
+        self, agent_name, llm_payload
+    ) -> None:
+        controls = [
+            make_control_dict(1, "server_ctrl", execution="server"),
+        ]
+        client = _HttpOnlyDuckClient()
+
+        result = await check_evaluation_with_local(
+            client=client,  # type: ignore[arg-type]
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+        )
+
+        assert result.is_safe is True
+        client.http_client.post.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_mock_client_with_runtime_method_uses_runtime_auth_path(
+        self,
+        agent_name,
+        llm_payload,
+    ) -> None:
+        """Configured mock clients can exercise the runtime-auth path."""
+        controls = [
+            make_control_dict(1, "server_ctrl", execution="server"),
+        ]
+        client = MagicMock(spec=AgentControlClient)
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"is_safe": True, "confidence": 1.0}
+        mock_response.raise_for_status = MagicMock()
+        client.http_client = AsyncMock()
+        client.http_client.post = AsyncMock()
+        client.post_runtime_evaluation = AsyncMock(return_value=mock_response)
+
+        result = await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=llm_payload,
+            stage="pre",
+            controls=controls,
+            target_type="log_stream",
+            target_id="ls-1",
+        )
+
+        assert result.is_safe is True
+        client.post_runtime_evaluation.assert_awaited_once()
+        client.http_client.post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_jwt_runtime_client_without_target_raises(
+        self,
+        agent_name,
+        llm_payload,
+    ) -> None:
+        """JWT runtime mode requires target context through local evaluation."""
+        controls = [
+            make_control_dict(1, "server_ctrl", execution="server"),
+        ]
+        sent_requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            sent_requests.append(request)
+            return httpx.Response(200, json={"is_safe": True, "confidence": 1.0})
+
+        transport = httpx.MockTransport(handler)
+
+        async with AgentControlClient(
+            base_url="https://agent-control.test",
+            api_key="test-key",
+            runtime_auth_mode="jwt",
+            transport=transport,
+        ) as client:
+            with pytest.raises(RuntimeError, match="requires target_type and target_id"):
+                await check_evaluation_with_local(
+                    client=client,
+                    agent_name=agent_name,
+                    step=llm_payload,
+                    stage="pre",
+                    controls=controls,
+                )
+
+        assert sent_requests == []
 
     @pytest.mark.asyncio
     async def test_server_only_template_backed_controls_still_call_server(

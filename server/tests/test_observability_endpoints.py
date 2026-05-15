@@ -1,19 +1,23 @@
 """Tests for observability API endpoints."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
-
 from agent_control_models import (
     BatchEventsRequest,
     ControlExecutionEvent,
     EventQueryRequest,
 )
+from fastapi import Request
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.main import app
+from agent_control_server.models import DEFAULT_NAMESPACE_KEY
 from agent_control_server.observability.ingest.base import IngestResult
 
 
@@ -37,9 +41,115 @@ def create_test_event(
         action=action,
         matched=matched,
         confidence=0.95,
-        timestamp=timestamp or datetime.now(timezone.utc),
+        timestamp=timestamp or datetime.now(UTC),
         execution_duration_ms=execution_duration_ms,
     )
+
+
+class _RecordingAuthorizer:
+    """Test authorizer that records the operation requested by a route."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request
+        self.calls.append((operation, context))
+        return Principal(namespace_key="default")
+
+
+class _NamespaceAuthorizer:
+    def __init__(self, namespace_key: str) -> None:
+        self.namespace_key = namespace_key
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request, operation, context
+        return Principal(namespace_key=self.namespace_key)
+
+
+class TestObservabilityAuthFramework:
+    """Tests observability routes declare operation-based authorization."""
+
+    def test_status_uses_read_operation(self, app: object) -> None:
+        """Given a custom authorizer, when getting status, then read is authorized."""
+        # Given:
+        authorizer = _RecordingAuthorizer()
+        set_authorizer(authorizer)
+        client = TestClient(app, raise_server_exceptions=True)
+
+        # When:
+        response = client.get("/api/v1/observability/status")
+
+        # Then:
+        assert response.status_code == 200
+        assert authorizer.calls == [(Operation.OBSERVABILITY_READ, None)]
+
+    def test_ingest_events_uses_write_operation(
+        self,
+        app: object,
+        setup_observability: object,
+    ) -> None:
+        """Given a custom authorizer, when ingesting events, then write is authorized."""
+        # Given:
+        _ = setup_observability
+        authorizer = _RecordingAuthorizer()
+        set_authorizer(authorizer)
+        client = TestClient(app, raise_server_exceptions=True)
+        request = BatchEventsRequest(events=[create_test_event()])
+
+        # When:
+        response = client.post(
+            "/api/v1/observability/events",
+            json=request.model_dump(mode="json"),
+        )
+
+        # Then:
+        assert response.status_code == 202
+        assert authorizer.calls == [(Operation.OBSERVABILITY_WRITE, None)]
+
+    def test_events_are_scoped_to_authorized_namespace(
+        self,
+        app: object,
+        setup_observability: object,
+    ) -> None:
+        _ = setup_observability
+        client = TestClient(app, raise_server_exceptions=True)
+        agent_name = f"agent-{uuid4().hex[:12]}"
+        request = BatchEventsRequest(events=[create_test_event(agent_name=agent_name)])
+
+        set_authorizer(_NamespaceAuthorizer("tenant-a"))
+        ingest = client.post(
+            "/api/v1/observability/events",
+            json=request.model_dump(mode="json"),
+        )
+        assert ingest.status_code == 202
+
+        query = EventQueryRequest(agent_name=agent_name, limit=10, offset=0)
+        set_authorizer(_NamespaceAuthorizer("tenant-b"))
+        tenant_b = client.post(
+            "/api/v1/observability/events/query",
+            json=query.model_dump(mode="json"),
+        )
+        assert tenant_b.status_code == 200
+        assert tenant_b.json()["total"] == 0
+
+        set_authorizer(_NamespaceAuthorizer("tenant-a"))
+        tenant_a = client.post(
+            "/api/v1/observability/events/query",
+            json=query.model_dump(mode="json"),
+        )
+        assert tenant_a.status_code == 200
+        assert tenant_a.json()["total"] == 1
 
 
 class TestEventIngestion:
@@ -155,7 +265,7 @@ class TestControlExecutionEvent:
         event = ControlExecutionEvent(
             trace_id="a" * 32,
             span_id="b" * 16,
-                agent_name="test-agent",
+            agent_name="test-agent",
             control_id=1,
             control_name="test-control",
             check_stage="post",
@@ -163,7 +273,7 @@ class TestControlExecutionEvent:
             action="deny",
             matched=True,
             confidence=0.99,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             execution_duration_ms=15.5,
             evaluator_name="regex",
             selector_path="input",
@@ -189,7 +299,7 @@ class TestPostgresEventStore:
         store = setup_observability
         events = [create_test_event(i) for i in range(5)]
 
-        stored = await store.store(events)
+        stored = await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
         assert stored == 5
 
     @pytest.mark.asyncio
@@ -198,9 +308,9 @@ class TestPostgresEventStore:
         store = setup_observability
         event = create_test_event()
 
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
         # Storing same event again should not raise, but also not duplicate
-        stored = await store.store([event])
+        stored = await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
         # ON CONFLICT DO NOTHING returns the batch size, not actual inserts
         assert stored == 1
 
@@ -213,7 +323,7 @@ class TestPostgresEventStore:
         ingestor = DirectEventIngestor(store)
 
         events = [create_test_event(i) for i in range(3)]
-        result = await ingestor.ingest(events)
+        result = await ingestor.ingest(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         assert result.received == 3
         assert result.processed == 3
@@ -232,7 +342,7 @@ class TestStatsTimeseries:
         normalized_name = "agent-statsnorm01"
 
         event = create_test_event(agent_name=normalized_name, matched=True)
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -252,7 +362,7 @@ class TestStatsTimeseries:
 
         # Create and store an event
         event = create_test_event(agent_name=agent_name, matched=True)
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -269,7 +379,7 @@ class TestStatsTimeseries:
         """With include_timeseries=true, returns buckets."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create events spread across time
         events = [
@@ -294,7 +404,7 @@ class TestStatsTimeseries:
             ),
         ]
 
-        await store.store(events)
+        await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -326,7 +436,7 @@ class TestStatsTimeseries:
         """Verify reasonable number of buckets for 1h time range (5m buckets)."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create a single event
         event = create_test_event(
@@ -335,7 +445,7 @@ class TestStatsTimeseries:
             timestamp=now - timedelta(minutes=30),
         )
 
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -357,7 +467,7 @@ class TestStatsTimeseries:
         """Verify reasonable number of buckets for 5m time range (30s buckets)."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create a single event
         event = create_test_event(
@@ -366,7 +476,7 @@ class TestStatsTimeseries:
             timestamp=now - timedelta(minutes=2),
         )
 
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -390,7 +500,7 @@ class TestStatsTimeseries:
         """Events in the same bucket are aggregated."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create multiple events in the same 5-minute bucket
         base_time = now - timedelta(minutes=10)
@@ -417,7 +527,7 @@ class TestStatsTimeseries:
             ),
         ]
 
-        await store.store(events)
+        await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -441,9 +551,7 @@ class TestStatsTimeseries:
         total_exec = sum(b["execution_count"] for b in buckets_with_events)
         total_match = sum(b["match_count"] for b in buckets_with_events)
         total_non_match = sum(b["non_match_count"] for b in buckets_with_events)
-        total_observe = sum(
-            b["action_counts"].get("observe", 0) for b in buckets_with_events
-        )
+        total_observe = sum(b["action_counts"].get("observe", 0) for b in buckets_with_events)
         total_deny = sum(b["action_counts"].get("deny", 0) for b in buckets_with_events)
 
         assert total_exec == 3
@@ -453,13 +561,11 @@ class TestStatsTimeseries:
         assert total_deny == 1
 
     @pytest.mark.asyncio
-    async def test_timeseries_empty_buckets_included(
-        self, client: TestClient, setup_observability
-    ):
+    async def test_timeseries_empty_buckets_included(self, client: TestClient, setup_observability):
         """Empty buckets are included with zero counts."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create events only at the start of the time range
         event = create_test_event(
@@ -468,7 +574,7 @@ class TestStatsTimeseries:
             timestamp=now - timedelta(minutes=55),
         )
 
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats",
@@ -516,7 +622,7 @@ class TestControlStats:
             create_test_event(control_id=1, agent_name=agent_name, matched=True, action="deny"),
             create_test_event(control_id=2, agent_name=agent_name, matched=True, action="observe"),
         ]
-        await store.store(events)
+        await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         # Get stats for control 1 only
         response = client.get(
@@ -545,7 +651,7 @@ class TestControlStats:
         """Test control stats with timeseries."""
         store = setup_observability
         agent_name = f"agent-{uuid4().hex[:12]}"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Create events for control 1 at different times
         events = [
@@ -572,7 +678,7 @@ class TestControlStats:
                 timestamp=now - timedelta(minutes=20),
             ),
         ]
-        await store.store(events)
+        await store.store(events, namespace_key=DEFAULT_NAMESPACE_KEY)
 
         response = client.get(
             "/api/v1/observability/stats/controls/1",
@@ -594,9 +700,7 @@ class TestControlStats:
         assert data["stats"]["execution_count"] == 2
 
         # Sum timeseries buckets should equal total
-        total_from_buckets = sum(
-            b["execution_count"] for b in data["stats"]["timeseries"]
-        )
+        total_from_buckets = sum(b["execution_count"] for b in data["stats"]["timeseries"])
         assert total_from_buckets == 2
 
     @pytest.mark.asyncio
@@ -607,7 +711,7 @@ class TestControlStats:
 
         # Create event for control 1 only
         event = create_test_event(control_id=1, agent_name=agent_name, matched=True)
-        await store.store([event])
+        await store.store([event], namespace_key=DEFAULT_NAMESPACE_KEY)
 
         # Query for control 2 (no events)
         response = client.get(
@@ -797,9 +901,10 @@ class TestObservabilityIngestStatus:
 
     def test_ingest_events_partial_status(self, client: TestClient, setup_observability):
         """Test partial status when some events are dropped."""
+
         # Given: a stub ingestor that drops some events
         class StubIngestor:
-            async def ingest(self, events):
+            async def ingest(self, events, *, namespace_key: str):
                 return IngestResult(received=len(events), processed=1, dropped=len(events) - 1)
 
         original = app.state.event_ingestor
@@ -826,9 +931,10 @@ class TestObservabilityIngestStatus:
 
     def test_ingest_events_failed_status(self, client: TestClient, setup_observability):
         """Test failed status when all events are dropped."""
+
         # Given: a stub ingestor that drops all events
         class StubIngestor:
-            async def ingest(self, events):
+            async def ingest(self, events, *, namespace_key: str):
                 return IngestResult(received=len(events), processed=0, dropped=len(events))
 
         original = app.state.event_ingestor

@@ -134,6 +134,29 @@ test.describe('Control Templates', () => {
       ).toBeVisible();
     });
 
+    test('opens unrendered template controls without rendered fields', async ({
+      mockedPage,
+    }) => {
+      await mockRoutes.agent(mockedPage, {
+        controls: { data: mockData.controlsWithUnrenderedTemplate },
+      });
+      await mockRoutes.controlRenderTemplate(mockedPage);
+
+      await mockedPage.goto(
+        getAgentRoute(agentId, {
+          tab: 'controls',
+          query: { modal: 'edit', controlId: '11' },
+        })
+      );
+
+      const dialog = mockedPage.getByRole('dialog');
+      await expect(dialog.getByText('Template Parameters')).toBeVisible();
+      await expect(
+        dialog.getByText('This template has no configurable parameters.')
+      ).toBeVisible();
+      await expect(dialog.getByText('Something went wrong')).not.toBeVisible();
+    });
+
     test('can toggle to Full JSON mode and see template JSON', async ({
       mockedPage,
     }) => {

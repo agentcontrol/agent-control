@@ -60,15 +60,15 @@ from ..core import Operation, Principal, RequestAuthorizer
 
 _logger = get_logger(__name__)
 
-_FORWARDED_HEADERS = ("X-API-Key", "Authorization", "Cookie")
+_DEFAULT_FORWARDED_HEADERS = ("X-API-Key", "Authorization", "Cookie")
 
 
 class _UpstreamGrant(BaseModel):
     """Strict schema for the upstream authorization-service response.
 
     Unknown fields are tolerated (so the upstream can evolve), but every
-    *known* field is type-checked. A wrong type on any field — or a
-    half-supplied target binding — causes the provider to fail closed
+    *known* field is type-checked. A wrong type on any field - or a
+    half-supplied target binding - causes the provider to fail closed
     with a 502.
     """
 
@@ -108,7 +108,7 @@ class _UpstreamGrant(BaseModel):
         A target is meaningful only as a ``(target_type, target_id)``
         pair; allowing one side without the other would let a malformed
         grant pass and the exchange endpoint mint a token for the
-        request's value of the missing half — outside the upstream's
+        request's value of the missing half - outside the upstream's
         intended authorization.
         """
         if (self.target_type is None) != (self.target_id is None):
@@ -135,6 +135,29 @@ class HttpUpstreamConfig:
     model."""
 
     service_token_header: str = "X-Agent-Control-Service-Token"
+
+    extra_forward_headers: tuple[str, ...] = ()
+    """Additional inbound request headers to forward to the upstream
+    on top of the default ``(X-API-Key, Authorization, Cookie)`` set.
+
+    Use this when the upstream authenticates via a header the provider
+    does not forward by default (e.g., a deployer-specific API-key
+    header). Header lookups against the inbound request are
+    case-insensitive; an empty or absent inbound header is silently
+    dropped. Names duplicating the default set or each other (after
+    case-folding) are deduplicated."""
+
+    def __post_init__(self) -> None:
+        if self.service_token is None:
+            return
+        forwarded = {
+            name.lower()
+            for name in (*_DEFAULT_FORWARDED_HEADERS, *self.extra_forward_headers)
+        }
+        if self.service_token_header.lower() in forwarded:
+            raise ValueError(
+                "service_token_header must not match a forwarded caller credential header"
+            )
 
 
 class HttpUpstreamAuthProvider(RequestAuthorizer):
@@ -186,11 +209,16 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 hint="Retry the request; if the failure persists, contact the operator.",
             ) from exc
 
-        return self._handle_response(response, operation)
+        return self._handle_response(response, operation, context)
 
     def _forward_headers(self, request: Request) -> dict[str, str]:
         headers: dict[str, str] = {}
-        for name in _FORWARDED_HEADERS:
+        seen: set[str] = set()
+        for name in (*_DEFAULT_FORWARDED_HEADERS, *self._config.extra_forward_headers):
+            lower = name.lower()
+            if lower in seen:
+                continue
+            seen.add(lower)
             value = request.headers.get(name)
             if value is not None:
                 headers[name] = value
@@ -199,11 +227,16 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         return headers
 
     def _handle_response(
-        self, response: httpx.Response, operation: Operation
+        self,
+        response: httpx.Response,
+        operation: Operation,
+        context: dict[str, Any] | None,
     ) -> Principal:
         status = response.status_code
         if status == 200:
-            return self._parse_principal(response)
+            principal = self._parse_principal(response)
+            _ensure_target_context_matches_grant(context, principal)
+            return principal
         if status == 401:
             raise AuthenticationError(
                 error_code=ErrorCode.AUTH_INVALID_KEY,
@@ -293,3 +326,38 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             scopes=grant.scopes,
             grant_expires_at=grant.expires_at,
         )
+
+
+def _ensure_target_context_matches_grant(
+    context: dict[str, Any] | None,
+    principal: Principal,
+) -> None:
+    """Reject target-bound grants that do not match the requested target."""
+    if principal.target_type is None and principal.target_id is None:
+        return
+    if context is None:
+        raise ForbiddenError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail="Authorization grant is target-bound but the request target is unavailable.",
+            hint=(
+                "Use an endpoint that includes target_type and target_id "
+                "in the authorization context."
+            ),
+        )
+
+    expected_type = context.get("target_type")
+    expected_id = context.get("target_id")
+    if not isinstance(expected_type, str) or not isinstance(expected_id, str):
+        raise ForbiddenError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail="Authorization grant is target-bound but the request target is incomplete.",
+            hint="Provide both target_type and target_id for target-bound credentials.",
+        )
+    if principal.target_type == expected_type and principal.target_id == expected_id:
+        return
+
+    raise ForbiddenError(
+        error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+        detail="Authorization grant target does not match the requested target.",
+        hint="Retry with credentials authorized for the requested target.",
+    )

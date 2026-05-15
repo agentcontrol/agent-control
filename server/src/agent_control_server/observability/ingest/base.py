@@ -40,11 +40,17 @@ class EventIngestor(Protocol):
         - KafkaEventIngestor: Pushes to Kafka topic
     """
 
-    async def ingest(self, events: list[ControlExecutionEvent]) -> IngestResult:
+    async def ingest(
+        self,
+        events: list[ControlExecutionEvent],
+        *,
+        namespace_key: str,
+    ) -> IngestResult:
         """Ingest events. Returns counts of received/processed/dropped.
 
         Args:
             events: List of control execution events to ingest
+            namespace_key: Namespace that owns the events
 
         Returns:
             IngestResult with counts of received, processed, and dropped events

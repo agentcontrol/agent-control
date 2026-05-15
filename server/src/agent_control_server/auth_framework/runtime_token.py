@@ -92,6 +92,12 @@ def mint_runtime_token(
         )
     if not namespace_key:
         raise RuntimeTokenError("namespace_key is required to mint a runtime token")
+    if not actor_id:
+        raise RuntimeTokenError("actor_id is required to mint a runtime token")
+    if not target_type:
+        raise RuntimeTokenError("target_type is required to mint a runtime token")
+    if not target_id:
+        raise RuntimeTokenError("target_id is required to mint a runtime token")
     if ttl_seconds <= 0:
         raise RuntimeTokenError("ttl_seconds must be positive")
     if upstream_expires_at is not None and (

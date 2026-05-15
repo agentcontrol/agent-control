@@ -96,9 +96,15 @@ class ControlService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    def create_control(self, *, name: str, data: dict[str, Any]) -> Control:
+    def create_control(
+        self,
+        *,
+        namespace_key: str,
+        name: str,
+        data: dict[str, Any],
+    ) -> Control:
         """Create a new pending control row."""
-        control = Control(name=name, data=data)
+        control = Control(namespace_key=namespace_key, name=name, data=data)
         self._db.add(control)
         return control
 
@@ -128,10 +134,14 @@ class ControlService:
         self,
         control_id: int,
         *,
+        namespace_key: str,
         for_update: bool = False,
     ) -> Control:
         """Load any control row, including soft-deleted controls."""
-        stmt = select(Control).where(Control.id == control_id)
+        stmt = select(Control).where(
+            Control.id == control_id,
+            Control.namespace_key == namespace_key,
+        )
         if for_update:
             stmt = stmt.with_for_update()
         result = await self._db.execute(stmt)
@@ -151,17 +161,19 @@ class ControlService:
         control_id: int,
         *,
         for_update: bool = False,
-        namespace_key: str | None = None,
+        namespace_key: str,
     ) -> Control:
         """Load an active control row or raise CONTROL_NOT_FOUND.
 
-        When ``namespace_key`` is supplied, the lookup is scoped to that
-        namespace; a control that exists only in another namespace
-        surfaces as 404 (non-disclosing).
+        The lookup is scoped to the supplied namespace; a control that
+        exists only in another namespace surfaces as 404
+        (non-disclosing).
         """
-        stmt = select(Control).where(Control.id == control_id, Control.deleted_at.is_(None))
-        if namespace_key is not None:
-            stmt = stmt.where(Control.namespace_key == namespace_key)
+        stmt = select(Control).where(
+            Control.id == control_id,
+            Control.namespace_key == namespace_key,
+            Control.deleted_at.is_(None),
+        )
         if for_update:
             stmt = stmt.with_for_update()
         result = await self._db.execute(stmt)
@@ -180,10 +192,15 @@ class ControlService:
         self,
         name: str,
         *,
+        namespace_key: str,
         exclude_control_id: int | None = None,
     ) -> bool:
         """Return whether an active control already uses the provided name."""
-        stmt = select(Control.id).where(Control.name == name, Control.deleted_at.is_(None))
+        stmt = select(Control.id).where(
+            Control.namespace_key == namespace_key,
+            Control.name == name,
+            Control.deleted_at.is_(None),
+        )
         if exclude_control_id is not None:
             stmt = stmt.where(Control.id != exclude_control_id)
         result = await self._db.execute(stmt)
@@ -216,11 +233,12 @@ class ControlService:
         self,
         control_id: int,
         *,
+        namespace_key: str,
         cursor: int | None,
         limit: int,
     ) -> ControlVersionPage:
         """Return control versions newest-first with cursor pagination."""
-        await self.get_control_or_404(control_id)
+        await self.get_control_or_404(control_id, namespace_key=namespace_key)
 
         total_result = await self._db.execute(
             select(func.count())
@@ -255,9 +273,11 @@ class ControlService:
             next_cursor=next_cursor,
         )
 
-    async def get_version_or_404(self, control_id: int, version_num: int) -> ControlVersion:
+    async def get_version_or_404(
+        self, control_id: int, version_num: int, *, namespace_key: str
+    ) -> ControlVersion:
         """Load a specific version row for a control."""
-        await self.get_control_or_404(control_id)
+        await self.get_control_or_404(control_id, namespace_key=namespace_key)
 
         result = await self._db.execute(
             select(ControlVersion).where(
@@ -303,12 +323,17 @@ class ControlService:
         result = await self._db.execute(stmt)
         return list(result.scalars().unique().all())
 
-    async def list_policy_control_ids(self, policy_id: int) -> list[int]:
+    async def list_policy_control_ids(self, policy_id: int, *, namespace_key: str) -> list[int]:
         """Return active control IDs directly associated with a policy."""
         result = await self._db.execute(
             select(policy_controls.c.control_id)
             .join(Control, Control.id == policy_controls.c.control_id)
-            .where(policy_controls.c.policy_id == policy_id, Control.deleted_at.is_(None))
+            .where(
+                policy_controls.c.namespace_key == namespace_key,
+                policy_controls.c.policy_id == policy_id,
+                Control.namespace_key == namespace_key,
+                Control.deleted_at.is_(None),
+            )
             .order_by(policy_controls.c.control_id)
         )
         return [cast(int, row[0]) for row in result.all()]
@@ -396,6 +421,7 @@ class ControlService:
     async def list_controls_page(
         self,
         *,
+        namespace_key: str,
         cursor: int | None,
         limit: int,
         name: str | None,
@@ -407,7 +433,11 @@ class ControlService:
         tag: str | None,
     ) -> ControlListPage:
         """Return paginated active controls for the browse endpoint."""
-        query = select(Control).where(Control.deleted_at.is_(None)).order_by(Control.id.desc())
+        query = (
+            select(Control)
+            .where(Control.namespace_key == namespace_key, Control.deleted_at.is_(None))
+            .order_by(Control.id.desc())
+        )
         query = self._apply_control_list_filters(
             query,
             name=name,
@@ -424,7 +454,11 @@ class ControlService:
         result = await self._db.execute(query.limit(limit + 1))
         controls = list(result.scalars().all())
 
-        total_query = select(func.count()).select_from(Control).where(Control.deleted_at.is_(None))
+        total_query = (
+            select(func.count())
+            .select_from(Control)
+            .where(Control.namespace_key == namespace_key, Control.deleted_at.is_(None))
+        )
         total_query = self._apply_control_list_filters(
             total_query,
             name=name,
@@ -453,7 +487,9 @@ class ControlService:
             next_cursor=next_cursor,
         )
 
-    async def list_control_usage(self, control_ids: Sequence[int]) -> dict[int, ControlUsage]:
+    async def list_control_usage(
+        self, control_ids: Sequence[int], *, namespace_key: str
+    ) -> dict[int, ControlUsage]:
         """Return representative agent usage and usage counts for the provided controls."""
         if not control_ids:
             return {}
@@ -465,8 +501,16 @@ class ControlService:
                 agent_policies.c.agent_name,
             )
             .select_from(policy_controls)
-            .join(agent_policies, policy_controls.c.policy_id == agent_policies.c.policy_id)
-            .where(policy_controls.c.control_id.in_(control_ids))
+            .join(
+                agent_policies,
+                (policy_controls.c.policy_id == agent_policies.c.policy_id)
+                & (policy_controls.c.namespace_key == agent_policies.c.namespace_key),
+            )
+            .where(
+                policy_controls.c.namespace_key == namespace_key,
+                agent_policies.c.namespace_key == namespace_key,
+                policy_controls.c.control_id.in_(control_ids),
+            )
         )
         direct_agents_query = (
             select(
@@ -474,7 +518,10 @@ class ControlService:
                 agent_controls.c.agent_name,
             )
             .select_from(agent_controls)
-            .where(agent_controls.c.control_id.in_(control_ids))
+            .where(
+                agent_controls.c.namespace_key == namespace_key,
+                agent_controls.c.control_id.in_(control_ids),
+            )
         )
         agents_result = await self._db.execute(union_all(policy_agents_query, direct_agents_query))
         for control_id, agent_name in agents_result.all():
@@ -491,6 +538,8 @@ class ControlService:
     async def list_active_control_counts_by_agent(
         self,
         agent_names: Sequence[str],
+        *,
+        namespace_key: str,
     ) -> dict[str, int]:
         """Return active control counts keyed by agent name."""
         if not agent_names:
@@ -503,15 +552,24 @@ class ControlService:
             )
             .select_from(
                 agent_policies.join(
-                    policy_controls, agent_policies.c.policy_id == policy_controls.c.policy_id
+                    policy_controls,
+                    (agent_policies.c.policy_id == policy_controls.c.policy_id)
+                    & (agent_policies.c.namespace_key == policy_controls.c.namespace_key),
                 )
             )
-            .where(agent_policies.c.agent_name.in_(agent_names))
+            .where(
+                agent_policies.c.namespace_key == namespace_key,
+                policy_controls.c.namespace_key == namespace_key,
+                agent_policies.c.agent_name.in_(agent_names),
+            )
         )
         direct_associations = select(
             agent_controls.c.agent_name.label("agent_name"),
             agent_controls.c.control_id.label("control_id"),
-        ).where(agent_controls.c.agent_name.in_(agent_names))
+        ).where(
+            agent_controls.c.namespace_key == namespace_key,
+            agent_controls.c.agent_name.in_(agent_names),
+        )
         all_associations = union_all(policy_associations, direct_associations).subquery()
 
         result = await self._db.execute(
@@ -521,6 +579,7 @@ class ControlService:
             )
             .join(Control, all_associations.c.control_id == Control.id)
             .where(
+                Control.namespace_key == namespace_key,
                 Control.deleted_at.is_(None),
                 or_(
                     Control.data["enabled"].astext == "true",
@@ -531,19 +590,28 @@ class ControlService:
         )
         return {cast(str, row[0]): cast(int, row[1]) for row in result.all()}
 
-    async def add_control_to_policy(self, *, policy_id: int, control_id: int) -> None:
+    async def add_control_to_policy(
+        self, *, policy_id: int, control_id: int, namespace_key: str
+    ) -> None:
         """Create a policy-control association if it does not already exist."""
         await self._db.execute(
             pg_insert(policy_controls)
-            .values(policy_id=policy_id, control_id=control_id)
+            .values(
+                namespace_key=namespace_key,
+                policy_id=policy_id,
+                control_id=control_id,
+            )
             .on_conflict_do_nothing()
         )
 
-    async def remove_control_from_policy(self, *, policy_id: int, control_id: int) -> None:
+    async def remove_control_from_policy(
+        self, *, policy_id: int, control_id: int, namespace_key: str
+    ) -> None:
         """Remove a policy-control association if it exists."""
         await self._db.execute(
             delete(policy_controls).where(
-                (policy_controls.c.policy_id == policy_id)
+                (policy_controls.c.namespace_key == namespace_key)
+                & (policy_controls.c.policy_id == policy_id)
                 & (policy_controls.c.control_id == control_id)
             )
         )
@@ -613,16 +681,24 @@ class ControlService:
             control_still_active=policy_inheritance_result.first() is not None,
         )
 
-    async def list_control_associations(self, control_id: int) -> ControlAssociations:
+    async def list_control_associations(
+        self, control_id: int, *, namespace_key: str
+    ) -> ControlAssociations:
         """Return all policy and direct agent associations for a control."""
         policy_assoc_query = select(
             policy_controls.c.policy_id.label("policy_id"),
             literal(None, type_=String).label("agent_name"),
-        ).where(policy_controls.c.control_id == control_id)
+        ).where(
+            policy_controls.c.namespace_key == namespace_key,
+            policy_controls.c.control_id == control_id,
+        )
         agent_assoc_query = select(
             literal(None, type_=Integer).label("policy_id"),
             agent_controls.c.agent_name.label("agent_name"),
-        ).where(agent_controls.c.control_id == control_id)
+        ).where(
+            agent_controls.c.namespace_key == namespace_key,
+            agent_controls.c.control_id == control_id,
+        )
         assoc_result = await self._db.execute(union_all(policy_assoc_query, agent_assoc_query))
 
         policy_ids: set[int] = set()
@@ -638,16 +714,26 @@ class ControlService:
             agent_names=sorted(agent_names),
         )
 
-    async def remove_all_control_associations(self, control_id: int) -> ControlAssociations:
+    async def remove_all_control_associations(
+        self, control_id: int, *, namespace_key: str
+    ) -> ControlAssociations:
         """Remove all policy and direct agent associations for a control."""
-        associations = await self.list_control_associations(control_id)
+        associations = await self.list_control_associations(
+            control_id, namespace_key=namespace_key
+        )
         if associations.policy_ids:
             await self._db.execute(
-                delete(policy_controls).where(policy_controls.c.control_id == control_id)
+                delete(policy_controls).where(
+                    policy_controls.c.namespace_key == namespace_key,
+                    policy_controls.c.control_id == control_id,
+                )
             )
         if associations.agent_names:
             await self._db.execute(
-                delete(agent_controls).where(agent_controls.c.control_id == control_id)
+                delete(agent_controls).where(
+                    agent_controls.c.namespace_key == namespace_key,
+                    agent_controls.c.control_id == control_id,
+                )
             )
         return associations
 

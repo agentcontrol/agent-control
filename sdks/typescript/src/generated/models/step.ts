@@ -3,11 +3,6 @@
  */
 
 import * as z from "zod/v4-mini";
-import {
-  JSONValueInput,
-  JSONValueInput$Outbound,
-  JSONValueInput$outboundSchema,
-} from "./json-value-input.js";
 
 /**
  * Runtime payload for an agent step invocation.
@@ -16,8 +11,11 @@ export type Step = {
   /**
    * Optional context (conversation history, metadata, etc.)
    */
-  context?: { [k: string]: JSONValueInput | null } | null | undefined;
-  input: JSONValueInput | null;
+  context?: { [k: string]: any } | null | undefined;
+  /**
+   * Any JSON value
+   */
+  input: any;
   /**
    * Step name (tool name or model/chain id)
    */
@@ -25,7 +23,7 @@ export type Step = {
   /**
    * Output content for this step (None for pre-checks)
    */
-  output?: JSONValueInput | null | undefined;
+  output?: any | null | undefined;
   /**
    * Step type (e.g., 'tool', 'llm')
    */
@@ -34,24 +32,20 @@ export type Step = {
 
 /** @internal */
 export type Step$Outbound = {
-  context?: { [k: string]: JSONValueInput$Outbound | null } | null | undefined;
-  input: JSONValueInput$Outbound | null;
+  context?: { [k: string]: any } | null | undefined;
+  input: any;
   name: string;
-  output?: JSONValueInput$Outbound | null | undefined;
+  output?: any | null | undefined;
   type: string;
 };
 
 /** @internal */
 export const Step$outboundSchema: z.ZodMiniType<Step$Outbound, Step> = z.object(
   {
-    context: z.optional(
-      z.nullable(
-        z.record(z.string(), z.nullable(JSONValueInput$outboundSchema)),
-      ),
-    ),
-    input: z.nullable(JSONValueInput$outboundSchema),
+    context: z.optional(z.nullable(z.record(z.string(), z.any()))),
+    input: z.any(),
     name: z.string(),
-    output: z.optional(z.nullable(JSONValueInput$outboundSchema)),
+    output: z.optional(z.nullable(z.any())),
     type: z.string(),
   },
 );

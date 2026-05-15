@@ -16,6 +16,7 @@ from agent_control_server.config import db_config
 SERVER_DIR = Path(__file__).resolve().parents[1]
 PRE_MIGRATION_REVISION = "c1e9f9c4a1d2"
 MIGRATION_REVISION = "a7f3b1e0d9c5"
+OBSERVABILITY_NAMESPACE_REVISION = "b6f4c2d8e9a1"
 _BASE_DB_URL = make_url(db_config.get_url())
 
 pytestmark = pytest.mark.skipif(
@@ -221,6 +222,21 @@ def test_downgrade_round_trip(alembic_config: Config, temp_engine: Engine) -> No
 
     assert "namespace_key" in _column_names(temp_engine, "agents")
     assert "control_bindings" in inspect(temp_engine).get_table_names()
+
+
+def test_observability_namespace_migration_scopes_event_primary_key(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    command.upgrade(alembic_config, OBSERVABILITY_NAMESPACE_REVISION)
+
+    assert "namespace_key" in _column_names(temp_engine, "control_execution_events")
+    assert _pk_columns(temp_engine, "control_execution_events") == [
+        "namespace_key",
+        "control_execution_id",
+    ]
+    indexes = _index_names(temp_engine, "control_execution_events")
+    assert "ix_events_namespace_agent_time" in indexes
+    assert "ix_events_agent_time" not in indexes
 
 
 def test_downgrade_rejects_cross_namespace_agents_duplicates(

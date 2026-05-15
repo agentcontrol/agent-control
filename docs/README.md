@@ -10,6 +10,7 @@ This repository keeps documentation concise. The full documentation lives on the
 - [Controls](https://docs.agentcontrol.dev/concepts/controls) — Define and configure control rules
 - [Reference](https://docs.agentcontrol.dev/core/reference) — SDK and server API reference
 - [Configuration](https://docs.agentcontrol.dev/core/configuration) — Environment variables, auth, and database settings
+- [Authentication](https://docs.agentcontrol.dev/core/authentication) — Pluggable auth modes, HTTP upstream contract, and runtime JWT claims
 - [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart) — Run the dashboard and manage controls visually
 
 ## Examples

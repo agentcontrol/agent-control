@@ -8,6 +8,8 @@ the same state object.
 
 from typing import TYPE_CHECKING, Any
 
+from .runtime_auth import RuntimeTokenCache
+
 if TYPE_CHECKING:
     from agent_control_models import Agent
 
@@ -24,6 +26,8 @@ class _StateContainer:
         self.server_controls: list[dict[str, Any]] | None = None
         self.server_url: str | None = None
         self.api_key: str | None = None
+        self.api_key_header: str | None = None
+        self.runtime_token_cache = RuntimeTokenCache()
         # Optional target context fixed at init() time; both fields are set
         # together or both remain None.
         self.target_type: str | None = None

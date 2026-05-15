@@ -38,7 +38,7 @@ class DirectEventIngestor(EventIngestor):
 
     def __init__(
         self,
-        store: EventStore | AsyncControlEventSink,
+        store: EventStore | AsyncControlEventSink | EventStoreControlEventSink,
         log_to_stdout: bool = False,
     ):
         """Initialize the ingestor.
@@ -48,16 +48,24 @@ class DirectEventIngestor(EventIngestor):
             log_to_stdout: Whether to log events as structured JSON (default: False)
         """
         if isinstance(store, EventStore):
-            self.sink: AsyncControlEventSink = EventStoreControlEventSink(store)
+            self.sink: AsyncControlEventSink | EventStoreControlEventSink = (
+                EventStoreControlEventSink(store)
+            )
         else:
             self.sink = store
         self.log_to_stdout = log_to_stdout
 
-    async def ingest(self, events: list[ControlExecutionEvent]) -> IngestResult:
+    async def ingest(
+        self,
+        events: list[ControlExecutionEvent],
+        *,
+        namespace_key: str,
+    ) -> IngestResult:
         """Ingest events by writing them directly to the configured sink.
 
         Args:
             events: List of control execution events to ingest
+            namespace_key: Namespace that owns the events
 
         Returns:
             IngestResult with counts of received, processed, and dropped events
@@ -70,7 +78,13 @@ class DirectEventIngestor(EventIngestor):
         dropped = 0
 
         try:
-            sink_result = await self.sink.write_events(events)
+            if isinstance(self.sink, EventStoreControlEventSink):
+                sink_result = await self.sink.write_events(
+                    events,
+                    namespace_key=namespace_key,
+                )
+            else:
+                sink_result = await self.sink.write_events(events)
             processed = sink_result.accepted
             dropped = sink_result.dropped
 

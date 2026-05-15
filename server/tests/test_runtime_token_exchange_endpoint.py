@@ -8,6 +8,7 @@ end-to-end exchange-then-verify path: a token minted via
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -108,6 +109,38 @@ def test_exchange_endpoint_mints_token_when_configured(client: TestClient, runti
     assert body["expires_at"]
 
 
+def test_exchange_audit_log_redacts_actor_id(
+    client: TestClient,
+    runtime_config_enabled,
+    caplog: pytest.LogCaptureFixture,
+):
+    stub = _StubExchangeAuthorizer(
+        actor_id="user@example.test",
+        scopes=("runtime.use",),
+        target_type="log_stream",
+        target_id="ls-42",
+    )
+    clear_authorizers()
+    set_authorizer(stub)
+
+    with caplog.at_level(logging.INFO):
+        response = client.post(
+            "/api/v1/auth/runtime-token-exchange",
+            json={"target_type": "log_stream", "target_id": "ls-42"},
+        )
+
+    assert response.status_code == 200, response.text
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage() == "Runtime token exchanged"
+    ]
+    assert records
+    record = records[-1]
+    assert "actor_id" not in record.__dict__
+    assert record.__dict__["actor_id_hash"]
+
+
 def test_exchange_endpoint_rejects_target_mismatch(client: TestClient, runtime_config_enabled):
     """Provider says the credential is scoped to one target; body asks for another."""
     stub = _StubExchangeAuthorizer(
@@ -173,11 +206,79 @@ async def test_exchange_then_verify_full_round_trip(client: TestClient, runtime_
     verify_provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
     request = MagicMock()
     request.headers = {"Authorization": f"Bearer {token}"}
-    principal = await verify_provider.authorize(request, Operation.RUNTIME_USE)
+    principal = await verify_provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-99"},
+    )
 
     assert principal.target_type == "log_stream"
     assert principal.target_id == "ls-99"
     assert principal.caller_id == "actor-rt"
+
+
+def test_evaluation_rejects_runtime_jwt_for_wrong_target(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """A runtime JWT minted for one target cannot be used for another target."""
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(LocalJwtVerifyProvider(secret=_TEST_SECRET), operation=Operation.RUNTIME_USE)
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "agent_name": "agent",
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+            "target_type": "log_stream",
+            "target_id": "ls-other",
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"] == "Runtime token target_id does not match the request."
+
+
+def test_evaluation_rejects_runtime_jwt_without_bound_target_context(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """A target-bound runtime JWT must not authorize a target-less evaluation."""
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(LocalJwtVerifyProvider(secret=_TEST_SECRET), operation=Operation.RUNTIME_USE)
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "agent_name": "agent",
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"] == "Runtime token target_type does not match the request."
 
 
 def test_exchange_endpoint_502_when_upstream_grant_already_expired(
@@ -284,7 +385,11 @@ async def test_exchange_propagates_non_default_namespace_into_token(
     verify_provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
     req = MagicMock()
     req.headers = {"Authorization": f"Bearer {token}"}
-    principal = await verify_provider.authorize(req, Operation.RUNTIME_USE)
+    principal = await verify_provider.authorize(
+        req,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-org-a"},
+    )
 
     assert principal.namespace_key == "org-A"
     assert principal.target_id == "ls-org-a"

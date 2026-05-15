@@ -1,23 +1,14 @@
 """Default :class:`RequestAuthorizer` that uses local credentials only.
 
-Resolves the namespace from a header (or falls back to
-``DEFAULT_NAMESPACE_KEY``) and enforces a per-operation access level
-using the legacy API-key + session-cookie credential check from
-:mod:`agent_control_server.auth`. Behavior matches the pre-framework
-local auth path verbatim:
+Returns ``DEFAULT_NAMESPACE_KEY`` and enforces a per-operation access
+level using the local API-key + session-cookie credential check from
+:mod:`agent_control_server.auth`:
 
 - ``ADMIN`` operations require an admin key (or admin session).
 - ``AUTHENTICATED`` operations require any valid credential.
 - ``PUBLIC`` operations are open.
-- When ``api_key_enabled`` is ``False`` (no-auth mode), every
-  operation succeeds with a non-admin :class:`Principal` — preserved
-  by the underlying credential check.
-
-The header lookup is wired but currently inert: the provider always
-returns the default namespace because non-binding write endpoints
-still hardcode it. The header is kept here so a follow-up that
-threads namespace resolution through the rest of the API can flip it
-on without changing the provider contract.
+- When the underlying local credential layer is disabled, every
+  operation succeeds with a non-admin :class:`Principal`.
 """
 
 from __future__ import annotations
@@ -51,6 +42,15 @@ DEFAULT_OPERATION_ACCESS: dict[Operation, AccessLevel] = {
     Operation.CONTROLS_CREATE: AccessLevel.ADMIN,
     Operation.CONTROLS_UPDATE: AccessLevel.ADMIN,
     Operation.CONTROLS_DELETE: AccessLevel.ADMIN,
+    Operation.POLICIES_READ: AccessLevel.AUTHENTICATED,
+    Operation.POLICIES_CREATE: AccessLevel.ADMIN,
+    Operation.POLICIES_UPDATE: AccessLevel.ADMIN,
+    Operation.AGENTS_READ: AccessLevel.AUTHENTICATED,
+    Operation.AGENTS_CREATE: AccessLevel.AUTHENTICATED,
+    Operation.AGENTS_UPDATE: AccessLevel.ADMIN,
+    Operation.EVALUATORS_READ: AccessLevel.AUTHENTICATED,
+    Operation.OBSERVABILITY_READ: AccessLevel.AUTHENTICATED,
+    Operation.OBSERVABILITY_WRITE: AccessLevel.AUTHENTICATED,
     Operation.RUNTIME_TOKEN_EXCHANGE: AccessLevel.AUTHENTICATED,
     Operation.RUNTIME_USE: AccessLevel.AUTHENTICATED,
 }
@@ -60,7 +60,7 @@ class HeaderAuthProvider(RequestAuthorizer):
     """Default authorizer.
 
     For each operation's configured access level, validates the
-    request's credentials via the legacy local check; on success,
+    request's credentials via the local credential check; on success,
     returns a :class:`Principal` scoped to the resolved namespace.
     """
 
@@ -100,8 +100,7 @@ class HeaderAuthProvider(RequestAuthorizer):
         )
         # Runtime token exchange returns a normalized scope grant so the
         # exchange endpoint can require ``runtime.use`` uniformly across
-        # providers; an upstream that explicitly grants no scopes ends
-        # up with an empty tuple and is rejected.
+        # providers.
         scopes: tuple[str, ...] = (
             (Operation.RUNTIME_USE.value,) if operation is Operation.RUNTIME_TOKEN_EXCHANGE else ()
         )
@@ -113,10 +112,7 @@ class HeaderAuthProvider(RequestAuthorizer):
         )
 
     def _resolve_namespace_key(self, request: Request) -> str:
-        # The provider always returns the default namespace because
-        # non-binding write endpoints still hardcode it; serving
-        # anything else here would create rows the rest of the API
-        # cannot find. The branch is preserved so a future change can
-        # lift the lock without touching the provider contract.
+        # Local credentials do not carry namespace metadata. Providers
+        # that resolve a namespace can return a different principal.
         del request
         return self._default_namespace_key

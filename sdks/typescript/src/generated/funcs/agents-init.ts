@@ -51,6 +51,8 @@ import { Result } from "../types/fp.js";
  * Args:
  *     request: Agent metadata and step schemas
  *     db: Database session (injected)
+ *     principal: Authorized request principal for the agent create operation
+ *     target_principal: Optional principal from the target binding read check
  *
  * Returns:
  *     InitAgentResponse with created flag and the effective controls

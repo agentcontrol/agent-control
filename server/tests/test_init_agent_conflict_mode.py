@@ -6,9 +6,30 @@ import uuid
 from copy import deepcopy
 from typing import Any
 
+from agent_control_models.errors import ErrorCode
+from fastapi import Request
 from fastapi.testclient import TestClient
 
+from agent_control_server.auth_framework import Operation, Principal, set_authorizer
+from agent_control_server.errors import ForbiddenError
+
 from .utils import VALID_CONTROL_PAYLOAD
+
+
+class CreateOnlyAuthorizer:
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request, context
+        if operation is Operation.AGENTS_UPDATE:
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail="update denied",
+            )
+        return Principal(namespace_key="default", is_admin=True)
 
 
 def _init_payload(
@@ -151,6 +172,73 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
     assert get_data["agent"]["agent_description"] == "updated desc"
     assert {step["name"] for step in get_data["steps"]} == {"tool-a", "tool-c"}
     assert {evaluator["name"] for evaluator in get_data["evaluators"]} == {"eval-a", "eval-c"}
+
+
+def test_init_agent_overwrite_existing_agent_requires_update_auth(
+    client: TestClient,
+) -> None:
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    create_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(agent_name=agent_name),
+    )
+    assert create_resp.status_code == 200
+
+    set_authorizer(CreateOnlyAuthorizer())
+    overwrite_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(agent_name=agent_name, conflict_mode="overwrite"),
+    )
+
+    assert overwrite_resp.status_code == 403
+
+
+def test_init_agent_force_replace_existing_agent_requires_update_auth(
+    client: TestClient,
+) -> None:
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    create_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(agent_name=agent_name),
+    )
+    assert create_resp.status_code == 200
+
+    set_authorizer(CreateOnlyAuthorizer())
+    force_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={**_init_payload(agent_name=agent_name), "force_replace": True},
+    )
+
+    assert force_resp.status_code == 403
+
+
+def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
+    client: TestClient,
+) -> None:
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    create_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(agent_name=agent_name),
+    )
+    assert create_resp.status_code == 200
+
+    set_authorizer(CreateOnlyAuthorizer())
+    strict_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(
+            agent_name=agent_name,
+            steps=[
+                {
+                    "type": "tool",
+                    "name": "new-tool",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                }
+            ],
+        ),
+    )
+
+    assert strict_resp.status_code == 403
 
 
 def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
