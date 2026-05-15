@@ -28,17 +28,43 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.create_index(
-        "ix_events_namespace_agent_time",
+    op.drop_constraint(
+        "control_execution_events_pkey",
         "control_execution_events",
-        ["namespace_key", "agent_name", sa.literal_column("timestamp DESC")],
-        unique=False,
+        type_="primary",
     )
+    op.create_primary_key(
+        "control_execution_events_pkey",
+        "control_execution_events",
+        ["namespace_key", "control_execution_id"],
+    )
+    with op.get_context().autocommit_block():
+        op.execute("DROP INDEX CONCURRENTLY IF EXISTS ix_events_agent_time")
+        op.execute(
+            """
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_events_namespace_agent_time
+            ON control_execution_events (namespace_key, agent_name, timestamp DESC)
+            """
+        )
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_events_namespace_agent_time",
-        table_name="control_execution_events",
+    with op.get_context().autocommit_block():
+        op.execute("DROP INDEX CONCURRENTLY IF EXISTS ix_events_namespace_agent_time")
+        op.execute(
+            """
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_events_agent_time
+            ON control_execution_events (agent_name, timestamp DESC)
+            """
+        )
+    op.drop_constraint(
+        "control_execution_events_pkey",
+        "control_execution_events",
+        type_="primary",
+    )
+    op.create_primary_key(
+        "control_execution_events_pkey",
+        "control_execution_events",
+        ["control_execution_id"],
     )
     op.drop_column("control_execution_events", "namespace_key")

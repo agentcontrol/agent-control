@@ -156,7 +156,7 @@ class PostgresEventStore(EventStore):
                         :namespace_key, :control_execution_id, :timestamp, :agent_name,
                         CAST(:data AS JSONB)
                     )
-                    ON CONFLICT (control_execution_id) DO NOTHING
+                    ON CONFLICT (namespace_key, control_execution_id) DO NOTHING
                 """),
                 values,
             )

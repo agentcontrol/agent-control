@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    PrimaryKeyConstraint,
     String,
     Table,
     Text,
@@ -354,7 +355,7 @@ class ControlExecutionEventDB(Base):
 
     # Primary key
     control_execution_id: Mapped[str] = mapped_column(
-        String(36), primary_key=True
+        String(36)
     )
 
     # Minimal indexed columns for efficient queries
@@ -377,7 +378,11 @@ class ControlExecutionEventDB(Base):
 
     # Composite index for agent + time queries (primary access pattern)
     __table_args__ = (
+        PrimaryKeyConstraint(
+            "namespace_key",
+            "control_execution_id",
+            name="control_execution_events_pkey",
+        ),
         Index("ix_events_namespace_agent_time", "namespace_key", "agent_name", timestamp.desc()),
-        Index("ix_events_agent_time", "agent_name", timestamp.desc()),
         Index("ix_events_data_control_id", text("(data ->> 'control_id'::text)")),
     )

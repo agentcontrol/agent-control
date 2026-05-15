@@ -1077,7 +1077,11 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
             },
         )
     )
-    principal = await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
+    principal = await provider.authorize(
+        _build_request(),
+        Operation.RUNTIME_TOKEN_EXCHANGE,
+        context={"target_type": "log_stream", "target_id": "ls-1"},
+    )
     assert principal.namespace_key == "org-1"
     assert principal.scopes == ("runtime.use", "runtime.read_only")
     assert principal.target_type == "log_stream"
@@ -1104,6 +1108,44 @@ async def test_http_upstream_rejects_target_grant_mismatch():
             _build_request(),
             Operation.RUNTIME_TOKEN_EXCHANGE,
             context={"target_type": "log_stream", "target_id": "requested"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_target_grant_without_context():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-1",
+                "target_type": "log_stream",
+                "target_id": "bound",
+            },
+        )
+    )
+
+    with pytest.raises(ForbiddenError, match="request target is unavailable"):
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_READ)
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_target_grant_with_incomplete_context():
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-1",
+                "target_type": "log_stream",
+                "target_id": "bound",
+            },
+        )
+    )
+
+    with pytest.raises(ForbiddenError, match="request target is incomplete"):
+        await provider.authorize(
+            _build_request(),
+            Operation.CONTROL_BINDINGS_READ,
+            context={"target_type": "log_stream"},
         )
 
 
@@ -1246,6 +1288,18 @@ def test_configure_runtime_api_key_ignores_jwt_secret(monkeypatch):
 
     assert isinstance(get_authorizer(Operation.RUNTIME_USE), HeaderAuthProvider)
     assert auth_config.runtime_auth_config() is None
+
+
+def test_configure_runtime_api_key_rejects_without_validator(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "api_key")
+    monkeypatch.setattr(auth_settings, "api_key_enabled", False)
+
+    with pytest.raises(RuntimeError, match="AGENT_CONTROL_RUNTIME_AUTH_MODE=api_key"):
+        auth_config.configure_auth_from_env()
 
 
 def test_configure_runtime_unset_preserves_no_auth_default(monkeypatch):

@@ -336,12 +336,20 @@ def _ensure_target_context_matches_grant(
     if principal.target_type is None and principal.target_id is None:
         return
     if context is None:
-        return
+        raise ForbiddenError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail="Authorization grant is target-bound but the request target is unavailable.",
+            hint="Use an endpoint that includes target_type and target_id in the authorization context.",
+        )
 
     expected_type = context.get("target_type")
     expected_id = context.get("target_id")
     if not isinstance(expected_type, str) or not isinstance(expected_id, str):
-        return
+        raise ForbiddenError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail="Authorization grant is target-bound but the request target is incomplete.",
+            hint="Provide both target_type and target_id for target-bound credentials.",
+        )
     if principal.target_type == expected_type and principal.target_id == expected_id:
         return
 

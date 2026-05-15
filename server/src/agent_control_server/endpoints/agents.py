@@ -912,6 +912,13 @@ async def init_agent(
 
         data_model.evaluators = new_evaluators
 
+    if (
+        not request.force_replace
+        and request.conflict_mode != ConflictMode.OVERWRITE
+        and (steps_changed or evaluators_changed or metadata_changed)
+    ):
+        await _authorize_existing_agent_overwrite(http_request, principal)
+
     if steps_changed or evaluators_changed or metadata_changed or force_write:
         existing.data = data_model.model_dump(mode="json")
 

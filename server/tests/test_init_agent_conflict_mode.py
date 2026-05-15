@@ -212,6 +212,35 @@ def test_init_agent_force_replace_existing_agent_requires_update_auth(
     assert force_resp.status_code == 403
 
 
+def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
+    client: TestClient,
+) -> None:
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    create_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(agent_name=agent_name),
+    )
+    assert create_resp.status_code == 200
+
+    set_authorizer(CreateOnlyAuthorizer())
+    strict_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(
+            agent_name=agent_name,
+            steps=[
+                {
+                    "type": "tool",
+                    "name": "new-tool",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                }
+            ],
+        ),
+    )
+
+    assert strict_resp.status_code == 403
+
+
 def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
     # Given: an agent whose assigned policy contains a control referencing an agent evaluator.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"

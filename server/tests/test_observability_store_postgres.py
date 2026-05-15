@@ -176,6 +176,48 @@ async def test_postgres_event_store_scopes_queries_by_namespace() -> None:
 
 
 @pytest.mark.asyncio
+async def test_postgres_event_store_idempotency_is_scoped_by_namespace() -> None:
+    session_maker = async_sessionmaker(
+        bind=async_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    store = PostgresEventStore(session_maker)
+
+    shared_execution_id = str(uuid4())
+    agent_name = f"agent-{uuid4().hex[:12]}"
+    now = datetime.now(UTC)
+    event_a = _event(
+        control_execution_id=shared_execution_id,
+        agent_name=agent_name,
+        control_id=1,
+        action="observe",
+        matched=True,
+        timestamp=now,
+        trace_id="a" * 32,
+    )
+    event_b = _event(
+        control_execution_id=shared_execution_id,
+        agent_name=agent_name,
+        control_id=2,
+        action="deny",
+        matched=True,
+        timestamp=now,
+        trace_id="b" * 32,
+    )
+
+    await store.store([event_a], namespace_key="tenant-a")
+    await store.store([event_b], namespace_key="tenant-b")
+
+    query = EventQueryRequest(agent_name=agent_name, limit=10, offset=0)
+    events_a = await store.query_events(query, namespace_key="tenant-a")
+    events_b = await store.query_events(query, namespace_key="tenant-b")
+
+    assert [event.control_id for event in events_a.events] == [1]
+    assert [event.control_id for event in events_b.events] == [2]
+
+
+@pytest.mark.asyncio
 async def test_postgres_event_store_store_empty_returns_zero() -> None:
     # Given: a Postgres-backed store
     session_maker = async_sessionmaker(

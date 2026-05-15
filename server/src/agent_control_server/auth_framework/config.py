@@ -232,12 +232,12 @@ def _build_default_provider() -> RequestAuthorizer:
     )
 
 
-def _validate_local_api_key_mode() -> None:
+def _validate_local_api_key_mode(mode_env: str = _MODE_ENV) -> None:
     """Fail startup when local API-key mode has no local key validator."""
     if not auth_settings.api_key_enabled:
         raise RuntimeError(
-            f"{_MODE_ENV}=api_key requires AGENT_CONTROL_API_KEY_ENABLED=true. "
-            f"Use {_MODE_ENV}=none for deployments without credential enforcement."
+            f"{mode_env}=api_key requires AGENT_CONTROL_API_KEY_ENABLED=true. "
+            f"Use {mode_env}=none for deployments without credential enforcement."
         )
     if not auth_settings.get_api_keys() and not auth_settings.get_admin_api_keys():
         raise RuntimeError(
@@ -295,6 +295,7 @@ def _build_runtime_provider(
     if mode == "none":
         return NoAuthProvider()
     if mode == "api_key":
+        _validate_local_api_key_mode(_RUNTIME_MODE_ENV)
         return HeaderAuthProvider()
     if mode == "jwt":
         if config is None:
