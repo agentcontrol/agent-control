@@ -347,6 +347,8 @@ def custom_openapi() -> dict[str, Any]:
     if "JSONValue" in schemas:
         schemas["JSONValue"] = {"description": "Any JSON value"}
 
+    # This route is intentionally public metadata. FastAPI still emits inherited
+    # API-key security for it, so patch only this operation in the generated spec.
     controls_schema_path = f"{api_v1_prefix}/controls/schema"
     controls_schema_operation = (
         openapi_schema.get("paths", {})

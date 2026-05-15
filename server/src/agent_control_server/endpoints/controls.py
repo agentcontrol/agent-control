@@ -551,7 +551,6 @@ async def create_control(
     response_model=GetControlSchemaResponse,
     summary="Get control definition JSON schema",
     response_description="JSON schema for ControlDefinition",
-    openapi_extra={"security": []},
 )
 # Public schema metadata: no tenant state, no auth operation.
 async def get_control_schema() -> GetControlSchemaResponse:
