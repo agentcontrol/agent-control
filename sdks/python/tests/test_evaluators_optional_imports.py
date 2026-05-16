@@ -10,7 +10,15 @@ from __future__ import annotations
 
 import builtins
 import importlib
+import importlib.util
 import sys
+
+import pytest
+
+_GALILEO_INSTALLED = (
+    importlib.util.find_spec("agent_control_evaluator_galileo.luna") is not None
+    and importlib.util.find_spec("agent_control_evaluator_galileo.luna2") is not None
+)
 
 
 def _reload_evaluators_with_blocked(prefix: str) -> object:
@@ -75,6 +83,10 @@ def test_module_loads_when_galileo_package_is_unavailable():
         assert absent not in reloaded.__all__
 
 
+@pytest.mark.skipif(
+    not _GALILEO_INSTALLED,
+    reason="agent-control-evaluator-galileo extras not installed in this environment",
+)
 def test_module_loads_galileo_optional_imports_when_available():
     """Sanity check: with galileo installed, the optional names ARE exposed.
 
