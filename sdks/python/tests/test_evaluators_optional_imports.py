@@ -15,10 +15,21 @@ import sys
 
 import pytest
 
-_GALILEO_INSTALLED = (
-    importlib.util.find_spec("agent_control_evaluator_galileo.luna") is not None
-    and importlib.util.find_spec("agent_control_evaluator_galileo.luna2") is not None
-)
+
+def _module_available(name: str) -> bool:
+    """Return whether ``name`` resolves without raising for missing parents."""
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        # ``find_spec`` raises ModuleNotFoundError (a subclass of ImportError)
+        # when a *parent* package is missing, instead of returning None. Treat
+        # that as "not installed."
+        return False
+
+
+_GALILEO_INSTALLED = _module_available(
+    "agent_control_evaluator_galileo.luna"
+) and _module_available("agent_control_evaluator_galileo.luna2")
 
 
 def _reload_evaluators_with_blocked(prefix: str) -> object:
