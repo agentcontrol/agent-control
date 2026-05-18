@@ -6,12 +6,12 @@ import uuid
 from pathlib import Path
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
 
 from agent_control_server.config import db_config
+from alembic import command
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 PRE_MIGRATION_REVISION = "c1e9f9c4a1d2"
@@ -90,6 +90,17 @@ def _unique_constraint_names(engine: Engine, table: str) -> set[str]:
 
 def _pk_columns(engine: Engine, table: str) -> list[str]:
     return list(inspect(engine).get_pk_constraint(table)["constrained_columns"])
+
+
+def _assert_observability_namespace_schema(engine: Engine) -> None:
+    assert "namespace_key" in _column_names(engine, "control_execution_events")
+    assert _pk_columns(engine, "control_execution_events") == [
+        "namespace_key",
+        "control_execution_id",
+    ]
+    indexes = _index_names(engine, "control_execution_events")
+    assert "ix_events_namespace_agent_time" in indexes
+    assert "ix_events_agent_time" not in indexes
 
 
 def test_upgrade_applies_namespace_columns_and_constraints(
@@ -229,14 +240,56 @@ def test_observability_namespace_migration_scopes_event_primary_key(
 ) -> None:
     command.upgrade(alembic_config, OBSERVABILITY_NAMESPACE_REVISION)
 
-    assert "namespace_key" in _column_names(temp_engine, "control_execution_events")
-    assert _pk_columns(temp_engine, "control_execution_events") == [
-        "namespace_key",
-        "control_execution_id",
-    ]
-    indexes = _index_names(temp_engine, "control_execution_events")
-    assert "ix_events_namespace_agent_time" in indexes
-    assert "ix_events_agent_time" not in indexes
+    _assert_observability_namespace_schema(temp_engine)
+
+
+def test_observability_namespace_migration_recovers_when_column_preexists(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    command.upgrade(alembic_config, MIGRATION_REVISION)
+
+    with temp_engine.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE control_execution_events "
+                "ADD COLUMN namespace_key VARCHAR(255) DEFAULT 'default' NOT NULL"
+            )
+        )
+
+    command.upgrade(alembic_config, OBSERVABILITY_NAMESPACE_REVISION)
+
+    _assert_observability_namespace_schema(temp_engine)
+
+
+def test_observability_namespace_migration_recovers_when_primary_key_preexists(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    command.upgrade(alembic_config, MIGRATION_REVISION)
+
+    with temp_engine.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE control_execution_events "
+                "ADD COLUMN namespace_key VARCHAR(255) DEFAULT 'default' NOT NULL"
+            )
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE control_execution_events "
+                "DROP CONSTRAINT control_execution_events_pkey"
+            )
+        )
+        conn.execute(
+            text(
+                "ALTER TABLE control_execution_events "
+                "ADD CONSTRAINT control_execution_events_pkey "
+                "PRIMARY KEY (namespace_key, control_execution_id)"
+            )
+        )
+
+    command.upgrade(alembic_config, OBSERVABILITY_NAMESPACE_REVISION)
+
+    _assert_observability_namespace_schema(temp_engine)
 
 
 def test_downgrade_rejects_cross_namespace_agents_duplicates(
