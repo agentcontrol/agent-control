@@ -224,6 +224,7 @@ class ControlEngine:
             "message": self._truncated_message(result.message),
         }
         metadata = dict(result.metadata or {})
+        metadata["selected_data"] = data
         metadata["condition_trace"] = trace
         return _ConditionEvaluation(
             result=result.model_copy(update={"metadata": metadata}),
