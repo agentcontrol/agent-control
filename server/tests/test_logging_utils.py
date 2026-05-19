@@ -8,6 +8,7 @@ from agent_control_server.logging_utils import (
     configure_logging,
     get_log_level_name,
     get_uvicorn_log_level_name,
+    should_configure_logging,
 )
 
 
@@ -138,3 +139,29 @@ def test_configure_logging_resets_uvicorn_handlers() -> None:
         logger.propagate = original_propagate
         root.handlers = root_handlers
         root.setLevel(root_level)
+
+
+def test_should_configure_logging_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "false")
+
+    assert should_configure_logging() is False
+
+
+def test_configure_logging_noops_when_host_owns_logging(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "false")
+
+    root = logging.getLogger()
+    handler = logging.StreamHandler()
+    original_handlers = list(root.handlers)
+    original_level = root.level
+    root.handlers = [handler]
+    root.setLevel(logging.ERROR)
+
+    try:
+        configure_logging(level="INFO", json=False)
+
+        assert root.handlers == [handler]
+        assert root.level == logging.ERROR
+    finally:
+        root.handlers = original_handlers
+        root.setLevel(original_level)

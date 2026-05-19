@@ -37,7 +37,7 @@ from .errors import (
     http_exception_handler,
     validation_exception_handler,
 )
-from .logging_utils import configure_logging, get_uvicorn_log_level_name
+from .logging_utils import configure_logging, get_uvicorn_log_level_name, should_configure_logging
 from .observability.ingest import DirectEventIngestor
 from .observability.sinks import (
     EventStoreControlEventSink,
@@ -403,12 +403,15 @@ configure_ui_routes(app)
 
 def run() -> None:
     """Run the server application."""
-    uvicorn.run(
-        app,
-        host=settings.host,
-        port=settings.port,
-        log_level=get_uvicorn_log_level_name(_default_log_level()).lower(),
-    )
+    uvicorn_kwargs: dict[str, Any] = {
+        "host": settings.host,
+        "port": settings.port,
+        "log_level": get_uvicorn_log_level_name(_default_log_level()).lower(),
+    }
+    if not should_configure_logging():
+        uvicorn_kwargs["log_config"] = None
+
+    uvicorn.run(app, **uvicorn_kwargs)
 
 
 if __name__ == "__main__":
