@@ -2,6 +2,43 @@
 
 <!-- version list -->
 
+## v7.8.0 (2026-05-15)
+
+### Bug Fixes
+
+- **examples**: Declare local SDK workspace deps
+  ([#222](https://github.com/agentcontrol/agent-control/pull/222),
+  [`d22aa1d`](https://github.com/agentcontrol/agent-control/commit/d22aa1d6e25330455cbdb09b150bf51b9ff59158))
+
+- **sdk**: Get trace context from provider
+  ([#211](https://github.com/agentcontrol/agent-control/pull/211),
+  [`1efe30f`](https://github.com/agentcontrol/agent-control/commit/1efe30f8a62800575c87b3c8459f9a93e46532a2))
+
+- **server**: Prevent migration lock transactions
+  ([#224](https://github.com/agentcontrol/agent-control/pull/224),
+  [`e65a2f4`](https://github.com/agentcontrol/agent-control/commit/e65a2f46b91ca3ed05e2f233488823860ae037db))
+
+- **ui**: Fix editing of controls in the UI
+  ([#218](https://github.com/agentcontrol/agent-control/pull/218),
+  [`981e33d`](https://github.com/agentcontrol/agent-control/commit/981e33d40f2ffc31dc9454b433a5b9aeae1ec4a9))
+
+### Features
+
+- **sdk**: Add otel support ([#177](https://github.com/agentcontrol/agent-control/pull/177),
+  [`9530368`](https://github.com/agentcontrol/agent-control/commit/9530368ff7d609106db600715724ba9ee1dbcaff))
+
+- **sdk**: Add runtime token auth ([#215](https://github.com/agentcontrol/agent-control/pull/215),
+  [`6cc0f38`](https://github.com/agentcontrol/agent-control/commit/6cc0f38b89e3870f44aa46e508e29431f8713e0d))
+
+- **server**: Add runtime auth and namespace scoping
+  ([#214](https://github.com/agentcontrol/agent-control/pull/214),
+  [`56e44fe`](https://github.com/agentcontrol/agent-control/commit/56e44fe4cfd2e2952ced5e8428c271082c34a09e))
+
+- **server**: Migrate controls routes to auth framework
+  ([#212](https://github.com/agentcontrol/agent-control/pull/212),
+  [`764bd4b`](https://github.com/agentcontrol/agent-control/commit/764bd4bc765c87b4c3027ba99531cdbccade39fb))
+
+
 ## Unreleased
 
 ### Changed

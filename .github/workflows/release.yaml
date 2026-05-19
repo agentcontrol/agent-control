@@ -187,14 +187,22 @@ jobs:
           path: release-dists
 
       - name: Upload to GitHub Release
-        uses: python-semantic-release/upload-to-gh-release@main
-        with:
-          github_token: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || github.token }}
-          tag: ${{ needs.release.outputs.tag }}
-          root_options: "-vv"
-          dist_glob: |
+        env:
+          GH_TOKEN: ${{ secrets.GALILEO_AUTOMATION_GITHUB_TOKEN || github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          shopt -s nullglob
+          assets=(
             release-dists/models/dist/*
             release-dists/evaluators/builtin/dist/*
             release-dists/sdks/python/dist/*
             release-dists/server/dist/*
             release-dists/evaluators/contrib/*/dist/*
+          )
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No release assets found"
+            exit 1
+          fi
+
+          gh release upload "${{ needs.release.outputs.tag }}" "${assets[@]}" --clobber

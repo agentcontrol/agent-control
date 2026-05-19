@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-engine"
-version = "7.7.0"
+version = "7.8.0"
 description = "Control execution engine for Agent Control"
 requires-python = ">=3.12"
 dependencies = [
