@@ -79,7 +79,7 @@ from agent_control_telemetry.trace_context import (
     set_trace_context_provider,
 )
 
-from . import agents, controls, evaluation, evaluators, policies
+from . import agents, control_bindings, controls, evaluation, evaluators, policies
 from ._control_registry import (
     StepSchemaDict,
     get_registered_steps,
@@ -1019,10 +1019,14 @@ async def list_controls(
     name: str | None = None,
     enabled: bool | None = None,
     template_backed: bool | None = None,
+    cloned: bool | None = None,
     step_type: str | None = None,
     stage: Literal["pre", "post"] | None = None,
     execution: Literal["server", "sdk"] | None = None,
     tag: str | None = None,
+    include_attachments: bool = False,
+    attachment_target_type: str | None = None,
+    attachment_target_id: str | None = None,
 ) -> dict[str, Any]:
     """
     List all controls from the server with optional filtering.
@@ -1035,10 +1039,14 @@ async def list_controls(
         name: Optional filter by name (partial, case-insensitive)
         enabled: Optional filter by enabled status
         template_backed: Optional filter by whether the control is template-backed
+        cloned: Optional filter by whether the control was cloned from another control
         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
+        include_attachments: Whether to include attachment details
+        attachment_target_type: Optional target binding type filter for attachments
+        attachment_target_id: Optional target binding ID filter for attachments
 
     Returns:
         Dictionary containing:
@@ -1079,10 +1087,14 @@ async def list_controls(
             name=name,
             enabled=enabled,
             template_backed=template_backed,
+            cloned=cloned,
             step_type=step_type,
             stage=stage,
             execution=execution,
             tag=tag,
+            include_attachments=include_attachments,
+            attachment_target_type=attachment_target_type,
+            attachment_target_id=attachment_target_id,
         )
 
 
@@ -1145,6 +1157,49 @@ async def create_control(
         api_key_header=api_key_header,
     ) as client:
         return await controls.create_control(client, name, data=data)
+
+
+async def clone_and_bind_control(
+    control_id: int,
+    *,
+    target_type: str,
+    target_id: str,
+    name: str | None = None,
+    enabled: bool = True,
+    server_url: str | None = None,
+    api_key: str | None = None,
+    api_key_header: str | None = None,
+) -> dict[str, Any]:
+    """
+    Clone an existing control and bind the clone to a target.
+
+    Args:
+        control_id: Source control ID to clone
+        target_type: Opaque attachment kind
+        target_id: Opaque external target identifier
+        name: Optional unique name for the cloned control
+        enabled: Whether the created binding is active
+        server_url: Optional server URL (defaults to AGENT_CONTROL_URL env var)
+        api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
+
+    Returns:
+        Dictionary containing id, name, cloned_from_control_id, and binding_id.
+    """
+    _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
+
+    async with _ad_hoc_client(
+        server_url=_final_server_url,
+        api_key=api_key,
+        api_key_header=api_key_header,
+    ) as client:
+        return await controls.clone_and_bind_control(
+            client,
+            control_id,
+            target_type=target_type,
+            target_id=target_id,
+            name=name,
+            enabled=enabled,
+        )
 
 
 async def validate_control_data(
@@ -1502,6 +1557,7 @@ __all__ = [
     "add_agent_control",
     "remove_agent_control",
     # Control management
+    "clone_and_bind_control",
     "create_control",
     "list_controls",
     "get_control",
@@ -1520,6 +1576,7 @@ __all__ = [
     "agents",
     "policies",
     "controls",
+    "control_bindings",
     "evaluation",
     "evaluators",
     # Policy-Control management

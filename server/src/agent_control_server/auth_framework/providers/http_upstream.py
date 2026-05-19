@@ -33,7 +33,10 @@ Response (200): JSON object
         "caller_id": "..."
     }
 
-Statuses other than 200 / 401 / 403 / 404 / 5xx fail closed (503).
+Statuses other than 200 / 401 / 403 / 404 / 429 fail closed. Unexpected
+upstream 4xx responses are reported separately from Agent Control
+misconfiguration so operators can distinguish upstream request rejection
+from local auth setup failures.
 """
 
 from __future__ import annotations
@@ -279,6 +282,25 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 reason=ErrorReason.SERVICE_UNAVAILABLE,
                 detail="Authorization service is rate-limiting requests.",
                 hint=hint,
+            )
+        if 400 <= status < 500:
+            _logger.warning(
+                "Authorization upstream rejected operation %s with status %d",
+                operation.value,
+                status,
+            )
+            raise APIError(
+                status_code=502,
+                error_code=ErrorCode.AUTH_UPSTREAM_REJECTED,
+                reason=ErrorReason.INTERNAL_ERROR,
+                detail=(
+                    "Authorization service rejected the authorization check "
+                    f"(status {status})."
+                ),
+                hint=(
+                    "Check that the Agent Control authorization request shape "
+                    "matches the upstream authorization service contract."
+                ),
             )
         # Fail closed on 5xx and unexpected statuses.
         _logger.warning(

@@ -17,6 +17,7 @@ SERVER_DIR = Path(__file__).resolve().parents[1]
 PRE_MIGRATION_REVISION = "c1e9f9c4a1d2"
 MIGRATION_REVISION = "a7f3b1e0d9c5"
 OBSERVABILITY_NAMESPACE_REVISION = "b6f4c2d8e9a1"
+CLONE_LINEAGE_REVISION = "e2b7f4a9c6d1"
 _BASE_DB_URL = make_url(db_config.get_url())
 
 pytestmark = pytest.mark.skipif(
@@ -101,6 +102,37 @@ def _assert_observability_namespace_schema(engine: Engine) -> None:
     indexes = _index_names(engine, "control_execution_events")
     assert "ix_events_namespace_agent_time" in indexes
     assert "ix_events_agent_time" not in indexes
+
+
+def _pg_index_definition(engine: Engine, index_name: str) -> str:
+    with engine.begin() as conn:
+        return str(
+            conn.execute(
+                text(
+                    """
+                    SELECT indexdef
+                    FROM pg_indexes
+                    WHERE tablename = 'controls' AND indexname = :index_name
+                    """
+                ),
+                {"index_name": index_name},
+            ).scalar_one()
+        )
+
+
+def _pg_constraint_definition(engine: Engine, constraint_name: str) -> tuple[str, str]:
+    with engine.begin() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT pg_get_constraintdef(oid) AS definition, confdeltype
+                FROM pg_constraint
+                WHERE conname = :constraint_name
+                """
+            ),
+            {"constraint_name": constraint_name},
+        ).one()
+        return str(row.definition), str(row.confdeltype)
 
 
 def test_upgrade_applies_namespace_columns_and_constraints(
@@ -290,6 +322,78 @@ def test_observability_namespace_migration_recovers_when_primary_key_preexists(
     command.upgrade(alembic_config, OBSERVABILITY_NAMESPACE_REVISION)
 
     _assert_observability_namespace_schema(temp_engine)
+
+
+def test_control_clone_lineage_migration_adds_composite_fk_and_partial_index(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    command.upgrade(alembic_config, CLONE_LINEAGE_REVISION)
+
+    assert "cloned_from_control_id" in _column_names(temp_engine, "controls")
+    assert "controls_cloned_from_control_fkey" in _foreign_key_names(
+        temp_engine, "controls"
+    )
+    assert "idx_controls_cloned_from" in _index_names(temp_engine, "controls")
+
+    constraint_def, delete_action = _pg_constraint_definition(
+        temp_engine,
+        "controls_cloned_from_control_fkey",
+    )
+    assert (
+        "FOREIGN KEY (namespace_key, cloned_from_control_id) "
+        "REFERENCES controls(namespace_key, id)"
+    ) in constraint_def
+    assert delete_action == "a"
+
+    index_def = _pg_index_definition(temp_engine, "idx_controls_cloned_from")
+    assert "CREATE INDEX idx_controls_cloned_from" in index_def
+    assert "ON public.controls USING btree (namespace_key, cloned_from_control_id)" in index_def
+    assert "WHERE (cloned_from_control_id IS NOT NULL)" in index_def
+
+    with temp_engine.begin() as conn:
+        source_id = conn.execute(
+            text(
+                """
+                INSERT INTO controls (namespace_key, name, data)
+                VALUES ('ns-one', 'source', '{}'::jsonb)
+                RETURNING id
+                """
+            )
+        ).scalar_one()
+        conn.execute(
+            text(
+                """
+                INSERT INTO controls (namespace_key, name, data, cloned_from_control_id)
+                VALUES ('ns-one', 'clone', '{}'::jsonb, :source_id)
+                """
+            ),
+            {"source_id": source_id},
+        )
+
+    with pytest.raises(Exception):
+        with temp_engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO controls (
+                        namespace_key, name, data, cloned_from_control_id
+                    )
+                    VALUES ('ns-two', 'bad-clone', '{}'::jsonb, :source_id)
+                    """
+                ),
+                {"source_id": source_id},
+            )
+
+    command.downgrade(alembic_config, OBSERVABILITY_NAMESPACE_REVISION)
+
+    assert "cloned_from_control_id" not in _column_names(temp_engine, "controls")
+    assert "controls_cloned_from_control_fkey" not in _foreign_key_names(
+        temp_engine, "controls"
+    )
+    assert "idx_controls_cloned_from" not in _index_names(temp_engine, "controls")
+    indexes = _index_names(temp_engine, "control_execution_events")
+    assert "ix_events_namespace_agent_time" in indexes
+    assert "ix_events_agent_time" not in indexes
 
 
 def test_downgrade_rejects_cross_namespace_agents_duplicates(

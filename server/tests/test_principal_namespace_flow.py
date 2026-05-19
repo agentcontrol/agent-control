@@ -187,6 +187,18 @@ def test_principal_namespace_scopes_cross_namespace_writes(app: FastAPI) -> None
         ).status_code
         == 404
     )
+    assert (
+        ns_b.patch(
+            "/api/v1/control-bindings/by-key",
+            json={
+                "target_type": "env",
+                "target_id": "prod",
+                "control_id": control_id,
+                "enabled": False,
+            },
+        ).status_code
+        == 404
+    )
     delete_binding = ns_b.post(
         "/api/v1/control-bindings/by-key:delete",
         json={

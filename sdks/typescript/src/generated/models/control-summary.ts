@@ -8,12 +8,32 @@ import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { AgentRef, AgentRef$inboundSchema } from "./agent-ref.js";
+import {
+  ControlAction,
+  ControlAction$inboundSchema,
+} from "./control-action.js";
+import {
+  ControlAttachments,
+  ControlAttachments$inboundSchema,
+} from "./control-attachments.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
  * Summary of a control for list responses.
  */
 export type ControlSummary = {
+  /**
+   * Action applied when the control matches.
+   */
+  action?: ControlAction | null | undefined;
+  /**
+   * Expanded attachment details. Present when list controls is called with include_attachments=true.
+   */
+  attachments?: ControlAttachments | null | undefined;
+  /**
+   * Source control ID when this control is a clone.
+   */
+  clonedFromControlId?: number | null | undefined;
   /**
    * Control description
    */
@@ -70,6 +90,9 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
+    action: z.optional(z.nullable(ControlAction$inboundSchema)),
+    attachments: z.optional(z.nullable(ControlAttachments$inboundSchema)),
+    cloned_from_control_id: z.optional(z.nullable(types.number())),
     description: z.optional(z.nullable(types.string())),
     enabled: z._default(types.boolean(), true),
     execution: z.optional(z.nullable(types.string())),
@@ -85,6 +108,7 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
   }),
   z.transform((v) => {
     return remap$(v, {
+      "cloned_from_control_id": "clonedFromControlId",
       "step_types": "stepTypes",
       "template_backed": "templateBacked",
       "template_rendered": "templateRendered",

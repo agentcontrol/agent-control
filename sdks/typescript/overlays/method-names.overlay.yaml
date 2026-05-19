@@ -120,6 +120,11 @@ actions:
       x-speakeasy-group: controlBindings
       x-speakeasy-name-override: upsertByKey
 
+  - target: $["paths"]["/api/v1/control-bindings/by-key"]["patch"]
+    update:
+      x-speakeasy-group: controlBindings
+      x-speakeasy-name-override: updateByKey
+
   - target: $["paths"]["/api/v1/control-bindings/by-key:delete"]["post"]
     update:
       x-speakeasy-group: controlBindings
@@ -179,6 +184,11 @@ actions:
     update:
       x-speakeasy-group: controls
       x-speakeasy-name-override: delete
+
+  - target: $["paths"]["/api/v1/controls/{control_id}/clone-and-bind"]["post"]
+    update:
+      x-speakeasy-group: controls
+      x-speakeasy-name-override: cloneAndBindControl
 
   - target: $["paths"]["/api/v1/controls/{control_id}/data"]["get"]
     update:
