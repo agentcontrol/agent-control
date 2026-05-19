@@ -696,17 +696,108 @@ def test_delete_control_force_dissociates_direct_agent_links(client: TestClient)
     assert list_resp.json()["pagination"]["total"] == 0
 
 
-def _create_target_binding(client: TestClient, *, control_id: int) -> int:
+def _create_target_binding(
+    client: TestClient,
+    *,
+    control_id: int,
+    target_type: str = "env",
+    target_id: str = "prod",
+    enabled: bool = True,
+) -> int:
     resp = client.put(
         "/api/v1/control-bindings",
         json={
-            "target_type": "env",
-            "target_id": "prod",
+            "target_type": target_type,
+            "target_id": target_id,
             "control_id": control_id,
+            "enabled": enabled,
         },
     )
     assert resp.status_code == 200, resp.text
     return int(resp.json()["binding_id"])
+
+
+def test_list_controls_returns_null_attachments_by_default(
+    client: TestClient,
+) -> None:
+    # Given: a control with no requested attachment expansion
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    # When: listing controls without include_attachments
+    resp = client.get("/api/v1/controls", params={"name": control_name})
+
+    # Then: the response keeps the attachment expansion disabled by default
+    assert resp.status_code == 200, resp.text
+    controls = resp.json()["controls"]
+    assert len(controls) == 1
+    assert controls[0]["id"] == control_id
+    assert controls[0]["attachments"] is None
+
+
+def test_list_controls_expands_policy_agent_and_target_attachments(
+    client: TestClient,
+) -> None:
+    # Given: a control attached to a policy, an agent, and two target types
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    policy_resp = client.put("/api/v1/policies", json={"name": f"pol-{uuid.uuid4()}"})
+    assert policy_resp.status_code == 200
+    policy_id = policy_resp.json()["policy_id"]
+    policy_assoc_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert policy_assoc_resp.status_code == 200
+
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert init_resp.status_code == 200
+    agent_assoc_resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert agent_assoc_resp.status_code == 200
+
+    log_stream_binding_id = _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="log_stream",
+        target_id="ls-prod",
+        enabled=False,
+    )
+    _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="env",
+        target_id="prod",
+    )
+
+    # When: listing controls with attachment expansion filtered to log streams
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": control_name,
+            "include_attachments": "true",
+            "attachment_target_type": "log_stream",
+        },
+    )
+
+    # Then: direct policy/agent attachments and filtered target bindings are returned
+    assert resp.status_code == 200, resp.text
+    controls = resp.json()["controls"]
+    assert len(controls) == 1
+    attachments = controls[0]["attachments"]
+    assert attachments == {
+        "agents": [{"agent_name": agent_name}],
+        "policies": [{"policy_id": policy_id}],
+        "targets": [
+            {
+                "binding_id": log_stream_binding_id,
+                "target_type": "log_stream",
+                "target_id": "ls-prod",
+                "enabled": False,
+            }
+        ],
+    }
 
 
 def test_delete_control_blocks_when_target_binding_exists(

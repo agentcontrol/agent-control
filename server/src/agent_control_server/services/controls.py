@@ -75,6 +75,25 @@ class ControlUsage:
 
 
 @dataclass(frozen=True)
+class ControlTargetAttachment:
+    """Target binding attached to a control."""
+
+    binding_id: int
+    target_type: str
+    target_id: str
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class ControlAttachmentSet:
+    """Direct attachments for a listed control."""
+
+    policy_ids: list[int]
+    agent_names: list[str]
+    targets: list[ControlTargetAttachment]
+
+
+@dataclass(frozen=True)
 class ControlAssociations:
     """Policy and agent associations for a control."""
 
@@ -533,6 +552,82 @@ class ControlService:
                 used_by_agents_count=len(agent_names),
             )
             for control_id, agent_names in usage_names.items()
+        }
+
+    async def list_control_attachments(
+        self,
+        control_ids: Sequence[int],
+        *,
+        namespace_key: str,
+        target_type: str | None = None,
+    ) -> dict[int, ControlAttachmentSet]:
+        """Return direct policy, direct agent, and target attachments for controls."""
+        if not control_ids:
+            return {}
+
+        unique_control_ids = list(dict.fromkeys(control_ids))
+        policy_ids_by_control: dict[int, set[int]] = {
+            control_id: set() for control_id in unique_control_ids
+        }
+        agent_names_by_control: dict[int, set[str]] = {
+            control_id: set() for control_id in unique_control_ids
+        }
+        targets_by_control: dict[int, list[ControlTargetAttachment]] = {
+            control_id: [] for control_id in unique_control_ids
+        }
+
+        policy_result = await self._db.execute(
+            select(policy_controls.c.control_id, policy_controls.c.policy_id).where(
+                policy_controls.c.namespace_key == namespace_key,
+                policy_controls.c.control_id.in_(unique_control_ids),
+            )
+        )
+        for control_id, policy_id in policy_result.all():
+            policy_ids_by_control[cast(int, control_id)].add(cast(int, policy_id))
+
+        agent_result = await self._db.execute(
+            select(agent_controls.c.control_id, agent_controls.c.agent_name).where(
+                agent_controls.c.namespace_key == namespace_key,
+                agent_controls.c.control_id.in_(unique_control_ids),
+            )
+        )
+        for control_id, agent_name in agent_result.all():
+            agent_names_by_control[cast(int, control_id)].add(cast(str, agent_name))
+
+        target_query = (
+            select(
+                ControlBinding.control_id,
+                ControlBinding.id,
+                ControlBinding.target_type,
+                ControlBinding.target_id,
+                ControlBinding.enabled,
+            )
+            .where(
+                ControlBinding.namespace_key == namespace_key,
+                ControlBinding.control_id.in_(unique_control_ids),
+            )
+            .order_by(ControlBinding.id.desc())
+        )
+        if target_type is not None:
+            target_query = target_query.where(ControlBinding.target_type == target_type)
+        target_result = await self._db.execute(target_query)
+        for control_id, binding_id, binding_target_type, target_id, enabled in target_result.all():
+            targets_by_control[cast(int, control_id)].append(
+                ControlTargetAttachment(
+                    binding_id=cast(int, binding_id),
+                    target_type=cast(str, binding_target_type),
+                    target_id=cast(str, target_id),
+                    enabled=cast(bool, enabled),
+                )
+            )
+
+        return {
+            control_id: ControlAttachmentSet(
+                policy_ids=sorted(policy_ids_by_control[control_id]),
+                agent_names=sorted(agent_names_by_control[control_id]),
+                targets=targets_by_control[control_id],
+            )
+            for control_id in unique_control_ids
         }
 
     async def list_active_control_counts_by_agent(

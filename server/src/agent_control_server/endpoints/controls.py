@@ -5,6 +5,7 @@ from agent_control_models import ControlDefinition, TemplateControlInput, Unrend
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentRef,
+    ControlAttachments,
     ControlSummary,
     ControlVersionSummary,
     CreateControlRequest,
@@ -19,10 +20,12 @@ from agent_control_models.server import (
     PaginationInfo,
     PatchControlRequest,
     PatchControlResponse,
+    PolicyRef,
     RenderControlTemplateRequest,
     RenderControlTemplateResponse,
     SetControlDataRequest,
     SetControlDataResponse,
+    TargetAttachmentRef,
     ValidateControlDataRequest,
     ValidateControlDataResponse,
 )
@@ -858,6 +861,22 @@ async def list_controls(
     stage: str | None = Query(None, description="Filter by stage ('pre' or 'post')"),
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
     tag: str | None = Query(None, description="Filter by tag"),
+    include_attachments: bool = Query(
+        False,
+        description=(
+            "When true, include direct agent associations, policy associations, "
+            "and target bindings for each listed control."
+        ),
+    ),
+    attachment_target_type: str | None = Query(
+        None,
+        min_length=1,
+        max_length=255,
+        description=(
+            "Optional target_type filter applied to expanded target bindings. "
+            "Only used when include_attachments=true."
+        ),
+    ),
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> ListControlsResponse:
@@ -876,6 +895,8 @@ async def list_controls(
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
+        include_attachments: Whether to include attachment details for listed controls
+        attachment_target_type: Optional target binding type filter for attachments
         db: Database session (injected)
 
     Returns:
@@ -902,6 +923,15 @@ async def list_controls(
         [control.id for control in page.controls],
         namespace_key=namespace_key,
     )
+    attachments_by_control_id = (
+        await control_service.list_control_attachments(
+            [control.id for control in page.controls],
+            namespace_key=namespace_key,
+            target_type=attachment_target_type,
+        )
+        if include_attachments
+        else {}
+    )
 
     # Build summaries (filtering already done at DB level)
     summaries: list[ControlSummary] = []
@@ -910,6 +940,7 @@ async def list_controls(
         data = ctrl.data or {}
         scope = data.get("scope") or {}
         usage = usage_by_control_id.get(ctrl.id)
+        attachments = attachments_by_control_id.get(ctrl.id)
         summaries.append(
             ControlSummary(
                 id=ctrl.id,
@@ -933,6 +964,29 @@ async def list_controls(
                     else None
                 ),
                 used_by_agents_count=usage.used_by_agents_count if usage is not None else 0,
+                attachments=(
+                    ControlAttachments(
+                        agents=[
+                            AgentRef(agent_name=agent_name)
+                            for agent_name in attachments.agent_names
+                        ],
+                        policies=[
+                            PolicyRef(policy_id=policy_id)
+                            for policy_id in attachments.policy_ids
+                        ],
+                        targets=[
+                            TargetAttachmentRef(
+                                binding_id=target.binding_id,
+                                target_type=target.target_type,
+                                target_id=target.target_id,
+                                enabled=target.enabled,
+                            )
+                            for target in attachments.targets
+                        ],
+                    )
+                    if attachments is not None
+                    else None
+                ),
             )
         )
 

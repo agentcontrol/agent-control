@@ -8,12 +8,20 @@ import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { AgentRef, AgentRef$inboundSchema } from "./agent-ref.js";
+import {
+  ControlAttachments,
+  ControlAttachments$inboundSchema,
+} from "./control-attachments.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
  * Summary of a control for list responses.
  */
 export type ControlSummary = {
+  /**
+   * Expanded attachment details. Present when list controls is called with include_attachments=true.
+   */
+  attachments?: ControlAttachments | null | undefined;
   /**
    * Control description
    */
@@ -70,6 +78,7 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
+    attachments: z.optional(z.nullable(ControlAttachments$inboundSchema)),
     description: z.optional(z.nullable(types.string())),
     enabled: z._default(types.boolean(), true),
     execution: z.optional(z.nullable(types.string())),

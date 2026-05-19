@@ -39,6 +39,14 @@ export type ListControlsApiV1ControlsGetRequest = {
    * Filter by tag
    */
   tag?: string | null | undefined;
+  /**
+   * When true, include direct agent associations, policy associations, and target bindings for each listed control.
+   */
+  includeAttachments?: boolean | undefined;
+  /**
+   * Optional target_type filter applied to expanded target bindings. Only used when include_attachments=true.
+   */
+  attachmentTargetType?: string | null | undefined;
 };
 
 /** @internal */
@@ -52,6 +60,8 @@ export type ListControlsApiV1ControlsGetRequest$Outbound = {
   stage?: string | null | undefined;
   execution?: string | null | undefined;
   tag?: string | null | undefined;
+  include_attachments: boolean;
+  attachment_target_type?: string | null | undefined;
 };
 
 /** @internal */
@@ -69,11 +79,15 @@ export const ListControlsApiV1ControlsGetRequest$outboundSchema: z.ZodMiniType<
     stage: z.optional(z.nullable(z.string())),
     execution: z.optional(z.nullable(z.string())),
     tag: z.optional(z.nullable(z.string())),
+    includeAttachments: z._default(z.boolean(), false),
+    attachmentTargetType: z.optional(z.nullable(z.string())),
   }),
   z.transform((v) => {
     return remap$(v, {
       templateBacked: "template_backed",
       stepType: "step_type",
+      includeAttachments: "include_attachments",
+      attachmentTargetType: "attachment_target_type",
     });
   }),
 );

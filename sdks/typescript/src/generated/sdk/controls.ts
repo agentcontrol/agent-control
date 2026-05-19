@@ -55,6 +55,8 @@ export class Controls extends ClientSDK {
    *     stage: Optional filter by stage ('pre' or 'post')
    *     execution: Optional filter by execution ('server' or 'sdk')
    *     tag: Optional filter by tag
+   *     include_attachments: Whether to include attachment details for listed controls
+   *     attachment_target_type: Optional target binding type filter for attachments
    *     db: Database session (injected)
    *
    * Returns:

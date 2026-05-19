@@ -45,6 +45,8 @@ import { Result } from "../types/fp.js";
  *     stage: Optional filter by stage ('pre' or 'post')
  *     execution: Optional filter by execution ('server' or 'sdk')
  *     tag: Optional filter by tag
+ *     include_attachments: Whether to include attachment details for listed controls
+ *     attachment_target_type: Optional target binding type filter for attachments
  *     db: Database session (injected)
  *
  * Returns:
@@ -119,9 +121,11 @@ async function $do(
   const path = pathToFunc("/api/v1/controls")();
 
   const query = encodeFormQuery({
+    "attachment_target_type": payload?.attachment_target_type,
     "cursor": payload?.cursor,
     "enabled": payload?.enabled,
     "execution": payload?.execution,
+    "include_attachments": payload?.include_attachments,
     "limit": payload?.limit,
     "name": payload?.name,
     "stage": payload?.stage,
