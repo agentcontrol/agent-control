@@ -53,6 +53,7 @@ def test_create_control_creates_initial_version_row(client: TestClient) -> None:
     assert version.snapshot["name"] == control_name
     assert version.snapshot["data"]["description"] == VALID_CONTROL_PAYLOAD["description"]
     assert version.snapshot["deleted_at"] is None
+    assert version.snapshot["cloned_from_control_id"] is None
     assert version.snapshot["cloned_control_id"] is None
 
 

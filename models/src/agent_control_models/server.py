@@ -347,6 +347,9 @@ class GetControlResponse(BaseModel):
 
     id: int = Field(..., description="Control ID")
     name: str = Field(..., description="Control name")
+    cloned_from_control_id: int | None = Field(
+        None, description="Source control ID when this control is a clone."
+    )
     data: ControlDefinition | UnrenderedTemplateControl = Field(
         description=(
             "Control configuration data. A ControlDefinition for raw/rendered "
@@ -514,11 +517,46 @@ class AgentRef(BaseModel):
     agent_name: str = Field(..., description="Agent name")
 
 
+class PolicyRef(BaseModel):
+    """Reference to a policy attached to a control."""
+
+    policy_id: int = Field(..., description="Policy ID")
+
+
+class TargetAttachmentRef(BaseModel):
+    """Reference to a target binding attached to a control."""
+
+    binding_id: int = Field(..., description="Control binding ID")
+    target_type: str = Field(..., description="Opaque target kind")
+    target_id: str = Field(..., description="Opaque target identifier")
+    enabled: bool = Field(..., description="Whether this target binding is enabled")
+
+
+class ControlAttachments(BaseModel):
+    """Attachments for a listed control."""
+
+    agents: list[AgentRef] = Field(
+        default_factory=list,
+        description="Direct agent associations for this control",
+    )
+    policies: list[PolicyRef] = Field(
+        default_factory=list,
+        description="Policy associations for this control",
+    )
+    targets: list[TargetAttachmentRef] = Field(
+        default_factory=list,
+        description="Target bindings for this control",
+    )
+
+
 class ControlSummary(BaseModel):
     """Summary of a control for list responses."""
 
     id: int = Field(..., description="Control ID")
     name: str = Field(..., description="Control name")
+    cloned_from_control_id: int | None = Field(
+        None, description="Source control ID when this control is a clone."
+    )
     description: str | None = Field(None, description="Control description")
     enabled: bool = Field(True, description="Whether control is enabled")
     execution: str | None = Field(None, description="'server' or 'sdk'")
@@ -541,6 +579,13 @@ class ControlSummary(BaseModel):
     # TODO: Follow-up with full `used_by_agents` list for richer attribution.
     used_by_agents_count: int = Field(
         0, description="Number of unique agents using this control"
+    )
+    attachments: ControlAttachments | None = Field(
+        None,
+        description=(
+            "Expanded attachment details. Present when list controls is called "
+            "with include_attachments=true."
+        ),
     )
 
 
@@ -580,7 +625,7 @@ class GetControlVersionResponse(BaseModel):
         ...,
         description=(
             "Raw persisted snapshot of the control state at this version, including "
-            "metadata such as name, deleted_at, and cloned_control_id."
+            "metadata such as name, deleted_at, and cloned_from_control_id."
         ),
     )
 
@@ -633,6 +678,50 @@ ControlBindingTargetField = Annotated[
     str,
     StringConstraints(min_length=1, max_length=255),
 ]
+
+
+class CloneAndBindTargetBinding(BaseModel):
+    """Target binding to create for a cloned control."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_type: ControlBindingTargetField = Field(
+        ...,
+        description="Opaque attachment kind (caller-defined; e.g. 'environment', 'session').",
+    )
+    target_id: ControlBindingTargetField = Field(
+        ..., description="Opaque external identifier within the target_type."
+    )
+    enabled: bool = Field(
+        default=True,
+        description="Whether the created binding is active.",
+    )
+
+
+class CloneAndBindControlRequest(BaseModel):
+    """Request to clone a control and attach the clone to one target."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: SlugName | None = Field(
+        None,
+        description=(
+            "Optional unique name for the cloned control. If omitted, the server "
+            "generates a name from the source control name."
+        ),
+    )
+    target_binding: CloneAndBindTargetBinding = Field(
+        ..., description="Target binding to create for the cloned control."
+    )
+
+
+class CloneAndBindControlResponse(BaseModel):
+    """Response from cloning and binding a control."""
+
+    control_id: int = Field(..., description="Identifier of the cloned control.")
+    name: str = Field(..., description="Name of the cloned control.")
+    cloned_from_control_id: int = Field(..., description="Source control ID.")
+    binding_id: int = Field(..., description="Identifier of the created binding.")
 
 
 class CreateControlBindingRequest(BaseModel):
@@ -759,4 +848,3 @@ class DeleteControlBindingByKeyResponse(BaseModel):
             "binding existed."
         ),
     )
-

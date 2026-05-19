@@ -3,6 +3,7 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
@@ -28,6 +29,10 @@ export type GetControlResponseData =
  * Response containing control details.
  */
 export type GetControlResponse = {
+  /**
+   * Source control ID when this control is a clone.
+   */
+  clonedFromControlId?: number | null | undefined;
   /**
    * Control configuration data. A ControlDefinition for raw/rendered controls or an UnrenderedTemplateControl for unrendered templates.
    */
@@ -65,14 +70,22 @@ export function getControlResponseDataFromJSON(
 export const GetControlResponse$inboundSchema: z.ZodMiniType<
   GetControlResponse,
   unknown
-> = z.object({
-  data: smartUnion([
-    ControlDefinitionOutput$inboundSchema,
-    UnrenderedTemplateControl$inboundSchema,
-  ]),
-  id: types.number(),
-  name: types.string(),
-});
+> = z.pipe(
+  z.object({
+    cloned_from_control_id: z.optional(z.nullable(types.number())),
+    data: smartUnion([
+      ControlDefinitionOutput$inboundSchema,
+      UnrenderedTemplateControl$inboundSchema,
+    ]),
+    id: types.number(),
+    name: types.string(),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "cloned_from_control_id": "clonedFromControlId",
+    });
+  }),
+);
 
 export function getControlResponseFromJSON(
   jsonString: string,

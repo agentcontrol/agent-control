@@ -5,22 +5,30 @@ import uuid
 from collections.abc import AsyncGenerator
 from copy import deepcopy
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_models import ConditionNode
+from agent_control_models.errors import ErrorCode
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from agent_control_server.auth_framework import Principal
+from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.db import get_async_db
 from agent_control_server.endpoints import controls as controls_module
+from agent_control_server.errors import BadRequestError, ForbiddenError
 from agent_control_server.main import app
-from agent_control_server.models import DEFAULT_NAMESPACE_KEY, Control
+from agent_control_server.models import (
+    DEFAULT_NAMESPACE_KEY,
+    Control,
+    ControlBinding,
+    ControlVersion,
+)
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -58,6 +66,503 @@ def _insert_unconfigured_control(name: str | None = None) -> tuple[int, str]:
 def _set_control_data(client: TestClient, control_id: int, data: dict) -> None:
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": data})
     assert resp.status_code == 200, resp.text
+
+
+def test_clone_and_bind_creates_cloned_control_binding_and_version(
+    client: TestClient,
+) -> None:
+    source_id, source_name = _create_control(client)
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-123",
+                "enabled": False,
+            }
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    clone_id = body["control_id"]
+    binding_id = body["binding_id"]
+    assert clone_id != source_id
+    assert body["name"].startswith(f"{source_name}-clone-")
+    assert body["cloned_from_control_id"] == source_id
+
+    with Session(engine) as session:
+        source = session.get_one(Control, source_id)
+        clone = session.get_one(Control, clone_id)
+        binding = session.execute(
+            select(ControlBinding).where(ControlBinding.id == binding_id)
+        ).scalar_one()
+        version = session.execute(
+            select(ControlVersion).where(ControlVersion.control_id == clone_id)
+        ).scalar_one()
+
+    assert clone.namespace_key == source.namespace_key
+    assert clone.data == source.data
+    assert clone.cloned_from_control_id == source_id
+    assert binding.control_id == clone_id
+    assert binding.target_type == "log_stream"
+    assert binding.target_id == "logstream-123"
+    assert binding.enabled is False
+    assert version.version_num == 1
+    assert version.event_type == "cloned"
+    assert version.note == f"Cloned from control {source_id}"
+    assert version.snapshot["cloned_from_control_id"] == source_id
+    assert version.snapshot["cloned_control_id"] == source_id
+
+    get_resp = client.get(f"/api/v1/controls/{clone_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["cloned_from_control_id"] == source_id
+
+
+def test_control_clone_lineage_enforces_same_namespace() -> None:
+    source = Control(
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        name=f"source-{uuid.uuid4()}",
+        data=deepcopy(VALID_CONTROL_PAYLOAD),
+    )
+    clone = Control(
+        namespace_key="other-namespace",
+        name=f"clone-{uuid.uuid4()}",
+        data=deepcopy(VALID_CONTROL_PAYLOAD),
+        cloned_from_control_id=1,
+    )
+
+    with Session(engine) as session:
+        session.add(source)
+        session.flush()
+        clone.cloned_from_control_id = int(source.id)
+        session.add(clone)
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+
+def test_clone_and_bind_generated_name_falls_back_for_legacy_name(
+    client: TestClient,
+) -> None:
+    legacy_name = "legacy control name"
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO controls (name, data) VALUES (:name, CAST(:data AS JSONB))"
+            ),
+            {
+                "name": legacy_name,
+                "data": json.dumps(VALID_CONTROL_PAYLOAD),
+            },
+        )
+        row = conn.execute(
+            text("SELECT id FROM controls WHERE name = :name"),
+            {"name": legacy_name},
+        ).fetchone()
+        assert row is not None
+        source_id = row[0]
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-legacy-name",
+            },
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"].startswith(f"control-{source_id}-clone-")
+
+
+def test_list_controls_filters_by_cloned_state(client: TestClient) -> None:
+    source_id, _ = _create_control(client, name=f"Root-{uuid.uuid4()}")
+    clone_name = f"Clone-{uuid.uuid4()}"
+    clone_resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "name": clone_name,
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-456",
+            },
+        },
+    )
+    assert clone_resp.status_code == 200, clone_resp.text
+    clone_id = clone_resp.json()["control_id"]
+
+    root_resp = client.get("/api/v1/controls", params={"cloned": False, "limit": 100})
+    assert root_resp.status_code == 200
+    root_ids = {control["id"] for control in root_resp.json()["controls"]}
+    assert source_id in root_ids
+    assert clone_id not in root_ids
+
+    clone_list_resp = client.get(
+        "/api/v1/controls", params={"cloned": True, "limit": 100}
+    )
+    assert clone_list_resp.status_code == 200
+    cloned_controls = clone_list_resp.json()["controls"]
+    cloned_ids = {control["id"] for control in cloned_controls}
+    assert clone_id in cloned_ids
+    assert source_id not in cloned_ids
+    listed_clone = next(control for control in cloned_controls if control["id"] == clone_id)
+    assert listed_clone["cloned_from_control_id"] == source_id
+
+
+def test_clone_and_bind_returns_conflict_for_duplicate_clone_name(
+    client: TestClient,
+) -> None:
+    _, existing_name = _create_control(client)
+    source_id, _ = _create_control(client)
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "name": existing_name,
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-789",
+            },
+        },
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
+
+
+def test_clone_and_bind_integrity_error_name_conflict_returns_409(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_id, _ = _create_control(client)
+
+    async def fail_create_version(
+        self: controls_module.ControlService,
+        control: Control,
+        *,
+        event_type: str,
+        note: str,
+    ) -> None:
+        _ = (self, control, event_type, note)
+        raise _make_integrity_error("idx_controls_namespace_name_active")
+
+    monkeypatch.setattr(
+        controls_module.ControlService,
+        "create_version",
+        fail_create_version,
+    )
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "name": f"race-{uuid.uuid4()}",
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-race",
+            },
+        },
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "CONTROL_NAME_CONFLICT"
+
+
+def test_clone_and_bind_generated_name_retries_preflight_conflicts(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_id, source_name = _create_control(client, name=f"source-{uuid.uuid4()}")
+    first_suffix = "1111111111111111"
+    second_suffix = "2222222222222222"
+    _create_control(client, name=f"{source_name}-clone-{first_suffix}")
+    suffixes = iter([first_suffix, second_suffix])
+
+    def fake_uuid4() -> SimpleNamespace:
+        return SimpleNamespace(hex=next(suffixes))
+
+    monkeypatch.setattr(controls_module.uuid, "uuid4", fake_uuid4)
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-retry-name",
+            },
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["name"] == f"{source_name}-clone-{second_suffix}"
+
+
+def test_clone_and_bind_rolls_back_clone_when_binding_fails(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_id, _ = _create_control(client)
+    clone_name = f"CloneRollback-{uuid.uuid4()}"
+
+    async def fail_create_binding(*args: Any, **kwargs: Any) -> None:
+        raise BadRequestError(
+            error_code=ErrorCode.CONTROL_BINDING_INCOMPATIBLE,
+            detail="Binding failed after clone creation.",
+            resource="ControlBinding",
+        )
+
+    monkeypatch.setattr(
+        controls_module.ControlBindingsService,
+        "create_binding",
+        fail_create_binding,
+    )
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "name": clone_name,
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-rollback",
+            },
+        },
+    )
+
+    assert resp.status_code == 400
+    with Session(engine) as session:
+        clone = session.execute(
+            select(Control).where(Control.name == clone_name)
+        ).scalar_one_or_none()
+    assert clone is None
+
+
+def test_clone_and_bind_locks_source_control(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_id, _ = _create_control(client)
+    original_get_active = controls_module.ControlService.get_active_control_or_404
+    seen_for_update: list[bool] = []
+
+    async def recording_get_active(
+        self: controls_module.ControlService,
+        control_id_arg: int,
+        *,
+        namespace_key: str | None = None,
+        for_update: bool = False,
+    ) -> Control:
+        seen_for_update.append(for_update)
+        return await original_get_active(
+            self,
+            control_id_arg,
+            namespace_key=namespace_key,
+            for_update=for_update,
+        )
+
+    monkeypatch.setattr(
+        controls_module.ControlService,
+        "get_active_control_or_404",
+        recording_get_active,
+    )
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-lock",
+            },
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert seen_for_update == [True]
+
+
+def test_clone_and_bind_rejects_auth_namespace_mismatch(client: TestClient) -> None:
+    source_id, _ = _create_control(client)
+
+    class MismatchedNamespaceAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            namespace_key = (
+                "other-namespace"
+                if operation == Operation.CONTROL_BINDINGS_WRITE
+                else DEFAULT_NAMESPACE_KEY
+            )
+            return Principal(namespace_key=namespace_key, is_admin=True)
+
+    set_authorizer(MismatchedNamespaceAuthorizer())
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-mismatch",
+            },
+        },
+    )
+
+    assert resp.status_code == 403
+    assert resp.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
+
+
+def test_clone_and_bind_requires_source_read_authorization(
+    client: TestClient,
+) -> None:
+    source_id, _ = _create_control(client)
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class ReadMismatchAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            namespace_key = (
+                "other-namespace"
+                if operation == Operation.CONTROLS_READ
+                else DEFAULT_NAMESPACE_KEY
+            )
+            return Principal(namespace_key=namespace_key, is_admin=True)
+
+    set_authorizer(ReadMismatchAuthorizer())
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-read-auth",
+            },
+        },
+    )
+
+    assert resp.status_code == 403
+    assert resp.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
+    read_contexts = [
+        context for operation, context in calls if operation == Operation.CONTROLS_READ
+    ]
+    assert read_contexts == [None]
+
+
+def test_clone_and_bind_context_tolerates_invalid_body_shapes(
+    client: TestClient,
+) -> None:
+    resp = client.post(
+        "/api/v1/controls/1/clone-and-bind",
+        content="{",
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 422
+
+    list_resp = client.post("/api/v1/controls/1/clone-and-bind", json=[])
+    assert list_resp.status_code == 422
+
+    bad_target_resp = client.post(
+        "/api/v1/controls/1/clone-and-bind",
+        json={"target_binding": "not-an-object"},
+    )
+    assert bad_target_resp.status_code == 422
+
+
+def test_clone_and_bind_context_drops_invalid_target_fields(
+    client: TestClient,
+) -> None:
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class RecordingAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(RecordingAuthorizer())
+
+    resp = client.post(
+        "/api/v1/controls/1/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": ["log_stream"],
+                "target_id": {"id": "logstream-invalid"},
+            },
+        },
+    )
+
+    assert resp.status_code == 422
+    binding_contexts = [
+        context
+        for operation, context in calls
+        if operation == Operation.CONTROL_BINDINGS_WRITE
+    ]
+    assert binding_contexts == [{}]
+
+
+def test_clone_and_bind_context_drops_overlong_target_fields(
+    client: TestClient,
+) -> None:
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class RecordingAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(RecordingAuthorizer())
+
+    resp = client.post(
+        "/api/v1/controls/1/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": "x" * 256,
+                "target_id": "logstream-invalid",
+            },
+        },
+    )
+
+    assert resp.status_code == 422
+    binding_contexts = [
+        context
+        for operation, context in calls
+        if operation == Operation.CONTROL_BINDINGS_WRITE
+    ]
+    assert binding_contexts == [{}]
+
+
+def test_clone_and_bind_rejects_unknown_target_binding_fields(
+    client: TestClient,
+) -> None:
+    source_id, _ = _create_control(client)
+
+    resp = client.post(
+        f"/api/v1/controls/{source_id}/clone-and-bind",
+        json={
+            "target_binding": {
+                "target_type": "log_stream",
+                "target_id": "logstream-extra",
+                "unknown_field": "ignored-before",
+            },
+        },
+    )
+
+    assert resp.status_code == 422
 
 
 @pytest.mark.parametrize(
@@ -696,17 +1201,207 @@ def test_delete_control_force_dissociates_direct_agent_links(client: TestClient)
     assert list_resp.json()["pagination"]["total"] == 0
 
 
-def _create_target_binding(client: TestClient, *, control_id: int) -> int:
+def _create_target_binding(
+    client: TestClient,
+    *,
+    control_id: int,
+    target_type: str = "env",
+    target_id: str = "prod",
+    enabled: bool = True,
+) -> int:
     resp = client.put(
         "/api/v1/control-bindings",
         json={
-            "target_type": "env",
-            "target_id": "prod",
+            "target_type": target_type,
+            "target_id": target_id,
             "control_id": control_id,
+            "enabled": enabled,
         },
     )
     assert resp.status_code == 200, resp.text
     return int(resp.json()["binding_id"])
+
+
+def test_list_controls_returns_null_attachments_by_default(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    resp = client.get("/api/v1/controls", params={"name": control_name})
+
+    assert resp.status_code == 200, resp.text
+    controls = resp.json()["controls"]
+    assert len(controls) == 1
+    assert controls[0]["id"] == control_id
+    assert controls[0]["attachments"] is None
+
+
+def test_list_controls_expands_filtered_control_attachments(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    policy_resp = client.put("/api/v1/policies", json={"name": f"pol-{uuid.uuid4()}"})
+    assert policy_resp.status_code == 200
+    policy_id = policy_resp.json()["policy_id"]
+    policy_assoc_resp = client.post(f"/api/v1/policies/{policy_id}/controls/{control_id}")
+    assert policy_assoc_resp.status_code == 200
+
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    init_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert init_resp.status_code == 200
+    agent_assoc_resp = client.post(f"/api/v1/agents/{agent_name}/controls/{control_id}")
+    assert agent_assoc_resp.status_code == 200
+
+    included_binding_id = _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="log_stream",
+        target_id="ls-prod",
+        enabled=False,
+    )
+    _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="log_stream",
+        target_id="ls-dev",
+    )
+    _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="environment",
+        target_id="prod",
+    )
+
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": control_name,
+            "include_attachments": "true",
+            "attachment_target_type": "log_stream",
+            "attachment_target_id": "ls-prod",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    controls = resp.json()["controls"]
+    assert len(controls) == 1
+    assert controls[0]["attachments"] == {
+        "agents": [{"agent_name": agent_name}],
+        "policies": [{"policy_id": policy_id}],
+        "targets": [
+            {
+                "binding_id": included_binding_id,
+                "target_type": "log_stream",
+                "target_id": "ls-prod",
+                "enabled": False,
+            }
+        ],
+    }
+
+
+def test_list_controls_omits_targets_without_binding_read_authorization(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="log_stream",
+        target_id="ls-prod",
+    )
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class BindingReadDenyAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            if operation == Operation.CONTROL_BINDINGS_READ:
+                raise ForbiddenError(
+                    error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                    detail="No target read access.",
+                )
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(BindingReadDenyAuthorizer())
+
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": control_name,
+            "include_attachments": "true",
+            "attachment_target_type": "log_stream",
+            "attachment_target_id": "ls-prod",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    controls = resp.json()["controls"]
+    assert controls[0]["attachments"] == {
+        "agents": [],
+        "policies": [],
+        "targets": [],
+    }
+    assert (
+        Operation.CONTROL_BINDINGS_READ,
+        {"target_type": "log_stream", "target_id": "ls-prod"},
+    ) in calls
+
+
+def test_list_controls_rejects_attachment_namespace_mismatch(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    class MismatchedBindingReadAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            namespace_key = (
+                "other-namespace"
+                if operation == Operation.CONTROL_BINDINGS_READ
+                else DEFAULT_NAMESPACE_KEY
+            )
+            return Principal(namespace_key=namespace_key, is_admin=True)
+
+    set_authorizer(MismatchedBindingReadAuthorizer())
+
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": control_name,
+            "include_attachments": "true",
+        },
+    )
+
+    assert resp.status_code == 403
+    assert resp.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
+
+
+def test_list_controls_rejects_attachment_filters_without_expansion(
+    client: TestClient,
+) -> None:
+    resp = client.get(
+        "/api/v1/controls",
+        params={"attachment_target_type": "log_stream"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["error_code"] == "VALIDATION_ERROR"
 
 
 def test_delete_control_blocks_when_target_binding_exists(

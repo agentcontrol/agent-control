@@ -180,6 +180,11 @@ actions:
       x-speakeasy-group: controls
       x-speakeasy-name-override: delete
 
+  - target: $["paths"]["/api/v1/controls/{control_id}/clone-and-bind"]["post"]
+    update:
+      x-speakeasy-group: controls
+      x-speakeasy-name-override: cloneAndBindControl
+
   - target: $["paths"]["/api/v1/controls/{control_id}/data"]["get"]
     update:
       x-speakeasy-group: controls
