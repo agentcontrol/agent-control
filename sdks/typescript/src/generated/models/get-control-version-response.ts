@@ -26,7 +26,7 @@ export type GetControlVersionResponse = {
    */
   note?: string | null | undefined;
   /**
-   * Raw persisted snapshot of the control state at this version, including metadata such as name, deleted_at, and cloned_control_id.
+   * Raw persisted snapshot of the control state at this version, including metadata such as name, deleted_at, and cloned_from_control_id.
    */
   snapshot: { [k: string]: any };
   /**

@@ -173,6 +173,45 @@ class ControlBindingsService:
         await self._db.flush()
         return True
 
+    async def set_enabled_by_natural_key(
+        self,
+        *,
+        namespace_key: str,
+        target_type: str,
+        target_id: str,
+        control_id: int,
+        enabled: bool,
+    ) -> ControlBinding:
+        """Update an existing binding by natural key.
+
+        Unlike ``upsert_by_natural_key``, this never creates a binding.
+        It is intended for target-scoped callers that need to toggle an
+        already-attached control while preserving a clear 404 for missing
+        attachments.
+        """
+        existing = await self._find_by_natural_key(
+            namespace_key=namespace_key,
+            target_type=target_type,
+            target_id=target_id,
+            control_id=control_id,
+        )
+        if existing is None:
+            raise NotFoundError(
+                error_code=ErrorCode.CONTROL_BINDING_NOT_FOUND,
+                detail=(
+                    "Control binding not found for the supplied "
+                    "(target_type, target_id, control_id)."
+                ),
+                resource="ControlBinding",
+                hint=(
+                    "Verify the target and control IDs, or attach the control "
+                    "before updating the binding."
+                ),
+            )
+        existing.enabled = enabled
+        await self._db.flush()
+        return existing
+
     async def _find_by_natural_key(
         self,
         *,

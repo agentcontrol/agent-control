@@ -14,6 +14,7 @@ from agent_control_models.server import (
     GetControlBindingResponse,
     ListControlBindingsResponse,
     PaginationInfo,
+    PatchControlBindingByKeyRequest,
     PatchControlBindingRequest,
     PatchControlBindingResponse,
     UpsertControlBindingRequest,
@@ -212,6 +213,40 @@ async def get_control_binding(
         namespace_key=principal.namespace_key, binding_id=binding_id
     )
     return _to_response(binding)
+
+
+@router.patch(
+    "/by-key",
+    response_model=PatchControlBindingResponse,
+    summary="Update a control binding by natural key",
+    response_description="Updated enabled flag",
+)
+async def patch_control_binding_by_key(
+    request: PatchControlBindingByKeyRequest,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(
+        require_operation(
+            Operation.CONTROL_BINDINGS_WRITE,
+            context_builder=_binding_body_context,
+        )
+    ),
+) -> PatchControlBindingResponse:
+    """Update an existing binding using ``(target_type, target_id, control_id)``.
+
+    This route is target-scoped because the request body includes the target
+    identifiers before authorization runs. Unlike ``PUT /by-key``, it never
+    creates a missing binding.
+    """
+    service = ControlBindingsService(db)
+    binding = await service.set_enabled_by_natural_key(
+        namespace_key=principal.namespace_key,
+        target_type=request.target_type,
+        target_id=request.target_id,
+        control_id=request.control_id,
+        enabled=request.enabled,
+    )
+    await db.commit()
+    return PatchControlBindingResponse(success=True, enabled=binding.enabled)
 
 
 @router.patch(

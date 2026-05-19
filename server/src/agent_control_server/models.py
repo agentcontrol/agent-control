@@ -157,6 +157,13 @@ class Control(Base):
         UniqueConstraint(
             "namespace_key", "id", name="uq_controls_namespace_id"
         ),
+        # Hard deletes of clone sources are restricted. The request path
+        # soft-deletes controls so clone lineage remains intact.
+        ForeignKeyConstraint(
+            ["namespace_key", "cloned_from_control_id"],
+            ["controls.namespace_key", "controls.id"],
+            name="controls_cloned_from_control_fkey",
+        ),
         # Plain partial index on name preserves name-only lookup performance
         # while service code is still namespace-blind. Mirrors the pattern
         # used for agents and policies; the partial filter matches the
@@ -166,6 +173,13 @@ class Control(Base):
             "name",
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "idx_controls_cloned_from",
+            "namespace_key",
+            "cloned_from_control_id",
+            postgresql_where=text("cloned_from_control_id IS NOT NULL"),
+            sqlite_where=text("cloned_from_control_id IS NOT NULL"),
         ),
     )
 
@@ -177,6 +191,9 @@ class Control(Base):
     # JSONB payload describing control specifics
     data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
+    )
+    cloned_from_control_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
     )
     deleted_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
