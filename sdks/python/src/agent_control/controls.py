@@ -280,7 +280,7 @@ async def clone_and_bind_control(
         enabled: Whether the created binding is active
 
     Returns:
-        Dictionary containing control_id, name, cloned_from_control_id, and binding_id.
+        Dictionary containing id, name, cloned_from_control_id, and binding_id.
     """
     payload: dict[str, Any] = {
         "target_binding": {

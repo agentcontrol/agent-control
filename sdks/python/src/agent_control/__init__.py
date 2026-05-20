@@ -79,7 +79,7 @@ from agent_control_telemetry.trace_context import (
     set_trace_context_provider,
 )
 
-from . import agents, controls, evaluation, evaluators, policies
+from . import agents, control_bindings, controls, evaluation, evaluators, policies
 from ._control_registry import (
     StepSchemaDict,
     get_registered_steps,
@@ -1183,7 +1183,7 @@ async def clone_and_bind_control(
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
 
     Returns:
-        Dictionary containing control_id, name, cloned_from_control_id, and binding_id.
+        Dictionary containing id, name, cloned_from_control_id, and binding_id.
     """
     _final_server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
 
@@ -1576,6 +1576,7 @@ __all__ = [
     "agents",
     "policies",
     "controls",
+    "control_bindings",
     "evaluation",
     "evaluators",
     # Policy-Control management

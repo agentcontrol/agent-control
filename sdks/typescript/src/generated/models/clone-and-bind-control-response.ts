@@ -24,7 +24,7 @@ export type CloneAndBindControlResponse = {
   /**
    * Identifier of the cloned control.
    */
-  controlId: number;
+  id: number;
   /**
    * Name of the cloned control.
    */
@@ -39,14 +39,13 @@ export const CloneAndBindControlResponse$inboundSchema: z.ZodMiniType<
   z.object({
     binding_id: types.number(),
     cloned_from_control_id: types.number(),
-    control_id: types.number(),
+    id: types.number(),
     name: types.string(),
   }),
   z.transform((v) => {
     return remap$(v, {
       "binding_id": "bindingId",
       "cloned_from_control_id": "clonedFromControlId",
-      "control_id": "controlId",
     });
   }),
 );

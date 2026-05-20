@@ -7,6 +7,7 @@ import { controlBindingsDeleteByKey } from "../funcs/control-bindings-delete-by-
 import { controlBindingsDelete } from "../funcs/control-bindings-delete.js";
 import { controlBindingsGet } from "../funcs/control-bindings-get.js";
 import { controlBindingsList } from "../funcs/control-bindings-list.js";
+import { controlBindingsUpdateByKey } from "../funcs/control-bindings-update-by-key.js";
 import { controlBindingsUpdate } from "../funcs/control-bindings-update.js";
 import { controlBindingsUpsertByKey } from "../funcs/control-bindings-upsert-by-key.js";
 import { ClientSDK, RequestOptions } from "../lib/sdks.js";
@@ -52,6 +53,27 @@ export class ControlBindings extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.CreateControlBindingResponse> {
     return unwrapAsync(controlBindingsCreate(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * Update a control binding by natural key
+   *
+   * @remarks
+   * Update an existing binding using ``(target_type, target_id, control_id)``.
+   *
+   * This route is target-scoped because the request body includes the target
+   * identifiers before authorization runs. Unlike ``PUT /by-key``, it never
+   * creates a missing binding.
+   */
+  async updateByKey(
+    request: models.PatchControlBindingByKeyRequest,
+    options?: RequestOptions,
+  ): Promise<models.PatchControlBindingResponse> {
+    return unwrapAsync(controlBindingsUpdateByKey(
       this,
       request,
       options,

@@ -77,6 +77,7 @@ export * from "./login-response.js";
 export * from "./pagination-info.js";
 export * from "./patch-agent-request.js";
 export * from "./patch-agent-response.js";
+export * from "./patch-control-binding-by-key-request.js";
 export * from "./patch-control-binding-request.js";
 export * from "./patch-control-binding-response.js";
 export * from "./patch-control-request.js";

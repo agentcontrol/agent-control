@@ -14,6 +14,7 @@ from pydantic import (
 from .agent import Agent, StepSchema
 from .base import BaseModel
 from .controls import (
+    ControlAction,
     ControlDefinition,
     TemplateControlInput,
     TemplateDefinition,
@@ -560,6 +561,9 @@ class ControlSummary(BaseModel):
     description: str | None = Field(None, description="Control description")
     enabled: bool = Field(True, description="Whether control is enabled")
     execution: str | None = Field(None, description="'server' or 'sdk'")
+    action: ControlAction | None = Field(
+        None, description="Action applied when the control matches."
+    )
     step_types: list[str] | None = Field(None, description="Step types in scope")
     stages: list[str] | None = Field(None, description="Evaluation stages in scope")
     tags: list[str] = Field(default_factory=list, description="Control tags")
@@ -718,7 +722,7 @@ class CloneAndBindControlRequest(BaseModel):
 class CloneAndBindControlResponse(BaseModel):
     """Response from cloning and binding a control."""
 
-    control_id: int = Field(..., description="Identifier of the cloned control.")
+    id: int = Field(..., description="Identifier of the cloned control.")
     name: str = Field(..., description="Name of the cloned control.")
     cloned_from_control_id: int = Field(..., description="Source control ID.")
     binding_id: int = Field(..., description="Identifier of the created binding.")
@@ -828,6 +832,21 @@ class UpsertControlBindingResponse(BaseModel):
         ),
     )
     enabled: bool = Field(..., description="Current enabled value.")
+
+
+class PatchControlBindingByKeyRequest(BaseModel):
+    """Request to update an existing control binding by natural key."""
+
+    target_type: ControlBindingTargetField = Field(
+        ..., description="Opaque attachment kind."
+    )
+    target_id: ControlBindingTargetField = Field(
+        ..., description="Opaque external identifier within the target_type."
+    )
+    control_id: int = Field(
+        ..., gt=0, description="ID of the bound control."
+    )
+    enabled: bool = Field(..., description="New enabled value for the binding.")
 
 
 class DeleteControlBindingByKeyRequest(BaseModel):

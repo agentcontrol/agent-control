@@ -124,7 +124,7 @@ async def test_clone_and_bind_control_calls_clone_endpoint() -> None:
     response.raise_for_status = Mock()
     response.json = Mock(
         return_value={
-            "control_id": 456,
+            "id": 456,
             "name": "clone-name",
             "cloned_from_control_id": 123,
             "binding_id": 789,
@@ -143,7 +143,7 @@ async def test_clone_and_bind_control_calls_clone_endpoint() -> None:
     )
 
     # Then: the SDK posts the expected payload
-    assert result["control_id"] == 456
+    assert result["id"] == 456
     client.http_client.post.assert_awaited_once_with(
         "/api/v1/controls/123/clone-and-bind",
         json={
@@ -214,7 +214,7 @@ async def test_top_level_clone_and_bind_control_uses_ad_hoc_client(
         captured["client"] = client
         captured["control_id"] = control_id
         captured["clone_kwargs"] = kwargs
-        return {"control_id": 456, "binding_id": 789}
+        return {"id": 456, "binding_id": 789}
 
     monkeypatch.setattr(agent_control, "_ad_hoc_client", fake_ad_hoc_client)
     monkeypatch.setattr(

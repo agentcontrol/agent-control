@@ -86,7 +86,7 @@ def test_clone_and_bind_creates_cloned_control_binding_and_version(
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    clone_id = body["control_id"]
+    clone_id = body["id"]
     binding_id = body["binding_id"]
     assert clone_id != source_id
     assert body["name"].startswith(f"{source_name}-clone-")
@@ -191,7 +191,7 @@ def test_list_controls_filters_by_cloned_state(client: TestClient) -> None:
         },
     )
     assert clone_resp.status_code == 200, clone_resp.text
-    clone_id = clone_resp.json()["control_id"]
+    clone_id = clone_resp.json()["id"]
 
     root_resp = client.get("/api/v1/controls", params={"cloned": False, "limit": 100})
     assert root_resp.status_code == 200
@@ -765,6 +765,7 @@ def test_list_controls_filters_and_pagination(client: TestClient) -> None:
     control = resp.json()["controls"][0]
     assert control["name"] == control3_name
     assert control["enabled"] is True
+    assert control["action"] == {"decision": "deny", "steering_context": None}
 
     # When: paginating
     resp = client.get("/api/v1/controls", params={"limit": 1})

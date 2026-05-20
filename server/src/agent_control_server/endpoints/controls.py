@@ -852,7 +852,7 @@ async def clone_and_bind_control(
         )
 
     return CloneAndBindControlResponse(
-        control_id=clone.id,
+        id=clone.id,
         name=clone.name,
         cloned_from_control_id=source.id,
         binding_id=binding.id,
@@ -1271,6 +1271,7 @@ async def list_controls(
                 ),
                 enabled=data.get("enabled", True),
                 execution=data.get("execution"),
+                action=data.get("action"),
                 step_types=scope.get("step_types"),
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
