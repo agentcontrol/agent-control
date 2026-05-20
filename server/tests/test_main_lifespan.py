@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from agent_control_server import main as main_module
 from agent_control_server.config import observability_settings, settings
 from agent_control_server.main import lifespan
@@ -11,6 +8,8 @@ from agent_control_server.observability.sinks import (
     register_control_event_sink_factory,
     unregister_control_event_sink_factory,
 )
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 def test_lifespan_initializes_observability_when_enabled(monkeypatch) -> None:
@@ -230,3 +229,20 @@ def test_run_uses_settings(monkeypatch) -> None:
     assert called["host"] == "127.0.0.1"
     assert called["port"] == 9999
     assert called["log_level"] == "debug"
+
+
+def test_run_disables_uvicorn_log_config_when_host_owns_logging(monkeypatch) -> None:
+    called = {}
+
+    def fake_run(app, **kwargs):  # type: ignore[no-untyped-def]
+        called.update(kwargs)
+
+    monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "false")
+    monkeypatch.setattr(main_module.uvicorn, "run", fake_run)
+    monkeypatch.setattr(settings, "host", "127.0.0.1")
+    monkeypatch.setattr(settings, "port", 9999)
+    monkeypatch.setattr(settings, "debug", False)
+
+    main_module.run()
+
+    assert called["log_config"] is None
