@@ -58,8 +58,10 @@ export class Controls extends ClientSDK {
    *     execution: Optional filter by execution ('server' or 'sdk')
    *     tag: Optional filter by tag
    *     include_attachments: Whether to include attachment details for listed controls
-   *     attachment_target_type: Optional target binding type filter for attachments
-   *     attachment_target_id: Optional target binding ID filter for attachments
+   *     attachment_target_type: Optional target binding type filter for controls and
+   *         attachments
+   *     attachment_target_id: Optional target binding ID filter for controls and
+   *         attachments
    *     db: Database session (injected)
    *
    * Returns:

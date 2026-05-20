@@ -13,7 +13,7 @@ from agent_control_models import (
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.policy import Control as APIControl
 from pydantic import ValidationError
-from sqlalchemy import Integer, String, delete, func, literal, or_, select, union, union_all
+from sqlalchemy import Integer, String, delete, exists, func, literal, or_, select, union, union_all
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
@@ -457,6 +457,8 @@ class ControlService:
         stage: str | None,
         execution: str | None,
         tag: str | None,
+        attachment_target_type: str | None = None,
+        attachment_target_id: str | None = None,
     ) -> ControlListPage:
         """Return paginated active controls for the browse endpoint."""
         query = (
@@ -474,6 +476,12 @@ class ControlService:
             stage=stage,
             execution=execution,
             tag=tag,
+        )
+        query = self._apply_control_attachment_filters(
+            query,
+            namespace_key=namespace_key,
+            target_type=attachment_target_type,
+            target_id=attachment_target_id,
         )
         if cursor is not None:
             query = query.where(Control.id < cursor)
@@ -496,6 +504,12 @@ class ControlService:
             stage=stage,
             execution=execution,
             tag=tag,
+        )
+        total_query = self._apply_control_attachment_filters(
+            total_query,
+            namespace_key=namespace_key,
+            target_type=attachment_target_type,
+            target_id=attachment_target_id,
         )
         total_result = await self._db.execute(total_query)
         total = cast(int, total_result.scalar_one())
@@ -990,6 +1004,28 @@ class ControlService:
             stmt = stmt.where(Control.data["tags"].contains([tag]))
 
         return stmt
+
+    def _apply_control_attachment_filters(
+        self,
+        stmt: Select[Any],
+        *,
+        namespace_key: str,
+        target_type: str | None,
+        target_id: str | None,
+    ) -> Select[Any]:
+        """Restrict a control list to controls with matching target bindings."""
+        if target_type is None and target_id is None:
+            return stmt
+
+        binding_exists = exists().where(
+            ControlBinding.namespace_key == namespace_key,
+            ControlBinding.control_id == Control.id,
+        )
+        if target_type is not None:
+            binding_exists = binding_exists.where(ControlBinding.target_type == target_type)
+        if target_id is not None:
+            binding_exists = binding_exists.where(ControlBinding.target_id == target_id)
+        return stmt.where(binding_exists)
 
     @staticmethod
     def _build_snapshot(control: Control) -> dict[str, Any]:

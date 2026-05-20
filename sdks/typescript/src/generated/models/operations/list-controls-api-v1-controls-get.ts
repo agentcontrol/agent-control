@@ -48,11 +48,11 @@ export type ListControlsApiV1ControlsGetRequest = {
    */
   includeAttachments?: boolean | undefined;
   /**
-   * Optional target_type filter applied to expanded target bindings. Only used when include_attachments=true.
+   * Optional target_type filter applied to the returned controls and expanded target bindings. Only used when include_attachments=true.
    */
   attachmentTargetType?: string | null | undefined;
   /**
-   * Optional target_id filter applied to expanded target bindings. Only used when include_attachments=true.
+   * Optional target_id filter applied to the returned controls and expanded target bindings. Only used when include_attachments=true.
    */
   attachmentTargetId?: string | null | undefined;
 };

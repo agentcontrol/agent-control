@@ -1158,7 +1158,8 @@ async def list_controls(
         min_length=1,
         max_length=255,
         description=(
-            "Optional target_type filter applied to expanded target bindings. "
+            "Optional target_type filter applied to the returned controls and "
+            "expanded target bindings. "
             "Only used when include_attachments=true."
         ),
     ),
@@ -1167,7 +1168,8 @@ async def list_controls(
         min_length=1,
         max_length=255,
         description=(
-            "Optional target_id filter applied to expanded target bindings. "
+            "Optional target_id filter applied to the returned controls and "
+            "expanded target bindings. "
             "Only used when include_attachments=true."
         ),
     ),
@@ -1192,8 +1194,10 @@ async def list_controls(
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
         include_attachments: Whether to include attachment details for listed controls
-        attachment_target_type: Optional target binding type filter for attachments
-        attachment_target_id: Optional target binding ID filter for attachments
+        attachment_target_type: Optional target binding type filter for controls and
+            attachments
+        attachment_target_id: Optional target binding ID filter for controls and
+            attachments
         db: Database session (injected)
 
     Returns:
@@ -1223,6 +1227,9 @@ async def list_controls(
 
     control_service = ControlService(db)
     namespace_key = principal.namespace_key
+    filter_by_attachment = target_principal is not None and (
+        attachment_target_type is not None or attachment_target_id is not None
+    )
     page = await control_service.list_controls_page(
         namespace_key=namespace_key,
         cursor=cursor,
@@ -1235,6 +1242,8 @@ async def list_controls(
         stage=stage,
         execution=execution,
         tag=tag,
+        attachment_target_type=attachment_target_type if filter_by_attachment else None,
+        attachment_target_id=attachment_target_id if filter_by_attachment else None,
     )
     usage_by_control_id = await control_service.list_control_usage(
         [control.id for control in page.controls],

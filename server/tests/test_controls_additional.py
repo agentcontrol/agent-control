@@ -1238,6 +1238,52 @@ def test_list_controls_returns_null_attachments_by_default(
     assert controls[0]["attachments"] is None
 
 
+def test_list_controls_filters_by_target_attachment_before_pagination(
+    client: TestClient,
+) -> None:
+    prefix = f"AttachmentFilter-{uuid.uuid4()}"
+    target_id = f"ls-{uuid.uuid4()}"
+    matching_control_id, _ = _create_control(client, name=f"{prefix}-matching")
+    _set_control_data(client, matching_control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    matching_binding_id = _create_target_binding(
+        client,
+        control_id=matching_control_id,
+        target_type="log_stream",
+        target_id=target_id,
+    )
+
+    newer_unmatched_control_id, _ = _create_control(client, name=f"{prefix}-unmatched")
+    _set_control_data(client, newer_unmatched_control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": prefix,
+            "include_attachments": "true",
+            "attachment_target_type": "log_stream",
+            "attachment_target_id": target_id,
+            "limit": 1,
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["pagination"]["total"] == 1
+    assert body["pagination"]["has_more"] is False
+    controls = body["controls"]
+    assert len(controls) == 1
+    assert controls[0]["id"] == matching_control_id
+    assert controls[0]["id"] != newer_unmatched_control_id
+    assert controls[0]["attachments"]["targets"] == [
+        {
+            "binding_id": matching_binding_id,
+            "target_type": "log_stream",
+            "target_id": target_id,
+            "enabled": True,
+        }
+    ]
+
+
 def test_list_controls_expands_filtered_control_attachments(
     client: TestClient,
 ) -> None:
