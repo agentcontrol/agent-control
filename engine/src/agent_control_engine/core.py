@@ -224,6 +224,7 @@ class ControlEngine:
             "message": self._truncated_message(result.message),
         }
         metadata = dict(result.metadata or {})
+        metadata["selected_data"] = data
         metadata["condition_trace"] = trace
         return _ConditionEvaluation(
             result=result.model_copy(update={"metadata": metadata}),
@@ -269,7 +270,19 @@ class ControlEngine:
         *,
         matched: bool,
     ) -> dict[str, Any] | None:
-        """Select stable child metadata to preserve on composite results."""
+        """Select stable child metadata to preserve on composite results.
+
+        The selected_data value in this metadata is not all evaluator inputs.
+        It is the selected value from the leaf metadata the engine preserves for
+        the final composite result:
+        - or where one child matches: selected_data comes from the matching child.
+        - and where one child fails: selected_data comes from the failing child.
+        - and where all children match: selected_data comes from the first
+          matching child, usually the first leaf.
+        - or where no children match: selected_data comes from the first
+          evaluated child.
+        - not: selected_data comes from its child.
+        """
         source_result: EvaluatorResult | None = None
         if matched:
             source_result = next(

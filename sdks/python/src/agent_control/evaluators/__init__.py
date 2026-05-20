@@ -10,9 +10,10 @@ Evaluator Discovery:
 
     Then use `list_evaluators()` to get available evaluators.
 
-Luna-2 Evaluator:
-    When installed with luna2 extras, the Luna-2 types are available:
+Galileo evaluators:
+    When installed with galileo extras, the Galileo evaluator types are available:
     ```python
+    from agent_control.evaluators import LunaEvaluator, LunaEvaluatorConfig  # if galileo installed
     from agent_control.evaluators import Luna2Evaluator, Luna2EvaluatorConfig  # if luna2 installed
     ```
 """
@@ -37,6 +38,33 @@ __all__ = [
 
 # Optionally export Luna-2 types when available
 try:
+    from agent_control_evaluator_galileo.luna import (  # type: ignore[import-not-found]  # noqa: F401
+        LUNA_AVAILABLE,
+        GalileoLunaClient,
+        LunaEvaluator,
+        LunaEvaluatorConfig,
+        LunaOperator,
+        ScorerInvokeInputs,
+        ScorerInvokeRequest,
+        ScorerInvokeResponse,
+    )
+
+    __all__.extend(
+        [
+            "GalileoLunaClient",
+            "ScorerInvokeInputs",
+            "ScorerInvokeRequest",
+            "ScorerInvokeResponse",
+            "LunaEvaluator",
+            "LunaEvaluatorConfig",
+            "LunaOperator",
+            "LUNA_AVAILABLE",
+        ]
+    )
+except ImportError:
+    pass
+
+try:
     from agent_control_evaluator_galileo.luna2 import (  # type: ignore[import-not-found]  # noqa: F401
         LUNA2_AVAILABLE,
         Luna2Evaluator,
@@ -45,12 +73,14 @@ try:
         Luna2Operator,
     )
 
-    __all__.extend([
-        "Luna2Evaluator",
-        "Luna2EvaluatorConfig",
-        "Luna2Metric",
-        "Luna2Operator",
-        "LUNA2_AVAILABLE",
-    ])
+    __all__.extend(
+        [
+            "Luna2Evaluator",
+            "Luna2EvaluatorConfig",
+            "Luna2Metric",
+            "Luna2Operator",
+            "LUNA2_AVAILABLE",
+        ]
+    )
 except ImportError:
     pass

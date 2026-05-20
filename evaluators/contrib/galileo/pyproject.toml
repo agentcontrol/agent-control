@@ -23,6 +23,7 @@ dev = [
 ]
 
 [project.entry-points."agent_control.evaluators"]
+"galileo.luna" = "agent_control_evaluator_galileo.luna:LunaEvaluator"
 "galileo.luna2" = "agent_control_evaluator_galileo.luna2:Luna2Evaluator"
 
 [build-system]

@@ -120,6 +120,7 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
                     message="Evaluation complete"
                 )
         ```
+
     """
 
     metadata: ClassVar[EvaluatorMetadata]

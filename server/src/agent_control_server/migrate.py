@@ -110,6 +110,7 @@ def _acquire_migration_lock(connection: Connection, timeout_seconds: float) -> N
             ).scalar_one()
         )
         if acquired:
+            connection.commit()
             LOGGER.info("Acquired Agent Control migration advisory lock.")
             return
 
@@ -150,6 +151,7 @@ def _serialized_migration(cfg: Config, *, enabled: bool) -> Iterator[None]:
                         _MIGRATION_LOCK_PARAMS,
                     ).scalar_one()
                 )
+                connection.commit()
                 if released:
                     LOGGER.info("Released Agent Control migration advisory lock.")
                 else:

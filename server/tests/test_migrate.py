@@ -19,6 +19,7 @@ class _FakeConnection:
     def __init__(self, lock_results: list[bool]) -> None:
         self.lock_results = lock_results
         self.statements: list[str] = []
+        self.commits = 0
 
     def __enter__(self) -> _FakeConnection:
         return self
@@ -34,6 +35,9 @@ class _FakeConnection:
         if "pg_advisory_unlock" in statement_text:
             return _FakeResult(True)
         raise AssertionError(f"unexpected SQL statement: {statement_text}")
+
+    def commit(self) -> None:
+        self.commits += 1
 
 
 class _FakeEngine:
@@ -112,6 +116,7 @@ def test_serialized_migration_acquires_and_releases_postgres_lock(monkeypatch) -
         "SELECT pg_try_advisory_lock(:class_id, :object_id)",
         "SELECT pg_advisory_unlock(:class_id, :object_id)",
     ]
+    assert connection.commits == 2
     assert sleeps == [2.0]
     assert engine.disposed
 

@@ -831,7 +831,13 @@ class TestConfidenceCalculation:
         controls = [
             make_control(1, "denier", "test-deny", action="deny", config_value="d"),
         ] + [
-            make_control(i + 2, f"blocker{i}", "test-blocker", action="observe", config_value=str(i))
+            make_control(
+                i + 2,
+                f"blocker{i}",
+                "test-blocker",
+                action="observe",
+                config_value=str(i),
+            )
             for i in range(9)
         ]
         engine = ControlEngine(controls)
@@ -1407,6 +1413,48 @@ class TestConditionTrees:
         assert trace["children"][1]["short_circuit_reason"] == "or_matched"
 
     @pytest.mark.asyncio
+    async def test_leaf_metadata_includes_selector_selected_data(self):
+        """Leaf metadata should expose the value selected by selector.path."""
+        # Given: a leaf control selecting a nested step input value
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="city_control",
+                control=ControlDefinition(
+                    description="City guardrail",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["tool"], "stages": ["pre"]},
+                    condition={
+                        "selector": {"path": "input.city"},
+                        "evaluator": {"name": "test-deny", "config": {"value": "match"}},
+                    },
+                    action={"decision": "observe"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls)
+
+        # When: processing a request where input.city has a concrete value
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(
+                type="tool",
+                name="lookup-weather",
+                input={"city": "San Francisco"},
+                output=None,
+            ),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        # Then: event reconstruction can use selected_data as ControlSpan.input
+        assert result.matches is not None
+        metadata = result.matches[0].result.metadata
+        assert metadata is not None
+        assert metadata["selected_data"] == "San Francisco"
+
+    @pytest.mark.asyncio
     async def test_composite_results_preserve_decisive_child_metadata(self):
         """Composite results should retain structured metadata from the decisive child."""
         # Given: an OR tree where the second child decides the result
@@ -1830,10 +1878,20 @@ class TestContextFiltering:
         """
         controls = [
             make_control_with_execution(
-                1, "local_ctrl", "test-allow", action="observe", config_value="loc", execution="sdk"
+                1,
+                "local_ctrl",
+                "test-allow",
+                action="observe",
+                config_value="loc",
+                execution="sdk",
             ),
             make_control_with_execution(
-                2, "server_ctrl", "test-allow", action="observe", config_value="srv", execution="server"
+                2,
+                "server_ctrl",
+                "test-allow",
+                action="observe",
+                config_value="srv",
+                execution="server",
             ),
         ]
         engine = ControlEngine(controls, context="server")
@@ -1860,10 +1918,20 @@ class TestContextFiltering:
         """
         controls = [
             make_control_with_execution(
-                1, "local_ctrl", "test-allow", action="observe", config_value="loc", execution="sdk"
+                1,
+                "local_ctrl",
+                "test-allow",
+                action="observe",
+                config_value="loc",
+                execution="sdk",
             ),
             make_control_with_execution(
-                2, "server_ctrl", "test-allow", action="observe", config_value="srv", execution="server"
+                2,
+                "server_ctrl",
+                "test-allow",
+                action="observe",
+                config_value="srv",
+                execution="server",
             ),
         ]
         engine = ControlEngine(controls, context="sdk")
@@ -1890,10 +1958,20 @@ class TestContextFiltering:
         """
         controls = [
             make_control_with_execution(
-                1, "local_ctrl", "test-allow", action="observe", config_value="loc", execution="sdk"
+                1,
+                "local_ctrl",
+                "test-allow",
+                action="observe",
+                config_value="loc",
+                execution="sdk",
             ),
             make_control_with_execution(
-                2, "server_ctrl", "test-allow", action="observe", config_value="srv", execution="server"
+                2,
+                "server_ctrl",
+                "test-allow",
+                action="observe",
+                config_value="srv",
+                execution="server",
             ),
         ]
         engine = ControlEngine(controls)  # No context param
