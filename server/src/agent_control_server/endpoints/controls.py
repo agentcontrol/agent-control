@@ -1,10 +1,16 @@
 import datetime as dt
+import uuid
+from copy import deepcopy
+from typing import Any
 
 from agent_control_engine import list_evaluators
 from agent_control_models import ControlDefinition, TemplateControlInput, UnrenderedTemplateControl
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
     AgentRef,
+    CloneAndBindControlRequest,
+    CloneAndBindControlResponse,
+    ControlAttachments,
     ControlSummary,
     ControlVersionSummary,
     CreateControlRequest,
@@ -19,26 +25,32 @@ from agent_control_models.server import (
     PaginationInfo,
     PatchControlRequest,
     PatchControlResponse,
+    PolicyRef,
     RenderControlTemplateRequest,
     RenderControlTemplateResponse,
     SetControlDataRequest,
     SetControlDataResponse,
+    SlugName,
+    TargetAttachmentRef,
     ValidateControlDataRequest,
     ValidateControlDataResponse,
 )
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from jsonschema_rs import ValidationError as JSONSchemaValidationError
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth_framework import Operation, Principal, require_operation
+from ..auth_framework import Operation, Principal, get_authorizer, require_operation
 from ..db import get_async_db
 from ..errors import (
+    APIError,
     APIValidationError,
+    AuthenticationError,
     ConflictError,
     DatabaseError,
+    ForbiddenError,
     NotFoundError,
 )
 from ..logging_utils import get_logger
@@ -77,6 +89,165 @@ _CONTROL_NAME_UNIQUE_CONSTRAINTS = {
     "idx_controls_name_active",
     "idx_controls_namespace_name_active",
 }
+_MAX_TARGET_CONTEXT_VALUE_LENGTH = 255
+_CLONE_NAME_SUFFIX_HEX_LENGTH = 16
+_GENERATED_CLONE_NAME_ATTEMPTS = 5
+_TRUE_QUERY_VALUES = {"1", "true", "t", "yes", "y", "on"}
+_SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
+
+
+def _is_target_context_value(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and len(value) <= _MAX_TARGET_CONTEXT_VALUE_LENGTH
+    )
+
+
+def _ensure_same_namespace_authorization(
+    *principals: Principal,
+    detail: str = "Authorization resolved to different namespaces.",
+    hint: str = "Use credentials that grant the required operations in the same namespace.",
+) -> None:
+    namespace_keys = {principal.namespace_key for principal in principals}
+    if len(namespace_keys) == 1:
+        return
+    raise ForbiddenError(
+        error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+        detail=detail,
+        resource="ControlBinding",
+        hint=hint,
+    )
+
+
+async def _clone_and_bind_context(request: Request) -> dict[str, Any]:
+    """Surface clone target identifiers to the authorization context."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001  malformed JSON falls through to endpoint validation
+        return {}
+    if not isinstance(body, dict):
+        return {}
+    target_binding = body.get("target_binding")
+    if not isinstance(target_binding, dict):
+        return {}
+    target_type = target_binding.get("target_type")
+    target_id = target_binding.get("target_id")
+    if not _is_target_context_value(target_type):
+        return {}
+    if not _is_target_context_value(target_id):
+        return {}
+    return {
+        "target_type": target_type,
+        "target_id": target_id,
+    }
+
+
+def _attachment_target_context(request: Request) -> dict[str, str]:
+    context: dict[str, str] = {}
+    target_type = request.query_params.get("attachment_target_type")
+    target_id = request.query_params.get("attachment_target_id")
+    if target_type is not None:
+        if not _is_target_context_value(target_type):
+            return {}
+        context["target_type"] = target_type
+    if target_id is not None:
+        if not _is_target_context_value(target_id):
+            return {}
+        context["target_id"] = target_id
+    return context
+
+
+async def _optional_attachment_target_principal(request: Request) -> Principal | None:
+    include_attachments = request.query_params.get("include_attachments")
+    if include_attachments is None:
+        return None
+    if include_attachments.lower() not in _TRUE_QUERY_VALUES:
+        return None
+    try:
+        return await get_authorizer(Operation.CONTROL_BINDINGS_READ).authorize(
+            request,
+            Operation.CONTROL_BINDINGS_READ,
+            _attachment_target_context(request),
+        )
+    except (AuthenticationError, ForbiddenError, NotFoundError):
+        return None
+
+
+def _generated_clone_name(source_id: int, source_name: str) -> str:
+    """Return a slug-safe default name for a cloned control."""
+    suffix = f"-clone-{uuid.uuid4().hex[:_CLONE_NAME_SUFFIX_HEX_LENGTH]}"
+    candidate = f"{source_name[: 255 - len(suffix)]}{suffix}"
+    try:
+        return _SLUG_NAME_ADAPTER.validate_python(candidate)
+    except ValidationError:
+        return _SLUG_NAME_ADAPTER.validate_python(f"control-{source_id}{suffix}")
+
+
+async def _resolve_clone_name(
+    control_service: ControlService,
+    *,
+    namespace_key: str,
+    source_id: int,
+    source_name: str,
+    requested_name: str | None,
+) -> str:
+    if requested_name is not None:
+        if await control_service.active_control_name_exists(
+            requested_name, namespace_key=namespace_key
+        ):
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                detail=f"Control with name '{requested_name}' already exists",
+                resource="Control",
+                resource_id=requested_name,
+                hint="Choose a different clone name.",
+            )
+        return requested_name
+
+    for _ in range(_GENERATED_CLONE_NAME_ATTEMPTS):
+        clone_name = _generated_clone_name(source_id, source_name)
+        if not await control_service.active_control_name_exists(
+            clone_name, namespace_key=namespace_key
+        ):
+            return clone_name
+
+    raise ConflictError(
+        error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+        detail="Could not generate a unique clone name.",
+        resource="Control",
+        resource_id=source_name,
+        hint="Retry the request or provide an explicit clone name.",
+    )
+
+
+def _validate_attachment_filters(
+    *,
+    include_attachments: bool,
+    attachment_target_type: str | None,
+    attachment_target_id: str | None,
+) -> None:
+    if include_attachments:
+        return
+    if attachment_target_type is None and attachment_target_id is None:
+        return
+    raise APIValidationError(
+        error_code=ErrorCode.VALIDATION_ERROR,
+        detail="Attachment target filters require include_attachments=true.",
+        resource="Control",
+        hint="Set include_attachments=true or remove attachment target filters.",
+        errors=[
+            ValidationErrorItem(
+                resource="Control",
+                field="include_attachments",
+                code="missing_required_parameter",
+                message=(
+                    "Set include_attachments=true when using attachment_target_type "
+                    "or attachment_target_id."
+                ),
+            )
+        ],
+    )
 
 
 def _serialize_control_data(
@@ -576,6 +747,118 @@ async def create_control(
     return CreateControlResponse(control_id=control.id)
 
 
+@router.post(
+    "/{control_id}/clone-and-bind",
+    response_model=CloneAndBindControlResponse,
+    summary="Clone a control and bind the clone to a target",
+    response_description="Created clone and binding identifiers",
+)
+async def clone_and_bind_control(
+    control_id: int,
+    request: CloneAndBindControlRequest,
+    db: AsyncSession = Depends(get_async_db),
+    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
+    read_principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    binding_principal: Principal = Depends(
+        require_operation(
+            Operation.CONTROL_BINDINGS_WRITE,
+            context_builder=_clone_and_bind_context,
+        )
+    ),
+) -> CloneAndBindControlResponse:
+    """Clone an active control and attach the clone to an opaque target."""
+    _ensure_same_namespace_authorization(
+        principal,
+        read_principal,
+        binding_principal,
+        detail="Clone authorization resolved to different namespaces.",
+        hint=(
+            "Use credentials that grant source read, control creation, and target "
+            "binding in the same namespace."
+        ),
+    )
+
+    namespace_key = principal.namespace_key
+    control_service = ControlService(db)
+    bindings_service = ControlBindingsService(db)
+
+    source = await control_service.get_active_control_or_404(
+        control_id,
+        namespace_key=namespace_key,
+        for_update=True,
+    )
+    clone_name = await _resolve_clone_name(
+        control_service,
+        namespace_key=namespace_key,
+        source_id=source.id,
+        source_name=source.name,
+        requested_name=request.name,
+    )
+
+    clone = control_service.create_control(
+        namespace_key=namespace_key,
+        name=clone_name,
+        data=deepcopy(source.data),
+        cloned_from_control_id=source.id,
+    )
+    try:
+        await control_service.create_version(
+            clone,
+            event_type="cloned",
+            note=f"Cloned from control {source.id}",
+        )
+        binding = await bindings_service.create_binding(
+            namespace_key=namespace_key,
+            target_type=request.target_binding.target_type,
+            target_id=request.target_binding.target_id,
+            control_id=clone.id,
+            enabled=request.target_binding.enabled,
+        )
+        await db.commit()
+    except APIError:
+        await db.rollback()
+        raise
+    except IntegrityError as exc:
+        await db.rollback()
+        if _is_control_name_conflict(exc):
+            raise ConflictError(
+                error_code=ErrorCode.CONTROL_NAME_CONFLICT,
+                detail=f"Control with name '{clone_name}' already exists",
+                resource="Control",
+                resource_id=clone_name,
+                hint="Choose a different clone name.",
+            )
+        _logger.error(
+            "Failed to clone control '%s' due to integrity error",
+            source.name,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to clone control '{source.id}': database error",
+            resource="Control",
+            operation="clone_and_bind",
+        )
+    except Exception:
+        await db.rollback()
+        _logger.error(
+            "Failed to clone and bind control '%s'",
+            source.name,
+            exc_info=True,
+        )
+        raise DatabaseError(
+            detail=f"Failed to clone control '{source.id}': database error",
+            resource="Control",
+            operation="clone_and_bind",
+        )
+
+    return CloneAndBindControlResponse(
+        id=clone.id,
+        name=clone.name,
+        cloned_from_control_id=source.id,
+        binding_id=binding.id,
+    )
+
+
 @router.get(
     "/schema",
     response_model=GetControlSchemaResponse,
@@ -626,6 +909,7 @@ async def get_control(
     return GetControlResponse(
         id=control.id,
         name=control.name,
+        cloned_from_control_id=control.cloned_from_control_id,
         data=control_data,
     )
 
@@ -852,14 +1136,46 @@ async def list_controls(
         None,
         description="Filter by whether the control is template-backed",
     ),
+    cloned: bool | None = Query(
+        None,
+        description="Filter by whether the control was cloned from another control",
+    ),
     step_type: str | None = Query(
         None, description="Filter by step type (built-ins: 'tool', 'llm')"
     ),
     stage: str | None = Query(None, description="Filter by stage ('pre' or 'post')"),
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
     tag: str | None = Query(None, description="Filter by tag"),
+    include_attachments: bool = Query(
+        False,
+        description=(
+            "When true, include direct agent associations, policy associations, "
+            "and target bindings for each listed control."
+        ),
+    ),
+    attachment_target_type: str | None = Query(
+        None,
+        min_length=1,
+        max_length=255,
+        description=(
+            "Optional target_type filter applied to the returned controls and "
+            "expanded target bindings. "
+            "Only used when include_attachments=true."
+        ),
+    ),
+    attachment_target_id: str | None = Query(
+        None,
+        min_length=1,
+        max_length=255,
+        description=(
+            "Optional target_id filter applied to the returned controls and "
+            "expanded target bindings. "
+            "Only used when include_attachments=true."
+        ),
+    ),
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    target_principal: Principal | None = Depends(_optional_attachment_target_principal),
 ) -> ListControlsResponse:
     """
     List all controls with optional filtering and cursor-based pagination.
@@ -872,10 +1188,16 @@ async def list_controls(
         name: Optional filter by name (partial, case-insensitive match)
         enabled: Optional filter by enabled status
         template_backed: Optional filter by whether the control is template-backed
+        cloned: Optional filter by whether the control was cloned from another control
         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
+        include_attachments: Whether to include attachment details for listed controls
+        attachment_target_type: Optional target binding type filter for controls and
+            attachments
+        attachment_target_id: Optional target binding ID filter for controls and
+            attachments
         db: Database session (injected)
 
     Returns:
@@ -884,8 +1206,30 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
+    _validate_attachment_filters(
+        include_attachments=include_attachments,
+        attachment_target_type=attachment_target_type,
+        attachment_target_id=attachment_target_id,
+    )
+    if target_principal is not None:
+        _ensure_same_namespace_authorization(
+            principal,
+            target_principal,
+            detail=(
+                "Control and target-binding read authorization resolved "
+                "to different namespaces."
+            ),
+            hint=(
+                "Use credentials that grant control read and target-binding read "
+                "in the same namespace."
+            ),
+        )
+
     control_service = ControlService(db)
     namespace_key = principal.namespace_key
+    filter_by_attachment = target_principal is not None and (
+        attachment_target_type is not None or attachment_target_id is not None
+    )
     page = await control_service.list_controls_page(
         namespace_key=namespace_key,
         cursor=cursor,
@@ -893,14 +1237,28 @@ async def list_controls(
         name=name,
         enabled=enabled,
         template_backed=template_backed,
+        cloned=cloned,
         step_type=step_type,
         stage=stage,
         execution=execution,
         tag=tag,
+        attachment_target_type=attachment_target_type if filter_by_attachment else None,
+        attachment_target_id=attachment_target_id if filter_by_attachment else None,
     )
     usage_by_control_id = await control_service.list_control_usage(
         [control.id for control in page.controls],
         namespace_key=namespace_key,
+    )
+    attachments_by_control_id = (
+        await control_service.list_control_attachments(
+            [control.id for control in page.controls],
+            namespace_key=namespace_key,
+            target_type=attachment_target_type,
+            target_id=attachment_target_id,
+            include_targets=target_principal is not None,
+        )
+        if include_attachments
+        else {}
     )
 
     # Build summaries (filtering already done at DB level)
@@ -910,16 +1268,19 @@ async def list_controls(
         data = ctrl.data or {}
         scope = data.get("scope") or {}
         usage = usage_by_control_id.get(ctrl.id)
+        attachments = attachments_by_control_id.get(ctrl.id)
         summaries.append(
             ControlSummary(
                 id=ctrl.id,
                 name=ctrl.name,
+                cloned_from_control_id=ctrl.cloned_from_control_id,
                 description=(
                     data.get("description")
                     or (data.get("template") or {}).get("description")
                 ),
                 enabled=data.get("enabled", True),
                 execution=data.get("execution"),
+                action=data.get("action"),
                 step_types=scope.get("step_types"),
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
@@ -933,6 +1294,29 @@ async def list_controls(
                     else None
                 ),
                 used_by_agents_count=usage.used_by_agents_count if usage is not None else 0,
+                attachments=(
+                    ControlAttachments(
+                        agents=[
+                            AgentRef(agent_name=agent_name)
+                            for agent_name in attachments.agent_names
+                        ],
+                        policies=[
+                            PolicyRef(policy_id=policy_id)
+                            for policy_id in attachments.policy_ids
+                        ],
+                        targets=[
+                            TargetAttachmentRef(
+                                binding_id=target.binding_id,
+                                target_type=target.target_type,
+                                target_id=target.target_id,
+                                enabled=target.enabled,
+                            )
+                            for target in attachments.targets
+                        ],
+                    )
+                    if attachments is not None
+                    else None
+                ),
             )
         )
 

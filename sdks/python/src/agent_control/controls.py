@@ -20,10 +20,14 @@ async def list_controls(
     name: str | None = None,
     enabled: bool | None = None,
     template_backed: bool | None = None,
+    cloned: bool | None = None,
     step_type: str | None = None,
     stage: Literal["pre", "post"] | None = None,
     execution: Literal["server", "sdk"] | None = None,
     tag: str | None = None,
+    include_attachments: bool = False,
+    attachment_target_type: str | None = None,
+    attachment_target_id: str | None = None,
 ) -> dict[str, Any]:
     """
     List all controls with optional filtering and pagination.
@@ -37,10 +41,14 @@ async def list_controls(
         name: Optional filter by name (partial, case-insensitive match)
         enabled: Optional filter by enabled status
         template_backed: Optional filter by whether the control is template-backed
+        cloned: Optional filter by whether the control was cloned from another control
         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag
+        include_attachments: Whether to include attachment details
+        attachment_target_type: Optional target binding type filter for attachments
+        attachment_target_id: Optional target binding ID filter for attachments
 
     Returns:
         Dictionary containing:
@@ -78,6 +86,8 @@ async def list_controls(
         params["enabled"] = enabled
     if template_backed is not None:
         params["template_backed"] = template_backed
+    if cloned is not None:
+        params["cloned"] = cloned
     if step_type is not None:
         params["step_type"] = step_type
     if stage is not None:
@@ -86,6 +96,12 @@ async def list_controls(
         params["execution"] = execution
     if tag is not None:
         params["tag"] = tag
+    if include_attachments:
+        params["include_attachments"] = include_attachments
+    if attachment_target_type is not None:
+        params["attachment_target_type"] = attachment_target_type
+    if attachment_target_id is not None:
+        params["attachment_target_id"] = attachment_target_id
 
     response = await client.http_client.get("/api/v1/controls", params=params)
     response.raise_for_status()
@@ -241,6 +257,47 @@ async def create_control(
 
     result["configured"] = True
     return result
+
+
+async def clone_and_bind_control(
+    client: AgentControlClient,
+    control_id: int,
+    *,
+    target_type: str,
+    target_id: str,
+    name: str | None = None,
+    enabled: bool = True,
+) -> dict[str, Any]:
+    """
+    Clone an existing control and bind the clone to a target in one API call.
+
+    Args:
+        client: AgentControlClient instance
+        control_id: Source control ID to clone
+        target_type: Opaque attachment kind
+        target_id: Opaque external target identifier
+        name: Optional unique name for the cloned control
+        enabled: Whether the created binding is active
+
+    Returns:
+        Dictionary containing id, name, cloned_from_control_id, and binding_id.
+    """
+    payload: dict[str, Any] = {
+        "target_binding": {
+            "target_type": target_type,
+            "target_id": target_id,
+            "enabled": enabled,
+        }
+    }
+    if name is not None:
+        payload["name"] = name
+
+    response = await client.http_client.post(
+        f"/api/v1/controls/{control_id}/clone-and-bind",
+        json=payload,
+    )
+    response.raise_for_status()
+    return cast(dict[str, Any], response.json())
 
 
 async def set_control_data(
