@@ -1405,6 +1405,51 @@ def test_list_controls_omits_targets_without_binding_read_authorization(
     ) in calls
 
 
+def test_list_controls_omits_targets_without_attachment_target_context(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="log_stream",
+        target_id="ls-prod",
+    )
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class RecordingAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            if operation == Operation.CONTROL_BINDINGS_READ:
+                raise AssertionError("target read auth should require target context")
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(RecordingAuthorizer())
+
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": control_name,
+            "include_attachments": "true",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    controls = resp.json()["controls"]
+    assert controls[0]["attachments"] == {
+        "agents": [],
+        "policies": [],
+        "targets": [],
+    }
+    assert calls == [(Operation.CONTROLS_READ, None)]
+
+
 def test_list_controls_rejects_attachment_namespace_mismatch(
     client: TestClient,
 ) -> None:
@@ -1432,6 +1477,8 @@ def test_list_controls_rejects_attachment_namespace_mismatch(
         params={
             "name": control_name,
             "include_attachments": "true",
+            "attachment_target_type": "log_stream",
+            "attachment_target_id": "ls-prod",
         },
     )
 

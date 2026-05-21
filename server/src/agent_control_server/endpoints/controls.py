@@ -164,11 +164,14 @@ async def _optional_attachment_target_principal(request: Request) -> Principal |
         return None
     if include_attachments.lower() not in _TRUE_QUERY_VALUES:
         return None
+    context = _attachment_target_context(request)
+    if "target_type" not in context or "target_id" not in context:
+        return None
     try:
         return await get_authorizer(Operation.CONTROL_BINDINGS_READ).authorize(
             request,
             Operation.CONTROL_BINDINGS_READ,
-            _attachment_target_context(request),
+            context,
         )
     except (AuthenticationError, ForbiddenError, NotFoundError):
         return None
