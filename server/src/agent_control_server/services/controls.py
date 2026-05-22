@@ -36,6 +36,8 @@ from .query_utils import escape_like_pattern
 type AgentControlRenderedState = Literal["rendered", "unrendered", "all"]
 type AgentControlEnabledState = Literal["enabled", "disabled", "all"]
 
+_MAX_INLINE_TARGET_ATTACHMENTS_PER_CONTROL = 20
+
 
 @dataclass(frozen=True)
 class RuntimeControl:
@@ -91,6 +93,8 @@ class ControlAttachmentSet:
     policy_ids: list[int]
     agent_names: list[str]
     targets: list[ControlTargetAttachment]
+    targets_total: int
+    targets_truncated: bool
 
 
 @dataclass(frozen=True)
@@ -600,6 +604,9 @@ class ControlService:
         targets_by_control: dict[int, list[ControlTargetAttachment]] = {
             control_id: [] for control_id in unique_control_ids
         }
+        target_totals_by_control: dict[int, int] = {
+            control_id: 0 for control_id in unique_control_ids
+        }
 
         policy_result = await self._db.execute(
             select(policy_controls.c.control_id, policy_controls.c.policy_id).where(
@@ -620,6 +627,13 @@ class ControlService:
             agent_names_by_control[cast(int, control_id)].add(cast(str, agent_name))
 
         if include_targets:
+            target_rank = func.row_number().over(
+                partition_by=ControlBinding.control_id,
+                order_by=ControlBinding.id.desc(),
+            ).label("target_rank")
+            target_total = func.count().over(
+                partition_by=ControlBinding.control_id
+            ).label("target_total")
             target_query = (
                 select(
                     ControlBinding.control_id,
@@ -627,22 +641,47 @@ class ControlService:
                     ControlBinding.target_type,
                     ControlBinding.target_id,
                     ControlBinding.enabled,
+                    target_rank,
+                    target_total,
                 )
                 .where(
                     ControlBinding.namespace_key == namespace_key,
                     ControlBinding.control_id.in_(unique_control_ids),
                 )
-                .order_by(ControlBinding.id.desc())
             )
             if target_type is not None:
                 target_query = target_query.where(ControlBinding.target_type == target_type)
             if target_id is not None:
                 target_query = target_query.where(ControlBinding.target_id == target_id)
-            target_result = await self._db.execute(target_query)
-            for control_id, binding_id, binding_target_type, binding_target_id, enabled in (
+            target_rows = target_query.subquery()
+            target_result = await self._db.execute(
+                select(
+                    target_rows.c.control_id,
+                    target_rows.c.id,
+                    target_rows.c.target_type,
+                    target_rows.c.target_id,
+                    target_rows.c.enabled,
+                    target_rows.c.target_total,
+                )
+                .where(
+                    target_rows.c.target_rank
+                    <= _MAX_INLINE_TARGET_ATTACHMENTS_PER_CONTROL
+                )
+                .order_by(target_rows.c.control_id, target_rows.c.target_rank)
+            )
+            for (
+                control_id,
+                binding_id,
+                binding_target_type,
+                binding_target_id,
+                enabled,
+                target_total,
+            ) in (
                 target_result.all()
             ):
-                targets_by_control[cast(int, control_id)].append(
+                typed_control_id = cast(int, control_id)
+                target_totals_by_control[typed_control_id] = cast(int, target_total)
+                targets_by_control[typed_control_id].append(
                     ControlTargetAttachment(
                         binding_id=cast(int, binding_id),
                         target_type=cast(str, binding_target_type),
@@ -656,6 +695,11 @@ class ControlService:
                 policy_ids=sorted(policy_ids_by_control[control_id]),
                 agent_names=sorted(agent_names_by_control[control_id]),
                 targets=targets_by_control[control_id],
+                targets_total=target_totals_by_control[control_id],
+                targets_truncated=(
+                    target_totals_by_control[control_id]
+                    > len(targets_by_control[control_id])
+                ),
             )
             for control_id in unique_control_ids
         }

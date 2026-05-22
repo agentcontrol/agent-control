@@ -3,6 +3,7 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
@@ -30,17 +31,35 @@ export type ControlAttachments = {
    * Target bindings for this control
    */
   targets?: Array<TargetAttachmentRef> | undefined;
+  /**
+   * Total target bindings matching the attachment filters
+   */
+  targetsTotal: number;
+  /**
+   * Whether the target bindings list was capped
+   */
+  targetsTruncated: boolean;
 };
 
 /** @internal */
 export const ControlAttachments$inboundSchema: z.ZodMiniType<
   ControlAttachments,
   unknown
-> = z.object({
-  agents: types.optional(z.array(AgentRef$inboundSchema)),
-  policies: types.optional(z.array(PolicyRef$inboundSchema)),
-  targets: types.optional(z.array(TargetAttachmentRef$inboundSchema)),
-});
+> = z.pipe(
+  z.object({
+    agents: types.optional(z.array(AgentRef$inboundSchema)),
+    policies: types.optional(z.array(PolicyRef$inboundSchema)),
+    targets: types.optional(z.array(TargetAttachmentRef$inboundSchema)),
+    targets_total: z._default(types.number(), 0),
+    targets_truncated: z._default(types.boolean(), false),
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      "targets_total": "targetsTotal",
+      "targets_truncated": "targetsTruncated",
+    });
+  }),
+);
 
 export function controlAttachmentsFromJSON(
   jsonString: string,
