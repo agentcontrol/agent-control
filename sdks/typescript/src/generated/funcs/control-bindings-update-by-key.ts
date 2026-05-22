@@ -4,7 +4,7 @@
 
 import * as z from "zod/v4-mini";
 import { AgentControlSDKCore } from "../core.js";
-import { encodeFormQuery } from "../lib/encodings.js";
+import { encodeJSON } from "../lib/encodings.js";
 import * as M from "../lib/matchers.js";
 import { compactMap } from "../lib/primitives.js";
 import { safeParse } from "../lib/schemas.js";
@@ -23,49 +23,26 @@ import * as errors from "../models/errors/index.js";
 import { ResponseValidationError } from "../models/errors/response-validation-error.js";
 import { SDKValidationError } from "../models/errors/sdk-validation-error.js";
 import * as models from "../models/index.js";
-import * as operations from "../models/operations/index.js";
 import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * List all controls
+ * Update a control binding by natural key
  *
  * @remarks
- * List all controls with optional filtering and cursor-based pagination.
+ * Update an existing binding using ``(target_type, target_id, control_id)``.
  *
- * Controls are returned ordered by ID descending (newest first).
- *
- * Args:
- *     cursor: ID of the last control from the previous page (for pagination)
- *     limit: Maximum number of controls to return (default 20, max 100)
- *     name: Optional filter by name (partial, case-insensitive match)
- *     enabled: Optional filter by enabled status
- *     template_backed: Optional filter by whether the control is template-backed
- *     cloned: Optional filter by whether the control was cloned from another control
- *     step_type: Optional filter by step type (built-ins: 'tool', 'llm')
- *     stage: Optional filter by stage ('pre' or 'post')
- *     execution: Optional filter by execution ('server' or 'sdk')
- *     tag: Optional filter by tag
- *     include_attachments: Whether to include attachment details for listed controls
- *     attachment_target_type: Optional target binding type filter for controls and
- *         attachments
- *     attachment_target_id: Optional target binding ID filter for controls and
- *         attachments
- *     db: Database session (injected)
- *
- * Returns:
- *     ListControlsResponse with control summaries and pagination info
- *
- * Example:
- *     GET /controls?limit=10&enabled=true&step_type=tool
+ * This route is target-scoped because the request body includes the target
+ * identifiers before authorization runs. Unlike ``PUT /by-key``, it never
+ * creates a missing binding.
  */
-export function controlsList(
+export function controlBindingsUpdateByKey(
   client: AgentControlSDKCore,
-  request?: operations.ListControlsApiV1ControlsGetRequest | undefined,
+  request: models.PatchControlBindingByKeyRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
-    models.ListControlsResponse,
+    models.PatchControlBindingResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -86,12 +63,12 @@ export function controlsList(
 
 async function $do(
   client: AgentControlSDKCore,
-  request?: operations.ListControlsApiV1ControlsGetRequest | undefined,
+  request: models.PatchControlBindingByKeyRequest,
   options?: RequestOptions,
 ): Promise<
   [
     Result<
-      models.ListControlsResponse,
+      models.PatchControlBindingResponse,
       | errors.HTTPValidationError
       | AgentControlSDKError
       | ResponseValidationError
@@ -108,39 +85,19 @@ async function $do(
   const parsed = safeParse(
     request,
     (value) =>
-      z.parse(
-        z.optional(
-          operations.ListControlsApiV1ControlsGetRequest$outboundSchema,
-        ),
-        value,
-      ),
+      z.parse(models.PatchControlBindingByKeyRequest$outboundSchema, value),
     "Input validation failed",
   );
   if (!parsed.ok) {
     return [parsed, { status: "invalid" }];
   }
   const payload = parsed.value;
-  const body = null;
+  const body = encodeJSON("body", payload, { explode: true });
 
-  const path = pathToFunc("/api/v1/controls")();
-
-  const query = encodeFormQuery({
-    "attachment_target_id": payload?.attachment_target_id,
-    "attachment_target_type": payload?.attachment_target_type,
-    "cloned": payload?.cloned,
-    "cursor": payload?.cursor,
-    "enabled": payload?.enabled,
-    "execution": payload?.execution,
-    "include_attachments": payload?.include_attachments,
-    "limit": payload?.limit,
-    "name": payload?.name,
-    "stage": payload?.stage,
-    "step_type": payload?.step_type,
-    "tag": payload?.tag,
-    "template_backed": payload?.template_backed,
-  });
+  const path = pathToFunc("/api/v1/control-bindings/by-key")();
 
   const headers = new Headers(compactMap({
+    "Content-Type": "application/json",
     Accept: "application/json",
   }));
 
@@ -151,7 +108,8 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID: "list_controls_api_v1_controls_get",
+    operationID:
+      "patch_control_binding_by_key_api_v1_control_bindings_by_key_patch",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,
@@ -165,11 +123,10 @@ async function $do(
 
   const requestRes = client._createRequest(context, {
     security: requestSecurity,
-    method: "GET",
+    method: "PATCH",
     baseURL: options?.serverURL,
     path: path,
     headers: headers,
-    query: query,
     body: body,
     userAgent: client._options.userAgent,
     timeoutMs: options?.timeoutMs || client._options.timeoutMs || -1,
@@ -195,7 +152,7 @@ async function $do(
   };
 
   const [result] = await M.match<
-    models.ListControlsResponse,
+    models.PatchControlBindingResponse,
     | errors.HTTPValidationError
     | AgentControlSDKError
     | ResponseValidationError
@@ -206,7 +163,7 @@ async function $do(
     | UnexpectedClientError
     | SDKValidationError
   >(
-    M.json(200, models.ListControlsResponse$inboundSchema),
+    M.json(200, models.PatchControlBindingResponse$inboundSchema),
     M.jsonErr(422, errors.HTTPValidationError$inboundSchema),
     M.fail("4XX"),
     M.fail("5XX"),

@@ -5,6 +5,7 @@
 export * from "./add-agent-control-api-v1-agents-agent-name-controls-control-id-post.js";
 export * from "./add-agent-policy-api-v1-agents-agent-name-policies-policy-id-post.js";
 export * from "./add-control-to-policy-api-v1-policies-policy-id-controls-control-id-post.js";
+export * from "./clone-and-bind-control-api-v1-controls-control-id-clone-and-bind-post.js";
 export * from "./delete-agent-policy-api-v1-agents-agent-name-policy-delete.js";
 export * from "./delete-control-api-v1-controls-control-id-delete.js";
 export * from "./delete-control-binding-api-v1-control-bindings-binding-id-delete.js";

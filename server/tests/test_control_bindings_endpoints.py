@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from agent_control_server.auth_framework import Operation, Principal, set_authorizer
+from agent_control_server.models import DEFAULT_NAMESPACE_KEY
 from fastapi.testclient import TestClient
 
 from .utils import VALID_CONTROL_PAYLOAD
-
 
 _BINDINGS_URL = "/api/v1/control-bindings"
 
@@ -318,6 +319,83 @@ def test_upsert_by_key_updates_updated_at_on_existing_row(
     assert after_upsert["updated_at"] != initial_updated_at
 
 
+def test_patch_by_key_updates_existing_binding(client: TestClient) -> None:
+    control_id = _create_control(client)
+    binding_id = _create_binding(client, control_id=control_id)["binding_id"]
+    body = {
+        "target_type": "env",
+        "target_id": "prod",
+        "control_id": control_id,
+        "enabled": False,
+    }
+
+    resp = client.patch(f"{_BINDINGS_URL}/by-key", json=body)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"success": True, "enabled": False}
+    fetched = client.get(f"{_BINDINGS_URL}/{binding_id}").json()
+    assert fetched["enabled"] is False
+
+
+def test_patch_by_key_returns_404_without_creating_binding(client: TestClient) -> None:
+    control_id = _create_control(client)
+    body = {
+        "target_type": "env",
+        "target_id": "prod",
+        "control_id": control_id,
+        "enabled": False,
+    }
+
+    resp = client.patch(f"{_BINDINGS_URL}/by-key", json=body)
+
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_BINDING_NOT_FOUND"
+    bindings = client.get(
+        _BINDINGS_URL,
+        params={"target_type": "env", "target_id": "prod", "control_id": control_id},
+    ).json()["bindings"]
+    assert bindings == []
+
+
+def test_patch_by_key_passes_target_context_to_authorizer(
+    client: TestClient,
+) -> None:
+    control_id = _create_control(client)
+    _create_binding(client, control_id=control_id)
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class RecordingAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            del request
+            calls.append((operation, context))
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(RecordingAuthorizer())
+
+    resp = client.patch(
+        f"{_BINDINGS_URL}/by-key",
+        json={
+            "target_type": "env",
+            "target_id": "prod",
+            "control_id": control_id,
+            "enabled": False,
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert calls == [
+        (
+            Operation.CONTROL_BINDINGS_WRITE,
+            {"target_type": "env", "target_id": "prod"},
+        )
+    ]
+
+
 def test_delete_by_key_removes_existing_binding(client: TestClient) -> None:
     control_id = _create_control(client)
     client.put(
@@ -365,6 +443,11 @@ def test_non_admin_cannot_use_by_key_endpoints(
     }
     upsert_resp = non_admin_client.put(f"{_BINDINGS_URL}/by-key", json=body)
     assert upsert_resp.status_code == 403
+
+    patch_resp = non_admin_client.patch(
+        f"{_BINDINGS_URL}/by-key", json={**body, "enabled": False}
+    )
+    assert patch_resp.status_code == 403
 
     delete_resp = non_admin_client.post(
         f"{_BINDINGS_URL}/by-key:delete", json=body

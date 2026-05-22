@@ -387,6 +387,19 @@ async def test_http_upstream_fails_closed_on_5xx():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 422])
+async def test_http_upstream_unexpected_4xx_reports_upstream_rejection(status):
+    provider = _build_upstream(lambda req: httpx.Response(status, text="bad request"))
+
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.error_code == "AUTH_UPSTREAM_REJECTED"
+    assert str(status) in exc_info.value.detail
+
+
+@pytest.mark.asyncio
 async def test_http_upstream_surfaces_rate_limit_distinctly():
     """Upstream 429 must surface a rate-limit-specific detail and hint."""
 

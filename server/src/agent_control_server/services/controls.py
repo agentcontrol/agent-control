@@ -13,7 +13,7 @@ from agent_control_models import (
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.policy import Control as APIControl
 from pydantic import ValidationError
-from sqlalchemy import Integer, String, delete, func, literal, or_, select, union, union_all
+from sqlalchemy import Integer, String, delete, exists, func, literal, or_, select, union, union_all
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
@@ -35,6 +35,8 @@ from .query_utils import escape_like_pattern
 
 type AgentControlRenderedState = Literal["rendered", "unrendered", "all"]
 type AgentControlEnabledState = Literal["enabled", "disabled", "all"]
+
+_MAX_INLINE_TARGET_ATTACHMENTS_PER_CONTROL = 20
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,27 @@ class ControlUsage:
 
 
 @dataclass(frozen=True)
+class ControlTargetAttachment:
+    """Target binding attached to a control."""
+
+    binding_id: int
+    target_type: str
+    target_id: str
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class ControlAttachmentSet:
+    """Direct attachments for a listed control."""
+
+    policy_ids: list[int]
+    agent_names: list[str]
+    targets: list[ControlTargetAttachment]
+    targets_total: int
+    targets_truncated: bool
+
+
+@dataclass(frozen=True)
 class ControlAssociations:
     """Policy and agent associations for a control."""
 
@@ -102,9 +125,15 @@ class ControlService:
         namespace_key: str,
         name: str,
         data: dict[str, Any],
+        cloned_from_control_id: int | None = None,
     ) -> Control:
         """Create a new pending control row."""
-        control = Control(namespace_key=namespace_key, name=name, data=data)
+        control = Control(
+            namespace_key=namespace_key,
+            name=name,
+            data=data,
+            cloned_from_control_id=cloned_from_control_id,
+        )
         self._db.add(control)
         return control
 
@@ -427,10 +456,13 @@ class ControlService:
         name: str | None,
         enabled: bool | None,
         template_backed: bool | None,
+        cloned: bool | None,
         step_type: str | None,
         stage: str | None,
         execution: str | None,
         tag: str | None,
+        attachment_target_type: str | None = None,
+        attachment_target_id: str | None = None,
     ) -> ControlListPage:
         """Return paginated active controls for the browse endpoint."""
         query = (
@@ -443,10 +475,17 @@ class ControlService:
             name=name,
             enabled=enabled,
             template_backed=template_backed,
+            cloned=cloned,
             step_type=step_type,
             stage=stage,
             execution=execution,
             tag=tag,
+        )
+        query = self._apply_control_attachment_filters(
+            query,
+            namespace_key=namespace_key,
+            target_type=attachment_target_type,
+            target_id=attachment_target_id,
         )
         if cursor is not None:
             query = query.where(Control.id < cursor)
@@ -464,10 +503,17 @@ class ControlService:
             name=name,
             enabled=enabled,
             template_backed=template_backed,
+            cloned=cloned,
             step_type=step_type,
             stage=stage,
             execution=execution,
             tag=tag,
+        )
+        total_query = self._apply_control_attachment_filters(
+            total_query,
+            namespace_key=namespace_key,
+            target_type=attachment_target_type,
+            target_id=attachment_target_id,
         )
         total_result = await self._db.execute(total_query)
         total = cast(int, total_result.scalar_one())
@@ -533,6 +579,129 @@ class ControlService:
                 used_by_agents_count=len(agent_names),
             )
             for control_id, agent_names in usage_names.items()
+        }
+
+    async def list_control_attachments(
+        self,
+        control_ids: Sequence[int],
+        *,
+        namespace_key: str,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        include_targets: bool = True,
+    ) -> dict[int, ControlAttachmentSet]:
+        """Return direct policy, direct agent, and target attachments for controls."""
+        if not control_ids:
+            return {}
+
+        unique_control_ids = list(dict.fromkeys(control_ids))
+        policy_ids_by_control: dict[int, set[int]] = {
+            control_id: set() for control_id in unique_control_ids
+        }
+        agent_names_by_control: dict[int, set[str]] = {
+            control_id: set() for control_id in unique_control_ids
+        }
+        targets_by_control: dict[int, list[ControlTargetAttachment]] = {
+            control_id: [] for control_id in unique_control_ids
+        }
+        target_totals_by_control: dict[int, int] = {
+            control_id: 0 for control_id in unique_control_ids
+        }
+
+        policy_result = await self._db.execute(
+            select(policy_controls.c.control_id, policy_controls.c.policy_id).where(
+                policy_controls.c.namespace_key == namespace_key,
+                policy_controls.c.control_id.in_(unique_control_ids),
+            )
+        )
+        for control_id, policy_id in policy_result.all():
+            policy_ids_by_control[cast(int, control_id)].add(cast(int, policy_id))
+
+        agent_result = await self._db.execute(
+            select(agent_controls.c.control_id, agent_controls.c.agent_name).where(
+                agent_controls.c.namespace_key == namespace_key,
+                agent_controls.c.control_id.in_(unique_control_ids),
+            )
+        )
+        for control_id, agent_name in agent_result.all():
+            agent_names_by_control[cast(int, control_id)].add(cast(str, agent_name))
+
+        if include_targets:
+            target_rank = func.row_number().over(
+                partition_by=ControlBinding.control_id,
+                order_by=ControlBinding.id.desc(),
+            ).label("target_rank")
+            target_total = func.count().over(
+                partition_by=ControlBinding.control_id
+            ).label("target_total")
+            target_query = (
+                select(
+                    ControlBinding.control_id,
+                    ControlBinding.id,
+                    ControlBinding.target_type,
+                    ControlBinding.target_id,
+                    ControlBinding.enabled,
+                    target_rank,
+                    target_total,
+                )
+                .where(
+                    ControlBinding.namespace_key == namespace_key,
+                    ControlBinding.control_id.in_(unique_control_ids),
+                )
+            )
+            if target_type is not None:
+                target_query = target_query.where(ControlBinding.target_type == target_type)
+            if target_id is not None:
+                target_query = target_query.where(ControlBinding.target_id == target_id)
+            target_rows = target_query.subquery()
+            target_result = await self._db.execute(
+                select(
+                    target_rows.c.control_id,
+                    target_rows.c.id,
+                    target_rows.c.target_type,
+                    target_rows.c.target_id,
+                    target_rows.c.enabled,
+                    target_rows.c.target_total,
+                )
+                .where(
+                    target_rows.c.target_rank
+                    <= _MAX_INLINE_TARGET_ATTACHMENTS_PER_CONTROL
+                )
+                .order_by(target_rows.c.control_id, target_rows.c.target_rank)
+            )
+            for (
+                control_id,
+                binding_id,
+                binding_target_type,
+                binding_target_id,
+                enabled,
+                target_total,
+            ) in (
+                target_result.all()
+            ):
+                typed_control_id = cast(int, control_id)
+                target_totals_by_control[typed_control_id] = cast(int, target_total)
+                targets_by_control[typed_control_id].append(
+                    ControlTargetAttachment(
+                        binding_id=cast(int, binding_id),
+                        target_type=cast(str, binding_target_type),
+                        target_id=cast(str, binding_target_id),
+                        enabled=cast(bool, enabled),
+                    )
+                )
+
+        return {
+            control_id: ControlAttachmentSet(
+                policy_ids=sorted(policy_ids_by_control[control_id]),
+                agent_names=sorted(agent_names_by_control[control_id]),
+                targets=targets_by_control[control_id],
+                targets_total=target_totals_by_control[control_id],
+                targets_truncated=(
+                    target_totals_by_control[control_id]
+                    > len(targets_by_control[control_id])
+                ),
+            )
+            for control_id in unique_control_ids
         }
 
     async def list_active_control_counts_by_agent(
@@ -820,6 +989,7 @@ class ControlService:
         name: str | None,
         enabled: bool | None,
         template_backed: bool | None,
+        cloned: bool | None,
         step_type: str | None,
         stage: str | None,
         execution: str | None,
@@ -845,6 +1015,12 @@ class ControlService:
                 stmt = stmt.where(Control.data.has_key("template"))
             else:
                 stmt = stmt.where(~Control.data.has_key("template"))
+
+        if cloned is not None:
+            if cloned:
+                stmt = stmt.where(Control.cloned_from_control_id.is_not(None))
+            else:
+                stmt = stmt.where(Control.cloned_from_control_id.is_(None))
 
         has_rendered_filter = any(f is not None for f in (step_type, stage, execution, tag))
         if has_rendered_filter:
@@ -873,16 +1049,42 @@ class ControlService:
 
         return stmt
 
+    def _apply_control_attachment_filters(
+        self,
+        stmt: Select[Any],
+        *,
+        namespace_key: str,
+        target_type: str | None,
+        target_id: str | None,
+    ) -> Select[Any]:
+        """Restrict a control list to controls with matching target bindings."""
+        if target_type is None and target_id is None:
+            return stmt
+
+        binding_exists = exists().where(
+            ControlBinding.namespace_key == namespace_key,
+            ControlBinding.control_id == Control.id,
+        )
+        if target_type is not None:
+            binding_exists = binding_exists.where(ControlBinding.target_type == target_type)
+        if target_id is not None:
+            binding_exists = binding_exists.where(ControlBinding.target_id == target_id)
+        return stmt.where(binding_exists)
+
     @staticmethod
     def _build_snapshot(control: Control) -> dict[str, Any]:
         """Serialize the persisted control state stored in version history."""
         deleted_at = control.deleted_at.isoformat() if control.deleted_at is not None else None
-        cloned_control_id = cast(int | None, getattr(control, "cloned_control_id", None))
+        cloned_from_control_id = cast(
+            int | None, getattr(control, "cloned_from_control_id", None)
+        )
         return {
             "name": control.name,
             "data": control.data,
             "deleted_at": deleted_at,
-            "cloned_control_id": cloned_control_id,
+            "cloned_from_control_id": cloned_from_control_id,
+            # Legacy snapshot alias; remove after consumers have migrated.
+            "cloned_control_id": cloned_from_control_id,
         }
 
 

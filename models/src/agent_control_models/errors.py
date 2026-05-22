@@ -54,6 +54,7 @@ class ErrorCode(StrEnum):
     AUTH_INVALID_KEY = "AUTH_INVALID_KEY"
     AUTH_INSUFFICIENT_PRIVILEGES = "AUTH_INSUFFICIENT_PRIVILEGES"
     AUTH_MISCONFIGURED = "AUTH_MISCONFIGURED"
+    AUTH_UPSTREAM_REJECTED = "AUTH_UPSTREAM_REJECTED"
 
     # Resource Not Found (2xx pattern)
     RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"  # Generic fallback
@@ -363,6 +364,7 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.AUTH_INVALID_KEY: "Invalid API Key",
     ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES: "Insufficient Privileges",
     ErrorCode.AUTH_MISCONFIGURED: "Authentication Misconfigured",
+    ErrorCode.AUTH_UPSTREAM_REJECTED: "Authorization Upstream Rejected Request",
     # Not found errors
     ErrorCode.RESOURCE_NOT_FOUND: "Resource Not Found",
     ErrorCode.AGENT_NOT_FOUND: "Agent Not Found",
