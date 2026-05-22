@@ -39,7 +39,23 @@ def _make_event(**overrides: object) -> ControlExecutionEvent:
         evaluator_name="regex",
         selector_path="input",
         error_message=None,
-        metadata={"labels": ["security", "pii"], "threshold": 3, "nested": {"k": "v"}},
+        metadata={
+            "labels": ["security", "pii"],
+            "threshold": 3,
+            "nested": {"k": "v"},
+            "selected_data": {"prompt": "raw sensitive input"},
+            "selected_data_preview": {
+                "type": "dict",
+                "value": {"prompt": "raw sensitive input"},
+                "truncated": False,
+            },
+            "engine_selected_data": {"prompt": "raw sensitive input"},
+            "engine_selected_data_preview": {
+                "type": "dict",
+                "value": {"prompt": "raw sensitive input"},
+                "truncated": False,
+            },
+        },
     )
     return event.model_copy(update=overrides)
 
@@ -227,6 +243,10 @@ def test_control_event_to_otel_span_maps_event_fields() -> None:
     assert span.attributes["agent_control.matched"] is True
     assert span.attributes["agent_control.metadata.labels"] == ["security", "pii"]
     assert span.attributes["agent_control.metadata.nested"] == '{"k": "v"}'
+    assert "agent_control.metadata.selected_data" not in span.attributes
+    assert "agent_control.metadata.selected_data_preview" not in span.attributes
+    assert "agent_control.metadata.engine_selected_data" not in span.attributes
+    assert "agent_control.metadata.engine_selected_data_preview" not in span.attributes
     assert span.error_message == "blocked"
     assert span.end_time_unix_nano >= span.start_time_unix_nano
 

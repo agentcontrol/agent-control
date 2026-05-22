@@ -67,14 +67,21 @@ class TestMergeResults:
         defaults.update(kwargs)
         return EvaluationResponse(**defaults)
 
-    def _make_match(self, control_id, control_name="ctrl", action="observe", matched=True):
+    def _make_match(
+        self,
+        control_id,
+        control_name="ctrl",
+        action="observe",
+        matched=True,
+        metadata=None,
+    ):
         from agent_control_models import ControlMatch, EvaluatorResult
 
         return ControlMatch(
             control_id=control_id,
             control_name=control_name,
             action=action,
-            result=EvaluatorResult(matched=matched, confidence=0.9),
+            result=EvaluatorResult(matched=matched, confidence=0.9, metadata=metadata),
         )
 
     def test_combines_matches_errors_and_non_matches(self):
@@ -172,14 +179,21 @@ class TestBuildControlExecutionEvents:
             stage="pre",
         )
 
-    def _make_match(self, control_id, control_name="ctrl", action="observe", matched=True):
+    def _make_match(
+        self,
+        control_id,
+        control_name="ctrl",
+        action="observe",
+        matched=True,
+        metadata=None,
+    ):
         from agent_control_models import ControlMatch, EvaluatorResult
 
         return ControlMatch(
             control_id=control_id,
             control_name=control_name,
             action=action,
-            result=EvaluatorResult(matched=matched, confidence=0.9),
+            result=EvaluatorResult(matched=matched, confidence=0.9, metadata=metadata),
         )
 
     def _make_response(self, matches=None, errors=None, non_matches=None):
@@ -223,6 +237,56 @@ class TestBuildControlExecutionEvents:
         assert event.agent_name == "test-agent"
         assert event.evaluator_name == "regex"
         assert event.selector_path == "input"
+
+    def test_drops_raw_selected_data_from_event_metadata(self):
+        response = self._make_response(
+            matches=[
+                self._make_match(
+                    1,
+                    "ctrl-1",
+                    metadata={
+                        "selected_data": {"prompt": "raw sensitive input"},
+                        "selected_data_preview": {
+                            "type": "dict",
+                            "value": {"prompt": "raw sensitive input"},
+                            "truncated": False,
+                        },
+                        "engine_selected_data": {"prompt": "raw sensitive input"},
+                        "engine_selected_data_preview": {
+                            "type": "dict",
+                            "value": {"prompt": "raw sensitive input"},
+                            "truncated": False,
+                        },
+                    },
+                )
+            ]
+        )
+        request = self._make_request()
+        control_lookup = {
+            1: self._make_control(
+                1,
+                "ctrl-1",
+                {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
+            ).control
+        }
+
+        events = build_control_execution_events(
+            response,
+            request,
+            control_lookup,
+            "trace123",
+            "span456",
+            "test-agent",
+        )
+
+        assert len(events) == 1
+        assert "selected_data" not in events[0].metadata
+        assert "selected_data_preview" not in events[0].metadata
+        assert "engine_selected_data" not in events[0].metadata
+        assert "engine_selected_data_preview" not in events[0].metadata
 
     def test_composite_control_uses_representative_observability_identity(self):
         response = self._make_response(non_matches=[self._make_match(1, "ctrl-1", matched=False)])

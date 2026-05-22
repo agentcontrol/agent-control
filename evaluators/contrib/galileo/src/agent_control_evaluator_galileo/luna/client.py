@@ -9,6 +9,7 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
+from typing import Literal
 
 import httpx
 from agent_control_models import JSONObject, JSONValue
@@ -20,6 +21,7 @@ DEFAULT_TIMEOUT_SECS = 10.0
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 PUBLIC_SCORER_INVOKE_PATH = "/scorers/invoke"
 INTERNAL_SCORER_INVOKE_PATH = "/internal/scorers/invoke"
+AuthMode = Literal["public", "internal"]
 
 
 def _b64url(data: bytes) -> str:
@@ -47,6 +49,18 @@ def _internal_auth_token(
     )
     signature = hmac_new(api_secret.encode("utf-8"), signing_input.encode("ascii"), sha256).digest()
     return f"{signing_input}.{_b64url(signature)}"
+
+
+def _env_auth_mode() -> AuthMode | None:
+    value = os.getenv("GALILEO_LUNA_AUTH_MODE")
+    if value is None or value.strip() == "":
+        return None
+    normalized = value.strip().lower()
+    if normalized == "public":
+        return "public"
+    if normalized == "internal":
+        return "internal"
+    raise ValueError("GALILEO_LUNA_AUTH_MODE must be either 'public' or 'internal'.")
 
 
 def _as_float_or_none(value: JSONValue) -> float | None:
@@ -151,6 +165,7 @@ class GalileoLunaClient:
     Environment Variables:
         GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: Galileo API internal JWT signing secret.
         GALILEO_API_KEY: Galileo API key fallback for public scorer invocation.
+        GALILEO_LUNA_AUTH_MODE: Auth mode, either "public" or "internal".
         GALILEO_CONSOLE_URL: Galileo Console URL (optional, defaults to production).
     """
 
@@ -160,6 +175,7 @@ class GalileoLunaClient:
         api_secret: str | None = None,
         console_url: str | None = None,
         api_url: str | None = None,
+        auth_mode: AuthMode | None = None,
     ) -> None:
         """Initialize the Galileo Luna client.
 
@@ -171,22 +187,26 @@ class GalileoLunaClient:
                 GALILEO_CONSOLE_URL or uses the production console URL.
             api_url: Galileo API URL. If not provided, reads from GALILEO_API_URL
                 before deriving from the console URL.
+            auth_mode: Auth mode to use. If not provided, reads from
+                GALILEO_LUNA_AUTH_MODE, or infers from the single available credential.
 
         Raises:
-            ValueError: If neither API secret nor API key is provided.
+            ValueError: If credentials are missing, ambiguous, or incompatible with
+                the selected auth mode.
         """
         resolved_api_secret = (
             api_secret or os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
         )
         resolved_api_key = api_key or os.getenv("GALILEO_API_KEY")
-        if not resolved_api_secret and not resolved_api_key:
-            raise ValueError(
-                "GALILEO_API_SECRET_KEY or GALILEO_API_KEY is required. "
-                "Set one as an environment variable or pass it to the constructor."
-            )
+        resolved_auth_mode = self._resolve_auth_mode(
+            auth_mode or _env_auth_mode(),
+            api_key=resolved_api_key,
+            api_secret=resolved_api_secret,
+        )
 
         self.api_key = resolved_api_key
         self.api_secret = resolved_api_secret
+        self.auth_mode = resolved_auth_mode
         self.console_url = (
             console_url or os.getenv("GALILEO_CONSOLE_URL") or "https://console.galileo.ai"
         )
@@ -194,6 +214,44 @@ class GalileoLunaClient:
             "/"
         ) or self._derive_api_url(self.console_url)
         self._client: httpx.AsyncClient | None = None
+        logger.info("[GalileoLunaClient] Auth mode selected: %s", self.auth_mode)
+
+    @staticmethod
+    def _resolve_auth_mode(
+        auth_mode: AuthMode | None,
+        *,
+        api_key: str | None,
+        api_secret: str | None,
+    ) -> AuthMode:
+        if auth_mode == "public":
+            if not api_key:
+                raise ValueError(
+                    "GALILEO_API_KEY is required when GALILEO_LUNA_AUTH_MODE=public."
+                )
+            return "public"
+
+        if auth_mode == "internal":
+            if not api_secret:
+                raise ValueError(
+                    "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required when "
+                    "GALILEO_LUNA_AUTH_MODE=internal."
+                )
+            return "internal"
+
+        if api_key and api_secret:
+            raise ValueError(
+                "Both Galileo API key and API secret are configured. Set "
+                "GALILEO_LUNA_AUTH_MODE to 'public' or 'internal' to choose the "
+                "runtime auth mode explicitly."
+            )
+        if api_secret:
+            return "internal"
+        if api_key:
+            return "public"
+        raise ValueError(
+            "GALILEO_API_SECRET_KEY or GALILEO_API_KEY is required. "
+            "Set one as an environment variable or pass it to the constructor."
+        )
 
     def _derive_api_url(self, console_url: str) -> str:
         """Derive the API URL from a Galileo Console URL."""
@@ -215,7 +273,7 @@ class GalileoLunaClient:
         """Get or create the HTTP client."""
         if self._client is None or self._client.is_closed:
             headers = {"Content-Type": "application/json"}
-            if self.api_secret is None and self.api_key is not None:
+            if self.auth_mode == "public" and self.api_key is not None:
                 headers["Galileo-API-Key"] = self.api_key
             self._client = httpx.AsyncClient(
                 headers=headers,
@@ -228,9 +286,11 @@ class GalileoLunaClient:
         headers: dict[str, str] | None,
     ) -> tuple[str, dict[str, str]]:
         request_headers = dict(headers or {})
-        if self.api_secret is None:
+        if self.auth_mode == "public":
             return f"{self.api_base}{PUBLIC_SCORER_INVOKE_PATH}", request_headers
 
+        if self.api_secret is None:
+            raise RuntimeError("Internal Luna auth mode is missing an API secret.")
         request_headers["Authorization"] = f"Bearer {_internal_auth_token(self.api_secret)}"
         return f"{self.api_base}{INTERNAL_SCORER_INVOKE_PATH}", request_headers
 

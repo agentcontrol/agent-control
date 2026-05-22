@@ -28,6 +28,14 @@ _OTEL_EXPORTER_MISSING_WARNING = (
     "OpenTelemetry sink selected but no OTLP exporter configuration was found; "
     "control events will not be exported"
 )
+_DEBUG_METADATA_ATTRIBUTE_KEYS = frozenset(
+    {
+        "selected_data",
+        "selected_data_preview",
+        "engine_selected_data",
+        "engine_selected_data_preview",
+    }
+)
 
 AttributeValue = str | bool | int | float | list[str] | list[bool] | list[int] | list[float]
 
@@ -129,6 +137,8 @@ def control_event_to_otel_span(event: ControlExecutionEvent) -> OTELControlEvent
         attributes["agent_control.error_message"] = event.error_message
 
     for key, value in sorted(event.metadata.items()):
+        if key in _DEBUG_METADATA_ATTRIBUTE_KEYS:
+            continue
         attributes[f"agent_control.metadata.{key}"] = _normalize_attribute_value(value)
 
     return OTELControlEventSpan(

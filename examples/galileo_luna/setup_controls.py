@@ -3,8 +3,9 @@
 
 Prerequisites:
     - Agent Control server running at AGENT_CONTROL_URL, default http://localhost:8000
-    - GALILEO_API_KEY set where demo_agent.py will run
-    - Optional GALILEO_PROJECT_ID for project-scoped scorer resolution
+    - Galileo credentials set where demo_agent.py will run:
+      GALILEO_API_KEY with GALILEO_LUNA_AUTH_MODE=public, or
+      GALILEO_API_SECRET_KEY/GALILEO_API_SECRET with GALILEO_LUNA_AUTH_MODE=internal
 
 Usage:
     uv run python setup_controls.py
@@ -24,8 +25,14 @@ AGENT_DESCRIPTION = "Demo agent protected by direct Galileo Luna scorer controls
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 LUNA_SCORER_LABEL = os.getenv("GALILEO_LUNA_SCORER_LABEL", "toxicity")
+LUNA_SCORER_ID = os.getenv("GALILEO_LUNA_SCORER_ID")
+LUNA_SCORER_VERSION_ID = os.getenv("GALILEO_LUNA_SCORER_VERSION_ID")
 LUNA_THRESHOLD = float(os.getenv("GALILEO_LUNA_THRESHOLD", "0.5"))
-GALILEO_PROJECT_ID = os.getenv("GALILEO_PROJECT_ID")
+LUNA_PAYLOAD_FIELD = os.getenv("GALILEO_LUNA_PAYLOAD_FIELD", "output")
+LUNA_AUTH_MODE = os.getenv("GALILEO_LUNA_AUTH_MODE")
+
+if LUNA_PAYLOAD_FIELD not in {"input", "output"}:
+    raise ValueError("GALILEO_LUNA_PAYLOAD_FIELD must be either 'input' or 'output'.")
 
 DEMO_STEPS = [
     {
@@ -41,14 +48,16 @@ DEMO_STEPS = [
 def luna_config() -> dict[str, Any]:
     """Build the direct Luna evaluator config used by the composite control."""
     config: dict[str, Any] = {
-        "scorer_label": LUNA_SCORER_LABEL,
         "threshold": LUNA_THRESHOLD,
         "operator": "gte",
-        "payload_field": "output",
-        "on_error": "allow",
+        "payload_field": LUNA_PAYLOAD_FIELD,
     }
-    if GALILEO_PROJECT_ID:
-        config["project_id"] = GALILEO_PROJECT_ID
+    if LUNA_SCORER_LABEL:
+        config["scorer_label"] = LUNA_SCORER_LABEL
+    if LUNA_SCORER_ID:
+        config["scorer_id"] = LUNA_SCORER_ID
+    if LUNA_SCORER_VERSION_ID:
+        config["scorer_version_id"] = LUNA_SCORER_VERSION_ID
     return config
 
 
@@ -158,9 +167,15 @@ async def setup_demo() -> None:
     print("Setting up direct Galileo Luna demo controls")
     print(f"Server: {SERVER_URL}")
     print(f"Agent:  {AGENT_NAME}")
-    print(f"Luna:   scorer_label={LUNA_SCORER_LABEL!r}, threshold={LUNA_THRESHOLD}")
-    if GALILEO_PROJECT_ID:
-        print(f"Project ID: {GALILEO_PROJECT_ID}")
+    print(
+        "Luna:   "
+        f"scorer_label={LUNA_SCORER_LABEL!r}, "
+        f"scorer_id={LUNA_SCORER_ID!r}, "
+        f"scorer_version_id={LUNA_SCORER_VERSION_ID!r}, "
+        f"threshold={LUNA_THRESHOLD}, "
+        f"payload_field={LUNA_PAYLOAD_FIELD!r}"
+    )
+    print(f"Auth:   GALILEO_LUNA_AUTH_MODE={LUNA_AUTH_MODE or '(auto if one credential)'}")
 
     async with AgentControlClient(base_url=SERVER_URL, timeout=30.0) as client:
         await client.health_check()
