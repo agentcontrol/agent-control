@@ -548,6 +548,14 @@ class ControlAttachments(BaseModel):
         default_factory=list,
         description="Target bindings for this control",
     )
+    targets_total: int = Field(
+        default=0,
+        description="Total target bindings matching the attachment filters",
+    )
+    targets_truncated: bool = Field(
+        default=False,
+        description="Whether the target bindings list was capped",
+    )
 
 
 class ControlSummary(BaseModel):

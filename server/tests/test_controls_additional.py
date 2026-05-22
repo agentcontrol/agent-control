@@ -1282,6 +1282,8 @@ def test_list_controls_filters_by_target_attachment_before_pagination(
             "enabled": True,
         }
     ]
+    assert controls[0]["attachments"]["targets_total"] == 1
+    assert controls[0]["attachments"]["targets_truncated"] is False
 
 
 def test_list_controls_expands_filtered_control_attachments(
@@ -1349,10 +1351,95 @@ def test_list_controls_expands_filtered_control_attachments(
                 "enabled": False,
             }
         ],
+        "targets_total": 1,
+        "targets_truncated": False,
     }
 
 
+def test_list_controls_caps_inline_target_attachments(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    binding_ids = [
+        _create_target_binding(
+            client,
+            control_id=control_id,
+            target_type="log_stream",
+            target_id=f"ls-{index}",
+        )
+        for index in range(25)
+    ]
+
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": control_name,
+            "include_attachments": "true",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    attachments = resp.json()["controls"][0]["attachments"]
+    assert len(attachments["targets"]) == 20
+    assert attachments["targets_total"] == 25
+    assert attachments["targets_truncated"] is True
+    assert [target["binding_id"] for target in attachments["targets"]] == list(
+        reversed(binding_ids[-20:])
+    )
+
+
 def test_list_controls_omits_targets_without_binding_read_authorization(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="log_stream",
+        target_id="ls-prod",
+    )
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class BindingReadDenyAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            if operation == Operation.CONTROL_BINDINGS_READ:
+                raise ForbiddenError(
+                    error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                    detail="No target read access.",
+                )
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(BindingReadDenyAuthorizer())
+
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": control_name,
+            "include_attachments": "true",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    controls = resp.json()["controls"]
+    assert controls[0]["attachments"] == {
+        "agents": [],
+        "policies": [],
+        "targets": [],
+        "targets_total": 0,
+        "targets_truncated": False,
+    }
+    assert (Operation.CONTROL_BINDINGS_READ, {}) in calls
+
+
+def test_list_controls_rejects_target_filter_without_binding_read_authorization(
     client: TestClient,
 ) -> None:
     control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
@@ -1392,13 +1479,8 @@ def test_list_controls_omits_targets_without_binding_read_authorization(
         },
     )
 
-    assert resp.status_code == 200, resp.text
-    controls = resp.json()["controls"]
-    assert controls[0]["attachments"] == {
-        "agents": [],
-        "policies": [],
-        "targets": [],
-    }
+    assert resp.status_code == 403
+    assert resp.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
     assert (
         Operation.CONTROL_BINDINGS_READ,
         {"target_type": "log_stream", "target_id": "ls-prod"},
