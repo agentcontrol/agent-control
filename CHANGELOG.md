@@ -2,6 +2,21 @@
 
 <!-- version list -->
 
+## v7.8.1 (2026-05-20)
+
+### Bug Fixes
+
+- **server**: Make observability migration retry-safe
+  ([#226](https://github.com/agentcontrol/agent-control/pull/226),
+  [`b9dd00d`](https://github.com/agentcontrol/agent-control/commit/b9dd00d5e5a5c4223c5b19fcfff69b3d9d084b80))
+
+### Continuous Integration
+
+- **ci**: Upload release assets with gh
+  ([#225](https://github.com/agentcontrol/agent-control/pull/225),
+  [`d366ba4`](https://github.com/agentcontrol/agent-control/commit/d366ba4d33d82337253b24222cc5bb7b48a9238a))
+
+
 ## v7.8.0 (2026-05-15)
 
 ### Bug Fixes

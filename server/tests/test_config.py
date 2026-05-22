@@ -2,6 +2,7 @@
 
 from agent_control_server.config import (
     AgentControlServerDatabaseConfig,
+    LoggingSettings,
     ObservabilitySettings,
     Settings,
 )
@@ -230,3 +231,17 @@ def test_observability_settings_ignore_legacy_env_vars(monkeypatch) -> None:
     # Then: the legacy env vars are ignored
     assert config.enabled is True
     assert config.stdout is False
+
+
+def test_logging_settings_configure_logging_defaults_to_true() -> None:
+    config = LoggingSettings()
+
+    assert config.configure_logging is True
+
+
+def test_logging_settings_supports_host_owned_logging(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "false")
+
+    config = LoggingSettings()
+
+    assert config.configure_logging is False

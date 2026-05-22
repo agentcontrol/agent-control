@@ -37,7 +37,7 @@ from .errors import (
     http_exception_handler,
     validation_exception_handler,
 )
-from .logging_utils import configure_logging, get_uvicorn_log_level_name
+from .logging_utils import configure_logging, get_uvicorn_log_level_name, should_configure_logging
 from .observability.ingest import DirectEventIngestor
 from .observability.sinks import (
     EventStoreControlEventSink,
@@ -48,6 +48,7 @@ from .observability.store import PostgresEventStore
 from .ui_assets import configure_ui_routes
 
 logger = logging.getLogger(__name__)
+_logging_configured = False
 
 METRICS_PATH = "/metrics"
 PROMETHEUS_BUCKETS = [
@@ -72,6 +73,16 @@ PROMETHEUS_SKIP_PATHS = [
 
 def _default_log_level() -> str:
     return "DEBUG" if settings.debug else "INFO"
+
+
+def _configure_logging_once() -> None:
+    global _logging_configured
+
+    if _logging_configured or not should_configure_logging():
+        return
+
+    configure_logging(default_level=_default_log_level())
+    _logging_configured = True
 
 
 def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
@@ -119,8 +130,7 @@ async def _shutdown_observability_sink(sink: object) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for FastAPI app startup and shutdown."""
-    # Startup: Configure logging
-    configure_logging(default_level=_default_log_level())
+    _configure_logging_once()
 
     # Install the request-auth provider selected by environment variables.
     from .auth_framework.config import configure_auth_from_env
@@ -229,10 +239,6 @@ app.add_middleware(
     allow_methods=settings.get_allow_methods(),
     allow_headers=settings.get_allow_headers(),
 )
-
-# Configure logging
-configure_logging(default_level=_default_log_level())
-
 
 @app.middleware("http")
 async def attach_version_header(request, call_next):  # type: ignore[no-untyped-def]
@@ -403,12 +409,16 @@ configure_ui_routes(app)
 
 def run() -> None:
     """Run the server application."""
-    uvicorn.run(
-        app,
-        host=settings.host,
-        port=settings.port,
-        log_level=get_uvicorn_log_level_name(_default_log_level()).lower(),
-    )
+    _configure_logging_once()
+    uvicorn_kwargs: dict[str, Any] = {
+        "host": settings.host,
+        "port": settings.port,
+        "log_level": get_uvicorn_log_level_name(_default_log_level()).lower(),
+    }
+    if not should_configure_logging():
+        uvicorn_kwargs["log_config"] = None
+
+    uvicorn.run(app, **uvicorn_kwargs)
 
 
 if __name__ == "__main__":

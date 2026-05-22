@@ -66,12 +66,20 @@ def _parse_json(json_flag: bool | None) -> bool:
     return LoggingSettings().json_logs
 
 
+def should_configure_logging() -> bool:
+    """Return whether the server should install its own logging handlers."""
+    return LoggingSettings().configure_logging
+
+
 def configure_logging(
     *,
     level: str | int | None = None,
     json: bool | None = None,
     default_level: str = "INFO",
 ) -> None:
+    if not should_configure_logging():
+        return
+
     resolved_level = level if level is not None else get_log_level_name(default_level)
     lvl = _parse_level(resolved_level)
     as_json = _parse_json(json)
