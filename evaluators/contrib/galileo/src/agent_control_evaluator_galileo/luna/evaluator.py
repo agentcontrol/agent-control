@@ -61,8 +61,6 @@ def _contains(score: JSONValue, threshold: JSONValue) -> bool:
     if isinstance(score, list):
         return threshold in score
     if isinstance(score, dict):
-        if isinstance(threshold, str) and threshold in score:
-            return True
         return threshold in score.values()
     return False
 
@@ -116,12 +114,10 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             )
 
         super().__init__(config)
-        self._client: GalileoLunaClient | None = None
+        self._client = GalileoLunaClient()
 
     def _get_client(self) -> GalileoLunaClient:
-        """Get or create the Galileo Luna client."""
-        if self._client is None:
-            self._client = GalileoLunaClient()
+        """Get the Galileo Luna client."""
         return self._client
 
     def _prepare_payload(self, data: Any) -> tuple[str | None, str | None]:
@@ -133,8 +129,7 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 return input_text, output_text
 
         text = _coerce_payload_text(data)
-        scorer_label = self.config.scorer_label or ""
-        if "output" in scorer_label:
+        if self.config.payload_field == "output":
             return None, text
         return text, None
 
@@ -262,7 +257,6 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             confidence=0.0,
             message=f"Luna evaluation error: {error_detail}",
             metadata={
-                "error": error_detail,
                 "error_type": type(error).__name__,
                 "scorer_label": self.config.scorer_label,
                 "scorer_id": self.config.scorer_id,
@@ -273,6 +267,4 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
 
     async def aclose(self) -> None:
         """Close the underlying Galileo Luna client."""
-        if self._client is not None:
-            await self._client.close()
-            self._client = None
+        await self._client.close()

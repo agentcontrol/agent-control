@@ -157,7 +157,7 @@ class MetadataEvaluator(Evaluator[SimpleConfig]):
             matched=matched,
             confidence=0.8 if matched else 0.4,
             message=f"Metadata {self.config.value}",
-            metadata={"source": self.config.value, "selected_data": data},
+            metadata={"source": self.config.value, "selected_data": f"evaluator:{data}"},
         )
         _execution_log.append(f"metadata:{self.config.value}:end")
         return result
@@ -1413,8 +1413,8 @@ class TestConditionTrees:
         assert trace["children"][1]["short_circuit_reason"] == "or_matched"
 
     @pytest.mark.asyncio
-    async def test_leaf_metadata_includes_selector_selected_data(self):
-        """Leaf metadata should expose the value selected by selector.path."""
+    async def test_leaf_metadata_includes_selector_selected_data_preview(self):
+        """Leaf metadata should expose a safe preview of the selected selector.path value."""
         # Given: a leaf control selecting a nested step input value
         controls = [
             MockControlWithIdentity(
@@ -1448,11 +1448,109 @@ class TestConditionTrees:
         )
         result = await engine.process(request)
 
-        # Then: event reconstruction can use selected_data as ControlSpan.input
+        # Then: UI consumers can inspect the selected value without raw data export.
         assert result.matches is not None
         metadata = result.matches[0].result.metadata
         assert metadata is not None
-        assert metadata["selected_data"] == "San Francisco"
+        assert "selected_data" not in metadata
+        assert metadata["engine_selected_data_preview"] == {
+            "type": "str",
+            "value": "San Francisco",
+            "truncated": False,
+        }
+
+    @pytest.mark.asyncio
+    async def test_leaf_selected_data_preview_is_bounded_and_redacted(self):
+        """Selected data previews should cap payload size and redact secret-like keys."""
+        # Given: a leaf control selecting a large object with a secret-like key
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="payload_control",
+                control=ControlDefinition(
+                    description="Payload guardrail",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["tool"], "stages": ["pre"]},
+                    condition={
+                        "selector": {"path": "input"},
+                        "evaluator": {"name": "test-deny", "config": {"value": "match"}},
+                    },
+                    action={"decision": "observe"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls)
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(
+                type="tool",
+                name="send-payload",
+                input={
+                    "prompt": "x" * 600,
+                    "api_key": "secret-value",
+                },
+                output=None,
+            ),
+            stage="pre",
+        )
+
+        # When: processing the request
+        result = await engine.process(request)
+
+        # Then: the preview is useful for UI inspection but does not expose the raw payload.
+        assert result.matches is not None
+        metadata = result.matches[0].result.metadata
+        assert metadata is not None
+        preview = metadata["engine_selected_data_preview"]
+        assert preview["type"] == "dict"
+        assert preview["truncated"] is True
+        assert preview["value"]["api_key"] == "<redacted>"
+        assert preview["value"]["prompt"].endswith("...")
+        assert len(preview["value"]["prompt"]) == 500
+
+    @pytest.mark.asyncio
+    async def test_engine_selected_data_does_not_overwrite_evaluator_metadata(self):
+        """Engine-owned selector data should not collide with evaluator-owned metadata."""
+        # Given: an evaluator that deliberately returns its own selected_data key
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="metadata_control",
+                control=ControlDefinition(
+                    description="Metadata guardrail",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
+                    condition={
+                        "selector": {"path": "input"},
+                        "evaluator": {"name": "test-metadata", "config": {"value": "match"}},
+                    },
+                    action={"decision": "observe"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls, include_raw_selected_data=True)
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="raw input", output=None),
+            stage="pre",
+        )
+
+        # When: processing the request
+        result = await engine.process(request)
+
+        # Then: evaluator-owned metadata remains intact and engine-owned data is namespaced.
+        assert result.matches is not None
+        metadata = result.matches[0].result.metadata
+        assert metadata is not None
+        assert metadata["selected_data"] == "evaluator:raw input"
+        assert metadata["engine_selected_data"] == "raw input"
+        assert metadata["engine_selected_data_preview"] == {
+            "type": "str",
+            "value": "raw input",
+            "truncated": False,
+        }
 
     @pytest.mark.asyncio
     async def test_composite_results_preserve_decisive_child_metadata(self):
@@ -1511,7 +1609,12 @@ class TestConditionTrees:
         metadata = result.matches[0].result.metadata
         assert metadata is not None
         assert metadata["source"] == "match-right"
-        assert metadata["selected_data"] == "chosen"
+        assert metadata["selected_data"] == "evaluator:chosen"
+        assert metadata["engine_selected_data_preview"] == {
+            "type": "str",
+            "value": "chosen",
+            "truncated": False,
+        }
         assert metadata["condition_trace"]["type"] == "or"
         assert "slow:skip-tail:start" not in _execution_log
 

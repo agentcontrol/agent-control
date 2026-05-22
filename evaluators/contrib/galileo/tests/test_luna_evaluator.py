@@ -42,6 +42,7 @@ class TestLunaEvaluatorConfig:
         assert config.threshold == 0.7
         assert config.operator == "gte"
         assert config.scorer_config == {"temperature": 0}
+        assert config.payload_field == "input"
 
     def test_config_accepts_scorer_id_without_label(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluatorConfig
@@ -475,4 +476,6 @@ class TestLunaEvaluator:
         assert result.matched is False
         assert result.error == "service unavailable"
         assert result.metadata is not None
+        assert "error" not in result.metadata
+        assert result.metadata["error_type"] == "RuntimeError"
         assert "fallback_action" not in result.metadata

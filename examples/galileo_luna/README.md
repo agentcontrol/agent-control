@@ -17,25 +17,42 @@ Start the Agent Control server from the repo root:
 make server-run
 ```
 
-Configure Galileo:
+Configure Galileo public API-key auth:
 
 ```bash
+export GALILEO_LUNA_AUTH_MODE="public"
 export GALILEO_API_KEY="your-api-key"
 export GALILEO_CONSOLE_URL="https://console.demo-v2.galileocloud.io"
 ```
 
-If the scorer requires explicit project resolution, set:
+For internal deployments, use internal auth instead:
 
 ```bash
-export GALILEO_PROJECT_ID="00000000-0000-0000-0000-000000000000"
+export GALILEO_LUNA_AUTH_MODE="internal"
+export GALILEO_API_SECRET_KEY="your-api-secret"
+export GALILEO_API_URL="https://api.default.svc.cluster.local:8088"
 ```
 
 Optional scorer settings:
 
 ```bash
 export GALILEO_LUNA_SCORER_LABEL="toxicity"
+# Or select by scorer id/version instead of label:
+# export GALILEO_LUNA_SCORER_ID="scorer-id"
+# export GALILEO_LUNA_SCORER_VERSION_ID="scorer-version-id"
 export GALILEO_LUNA_THRESHOLD="0.5"
+export GALILEO_LUNA_PAYLOAD_FIELD="output"
 ```
+
+`GALILEO_LUNA_PAYLOAD_FIELD` is explicit for scalar selected data. This example
+selects the agent's drafted reply with `selector.path="output"`, so it sends that
+scalar as the scorer `output` field. If a selector returns structured data with
+`input` and/or `output` keys, those keys are sent directly and override
+`GALILEO_LUNA_PAYLOAD_FIELD`.
+
+If both `GALILEO_API_KEY` and `GALILEO_API_SECRET_KEY`/`GALILEO_API_SECRET` are
+set, `GALILEO_LUNA_AUTH_MODE` is required so the client does not silently choose
+an auth path.
 
 Run:
 

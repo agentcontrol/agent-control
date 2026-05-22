@@ -22,6 +22,19 @@ _logger = get_logger(__name__)
 _FALLBACK_TRACE_ID = "0" * 32
 _FALLBACK_SPAN_ID = "0" * 16
 _trace_warning_logged = False
+_DEBUG_METADATA_KEYS = frozenset(
+    {
+        "selected_data",
+        "selected_data_preview",
+        "engine_selected_data",
+        "engine_selected_data_preview",
+    }
+)
+
+
+def _safe_event_metadata(metadata: dict[str, object]) -> dict[str, object]:
+    """Drop raw/debug metadata that should not be exported as observability data."""
+    return {key: value for key, value in metadata.items() if key not in _DEBUG_METADATA_KEYS}
 
 
 def observability_metadata(
@@ -88,7 +101,7 @@ def _build_events_for_matches(
 
     for match in matches:
         control_def = control_lookup.get(match.control_id)
-        event_metadata = dict(match.result.metadata or {})
+        event_metadata = _safe_event_metadata(dict(match.result.metadata or {}))
         selector_path = None
         evaluator_name = None
 

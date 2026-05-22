@@ -33,6 +33,108 @@ DEFAULT_EVALUATOR_TIMEOUT = float(os.environ.get("EVALUATOR_TIMEOUT_SECONDS", "3
 # Max concurrent evaluations (limits task spawning overhead for large policies)
 MAX_CONCURRENT_EVALUATIONS = int(os.environ.get("MAX_CONCURRENT_EVALUATIONS", "3"))
 
+SELECTED_DATA_PREVIEW_MAX_CHARS = int(
+    os.environ.get("AGENT_CONTROL_SELECTED_DATA_PREVIEW_MAX_CHARS", "500")
+)
+SELECTED_DATA_PREVIEW_MAX_ITEMS = int(
+    os.environ.get("AGENT_CONTROL_SELECTED_DATA_PREVIEW_MAX_ITEMS", "20")
+)
+SELECTED_DATA_PREVIEW_MAX_DEPTH = int(
+    os.environ.get("AGENT_CONTROL_SELECTED_DATA_PREVIEW_MAX_DEPTH", "3")
+)
+_SENSITIVE_KEY_PARTS = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "credential",
+    "password",
+    "secret",
+    "token",
+)
+
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    """Read a boolean environment flag."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_sensitive_key(key: object) -> bool:
+    """Return whether a mapping key is likely to contain a secret."""
+    normalized = str(key).lower()
+    return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
+
+
+def _truncate_string(value: str, max_chars: int) -> tuple[str, bool]:
+    """Return a bounded string preview and whether it was truncated."""
+    if len(value) <= max_chars:
+        return value, False
+    if max_chars <= 3:
+        return value[:max_chars], True
+    return f"{value[: max_chars - 3]}...", True
+
+
+def _selected_data_preview_value(
+    value: Any,
+    *,
+    depth: int = 0,
+) -> tuple[Any, bool]:
+    """Build a bounded, redacted preview of selected data."""
+    if depth >= SELECTED_DATA_PREVIEW_MAX_DEPTH:
+        return "<max depth reached>", True
+
+    if value is None or isinstance(value, bool | int | float):
+        return value, False
+
+    if isinstance(value, str):
+        return _truncate_string(value, SELECTED_DATA_PREVIEW_MAX_CHARS)
+
+    if isinstance(value, dict):
+        preview: dict[str, Any] = {}
+        truncated = len(value) > SELECTED_DATA_PREVIEW_MAX_ITEMS
+        for index, (key, item) in enumerate(value.items()):
+            if index >= SELECTED_DATA_PREVIEW_MAX_ITEMS:
+                break
+            preview_key = str(key)
+            if _is_sensitive_key(key):
+                preview[preview_key] = "<redacted>"
+                truncated = True
+                continue
+            preview_item, item_truncated = _selected_data_preview_value(
+                item,
+                depth=depth + 1,
+            )
+            preview[preview_key] = preview_item
+            truncated = truncated or item_truncated
+        return preview, truncated
+
+    if isinstance(value, list | tuple):
+        preview_items: list[Any] = []
+        truncated = len(value) > SELECTED_DATA_PREVIEW_MAX_ITEMS
+        for item in value[:SELECTED_DATA_PREVIEW_MAX_ITEMS]:
+            preview_item, item_truncated = _selected_data_preview_value(
+                item,
+                depth=depth + 1,
+            )
+            preview_items.append(preview_item)
+            truncated = truncated or item_truncated
+        return preview_items, truncated
+
+    text_preview, truncated = _truncate_string(str(value), SELECTED_DATA_PREVIEW_MAX_CHARS)
+    return text_preview, truncated
+
+
+def _selected_data_preview(value: Any) -> dict[str, Any]:
+    """Return UI-safe selector output details for evaluator-level inspection."""
+    preview, truncated = _selected_data_preview_value(value)
+    return {
+        "type": type(value).__name__,
+        "value": preview,
+        "truncated": truncated,
+    }
+
 
 @functools.lru_cache(maxsize=256)
 def _compile_regex(pattern: str) -> Any:
@@ -102,9 +204,16 @@ class ControlEngine:
         self,
         controls: Sequence[ControlWithIdentity],
         context: Literal["sdk", "server"] = "server",
+        *,
+        include_raw_selected_data: bool | None = None,
     ):
         self.controls = controls
         self.context = context
+        self.include_raw_selected_data = (
+            _env_flag("AGENT_CONTROL_INCLUDE_RAW_SELECTED_DATA")
+            if include_raw_selected_data is None
+            else include_raw_selected_data
+        )
 
     @staticmethod
     def _truncated_message(message: str | None) -> str | None:
@@ -224,7 +333,9 @@ class ControlEngine:
             "message": self._truncated_message(result.message),
         }
         metadata = dict(result.metadata or {})
-        metadata["selected_data"] = data
+        if self.include_raw_selected_data:
+            metadata["engine_selected_data"] = data
+        metadata["engine_selected_data_preview"] = _selected_data_preview(data)
         metadata["condition_trace"] = trace
         return _ConditionEvaluation(
             result=result.model_copy(update={"metadata": metadata}),
@@ -272,16 +383,18 @@ class ControlEngine:
     ) -> dict[str, Any] | None:
         """Select stable child metadata to preserve on composite results.
 
-        The selected_data value in this metadata is not all evaluator inputs.
-        It is the selected value from the leaf metadata the engine preserves for
-        the final composite result:
-        - or where one child matches: selected_data comes from the matching child.
-        - and where one child fails: selected_data comes from the failing child.
-        - and where all children match: selected_data comes from the first
-          matching child, usually the first leaf.
-        - or where no children match: selected_data comes from the first
-          evaluated child.
-        - not: selected_data comes from its child.
+        The engine_selected_data_preview value in this metadata is not all
+        evaluator inputs. It is the bounded selected value preview from the leaf
+        metadata the engine preserves for the final composite result:
+        - or where one child matches: engine_selected_data_preview comes from the
+          matching child.
+        - and where one child fails: engine_selected_data_preview comes from the
+          failing child.
+        - and where all children match: engine_selected_data_preview comes from the
+          first matching child, usually the first leaf.
+        - or where no children match: engine_selected_data_preview comes from the
+          first evaluated child.
+        - not: engine_selected_data_preview comes from its child.
         """
         source_result: EvaluatorResult | None = None
         if matched:

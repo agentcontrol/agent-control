@@ -76,7 +76,7 @@ class TestExtractDictText:
 
 
 class TestContains:
-    """``_contains`` supports str/list/dict scores against a threshold."""
+    """``_contains`` supports str/list and dict values against a threshold."""
 
     def test_none_threshold_is_no_match(self):
         from agent_control_evaluator_galileo.luna.evaluator import _contains
@@ -95,10 +95,10 @@ class TestContains:
         assert _contains(["a", "b", "c"], "b") is True
         assert _contains(["a", "b", "c"], "z") is False
 
-    def test_dict_threshold_matches_key(self):
+    def test_dict_threshold_does_not_match_key(self):
         from agent_control_evaluator_galileo.luna.evaluator import _contains
 
-        assert _contains({"toxicity": 0.9}, "toxicity") is True
+        assert _contains({"toxicity": 0.9}, "toxicity") is False
 
     def test_dict_threshold_matches_value(self):
         from agent_control_evaluator_galileo.luna.evaluator import _contains
@@ -216,7 +216,7 @@ class TestScoreMatchesOperators:
 
 
 class TestPreparePayload:
-    """``_prepare_payload`` routes scalar data based on the scorer label."""
+    """``_prepare_payload`` routes scalar data using explicit config."""
 
     def test_scalar_routed_to_input_when_label_lacks_output(self, monkeypatch):
         monkeypatch.setenv("GALILEO_API_KEY", "test-key")
@@ -229,7 +229,27 @@ class TestPreparePayload:
         assert input_text == "hello"
         assert output_text is None
 
-    def test_scalar_routed_to_output_when_label_contains_output(self, monkeypatch):
+    def test_scalar_routed_to_output_when_payload_field_is_output(self, monkeypatch):
+        monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+
+        evaluator = LunaEvaluator.from_dict(
+            {
+                "scorer_label": "toxicity",
+                "threshold": 0.5,
+                "payload_field": "output",
+            }
+        )
+
+        input_text, output_text = evaluator._prepare_payload("hello")
+
+        assert input_text is None
+        assert output_text == "hello"
+
+    def test_scalar_output_label_without_payload_field_still_defaults_to_input(
+        self,
+        monkeypatch,
+    ):
         monkeypatch.setenv("GALILEO_API_KEY", "test-key")
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
@@ -239,13 +259,32 @@ class TestPreparePayload:
 
         input_text, output_text = evaluator._prepare_payload("hello")
 
-        assert input_text is None
-        assert output_text == "hello"
+        assert input_text == "hello"
+        assert output_text is None
+
+    def test_structured_payload_uses_input_output_keys_over_payload_field(self, monkeypatch):
+        monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+
+        evaluator = LunaEvaluator.from_dict(
+            {
+                "scorer_label": "toxicity",
+                "threshold": 0.5,
+                "payload_field": "output",
+            }
+        )
+
+        input_text, output_text = evaluator._prepare_payload(
+            {"input": "prompt", "output": "answer"}
+        )
+
+        assert input_text == "prompt"
+        assert output_text == "answer"
 
 
 @pytest.mark.asyncio
 async def test_evaluator_aclose_closes_underlying_client(monkeypatch):
-    """``aclose`` must release the HTTP client when one was created."""
+    """``aclose`` must release the eagerly-created client without clearing it."""
     monkeypatch.setenv("GALILEO_API_KEY", "test-key")
     from agent_control_evaluator_galileo.luna import LunaEvaluator
 
@@ -258,7 +297,7 @@ async def test_evaluator_aclose_closes_underlying_client(monkeypatch):
     await evaluator.aclose()
 
     fake.close.assert_awaited_once()
-    assert evaluator._client is None
+    assert evaluator._client is fake
 
 
 @pytest.mark.asyncio
@@ -402,6 +441,7 @@ def test_client_raises_when_no_credentials(monkeypatch):
         "GALILEO_API_SECRET_KEY",
         "GALILEO_API_SECRET",
         "GALILEO_API_KEY",
+        "GALILEO_LUNA_AUTH_MODE",
     ):
         monkeypatch.delenv(name, raising=False)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
@@ -410,10 +450,76 @@ def test_client_raises_when_no_credentials(monkeypatch):
         GalileoLunaClient()
 
 
+def test_client_requires_explicit_mode_when_both_credentials_are_present(monkeypatch):
+    """A mixed credential environment must not silently choose an auth route."""
+    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "internal-secret")
+    monkeypatch.delenv("GALILEO_LUNA_AUTH_MODE", raising=False)
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    with pytest.raises(ValueError, match="Both Galileo API key and API secret"):
+        GalileoLunaClient()
+
+
+def test_client_uses_explicit_public_mode_when_both_credentials_are_present(monkeypatch):
+    """Explicit public mode should use the API-key route even if a secret is also set."""
+    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "internal-secret")
+    monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "public")
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    client = GalileoLunaClient()
+
+    assert client.auth_mode == "public"
+    endpoint, request_headers = client._endpoint_and_headers(None)
+    assert endpoint.endswith("/scorers/invoke")
+    assert "Authorization" not in request_headers
+
+
+def test_client_uses_explicit_internal_mode_when_both_credentials_are_present(monkeypatch):
+    """Explicit internal mode should use the internal JWT route."""
+    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "internal-secret")
+    monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "internal")
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    client = GalileoLunaClient()
+
+    assert client.auth_mode == "internal"
+    endpoint, request_headers = client._endpoint_and_headers(None)
+    assert endpoint.endswith("/internal/scorers/invoke")
+    assert request_headers["Authorization"].startswith("Bearer ")
+
+
+def test_client_rejects_mode_without_matching_credential(monkeypatch):
+    """The selected mode must have its matching credential configured."""
+    monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
+    monkeypatch.delenv("GALILEO_API_SECRET", raising=False)
+    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
+    monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "internal")
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY"):
+        GalileoLunaClient()
+
+
+def test_client_rejects_invalid_auth_mode(monkeypatch):
+    """Invalid auth mode values should fail during client initialization."""
+    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
+    monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "sideways")
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    with pytest.raises(ValueError, match="GALILEO_LUNA_AUTH_MODE"):
+        GalileoLunaClient()
+
+
 class TestDeriveApiUrl:
     """URL derivation covers every console.* → api.* substitution branch."""
 
     def _client(self, monkeypatch):
+        monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
+        monkeypatch.delenv("GALILEO_API_SECRET", raising=False)
+        monkeypatch.delenv("GALILEO_LUNA_AUTH_MODE", raising=False)
         monkeypatch.setenv("GALILEO_API_KEY", "test-key")
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 

@@ -9,6 +9,7 @@ from agent_control_models import JSONObject, JSONValue
 from pydantic import Field, model_validator
 
 LunaOperator = Literal["gt", "gte", "lt", "lte", "eq", "ne", "contains", "any"]
+LunaPayloadField = Literal["input", "output"]
 
 _NUMERIC_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
 
@@ -37,6 +38,7 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
         scorer_config: Optional scorer-specific config sent as ``config``.
+        payload_field: Explicit scorer input side for scalar selected data.
         timeout_ms: Request timeout in milliseconds.
     """
 
@@ -68,6 +70,13 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         alias="config",
         serialization_alias="config",
         description="Optional scorer-specific configuration sent to Galileo.",
+    )
+    payload_field: LunaPayloadField = Field(
+        default="input",
+        description=(
+            "Which scorer input side to use when selector output is a scalar value. "
+            "Structured selected data with input/output keys overrides this setting."
+        ),
     )
     timeout_ms: int = Field(
         default=10000,
