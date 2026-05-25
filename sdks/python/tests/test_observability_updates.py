@@ -238,7 +238,7 @@ class TestBuildControlExecutionEvents:
         assert event.evaluator_name == "regex"
         assert event.selector_path == "input"
 
-    def test_drops_raw_selected_data_from_event_metadata(self):
+    def test_uses_safe_selected_data_preview_as_event_input(self):
         response = self._make_response(
             matches=[
                 self._make_match(
@@ -287,6 +287,7 @@ class TestBuildControlExecutionEvents:
         assert "selected_data_preview" not in events[0].metadata
         assert "engine_selected_data" not in events[0].metadata
         assert "engine_selected_data_preview" not in events[0].metadata
+        assert events[0].metadata["input"] == {"prompt": "raw sensitive input"}
 
     def test_composite_control_uses_representative_observability_identity(self):
         response = self._make_response(non_matches=[self._make_match(1, "ctrl-1", matched=False)])

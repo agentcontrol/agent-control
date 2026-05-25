@@ -34,7 +34,14 @@ _DEBUG_METADATA_KEYS = frozenset(
 
 def _safe_event_metadata(metadata: dict[str, object]) -> dict[str, object]:
     """Drop raw/debug metadata that should not be exported as observability data."""
-    return {key: value for key, value in metadata.items() if key not in _DEBUG_METADATA_KEYS}
+    safe_metadata = {key: value for key, value in metadata.items() if key not in _DEBUG_METADATA_KEYS}
+    if "input" not in safe_metadata:
+        for preview_key in ("engine_selected_data_preview", "selected_data_preview"):
+            preview = metadata.get(preview_key)
+            if isinstance(preview, dict) and "value" in preview:
+                safe_metadata["input"] = preview["value"]
+                break
+    return safe_metadata
 
 
 def observability_metadata(
