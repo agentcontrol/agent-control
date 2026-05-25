@@ -11,17 +11,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_models import ConditionNode
-from agent_control_models.errors import ErrorCode
-from fastapi.testclient import TestClient
-from sqlalchemy import select, text
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
-
+from agent_control_models.errors import ErrorCode, ErrorReason
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.db import get_async_db
 from agent_control_server.endpoints import controls as controls_module
-from agent_control_server.errors import BadRequestError, ForbiddenError
+from agent_control_server.errors import APIError, BadRequestError, ForbiddenError
 from agent_control_server.main import app
 from agent_control_server.models import (
     DEFAULT_NAMESPACE_KEY,
@@ -29,6 +23,11 @@ from agent_control_server.models import (
     ControlBinding,
     ControlVersion,
 )
+from fastapi.testclient import TestClient
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -1418,6 +1417,58 @@ def test_list_controls_omits_targets_without_binding_read_authorization(
             return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
 
     set_authorizer(BindingReadDenyAuthorizer())
+
+    resp = client.get(
+        "/api/v1/controls",
+        params={
+            "name": control_name,
+            "include_attachments": "true",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    controls = resp.json()["controls"]
+    assert controls[0]["attachments"] == {
+        "agents": [],
+        "policies": [],
+        "targets": [],
+        "targets_total": 0,
+        "targets_truncated": False,
+    }
+    assert (Operation.CONTROL_BINDINGS_READ, {}) in calls
+
+
+def test_list_controls_omits_targets_when_broad_binding_read_upstream_rejects(
+    client: TestClient,
+) -> None:
+    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
+    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+    _create_target_binding(
+        client,
+        control_id=control_id,
+        target_type="log_stream",
+        target_id="ls-prod",
+    )
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class BindingReadRejectAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            if operation == Operation.CONTROL_BINDINGS_READ:
+                raise APIError(
+                    status_code=502,
+                    error_code=ErrorCode.AUTH_UPSTREAM_REJECTED,
+                    reason=ErrorReason.INTERNAL_ERROR,
+                    detail="Authorization service rejected the authorization check.",
+                )
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(BindingReadRejectAuthorizer())
 
     resp = client.get(
         "/api/v1/controls",

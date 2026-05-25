@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v7.9.0 (2026-05-25)
+
+### Features
+
+- **server**: Add control clone-and-bind endpoint
+  ([#229](https://github.com/agentcontrol/agent-control/pull/229),
+  [`1728bf9`](https://github.com/agentcontrol/agent-control/commit/1728bf9a89d76cdb19732c3b87ce2c9a4382df4e))
+
+- **server**: Allow host-owned logging setup
+  ([#227](https://github.com/agentcontrol/agent-control/pull/227),
+  [`c0fd159`](https://github.com/agentcontrol/agent-control/commit/c0fd15903b0219973c910a1d301b60ed477ffcac))
+
+
 ## v7.8.1 (2026-05-20)
 
 ### Bug Fixes

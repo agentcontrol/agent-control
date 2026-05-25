@@ -175,6 +175,10 @@ async def _optional_attachment_target_principal(request: Request) -> Principal |
         if target_context:
             raise
         return None
+    except APIError:
+        if target_context:
+            raise
+        return None
 
 
 def _generated_clone_name(source_id: int, source_name: str) -> str:
