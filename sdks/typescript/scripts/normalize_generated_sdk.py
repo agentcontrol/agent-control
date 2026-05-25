@@ -62,11 +62,29 @@ def _normalize_sdk_metadata_version(file_path: Path) -> None:
         file_path.write_text(normalized, encoding="utf-8")
 
 
+def _strip_unstable_type_comments(file_path: Path) -> None:
+    original = file_path.read_text(encoding="utf-8")
+    normalized = original.replace(
+        "/**\n"
+        " * Template-backed input payload for control create/update requests.\n"
+        " */\n"
+        "export type TemplateControlInput = {",
+        "export type TemplateControlInput = {",
+    )
+
+    if normalized != original:
+        file_path.write_text(normalized, encoding="utf-8")
+
+
 def normalize_generated_sdk(_schema_path: Path, generated_dir: Path) -> None:
     """Normalize generated SDK output to keep generation deterministic."""
     config_file = generated_dir / "lib" / "config.ts"
     if config_file.exists():
         _normalize_sdk_metadata_version(config_file)
+
+    template_control_input_file = generated_dir / "models" / "template-control-input.ts"
+    if template_control_input_file.exists():
+        _strip_unstable_type_comments(template_control_input_file)
 
     validation_error_file = generated_dir / "models" / "validation-error.ts"
     if not validation_error_file.exists():

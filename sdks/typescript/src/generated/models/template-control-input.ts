@@ -15,9 +15,6 @@ import {
   TemplateValue$outboundSchema,
 } from "./template-value.js";
 
-/**
- * Template-backed input payload for control create/update requests.
- */
 export type TemplateControlInput = {
   /**
    * Reusable template with typed parameters and a JSON definition template.
