@@ -48,6 +48,7 @@ _UPSTREAM_TIMEOUT_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_TIMEOUT_SECONDS"
 _UPSTREAM_TOKEN_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN"
 _UPSTREAM_TOKEN_HEADER_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN_HEADER"
 _UPSTREAM_EXTRA_FORWARD_HEADERS_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_EXTRA_FORWARD_HEADERS"
+_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
 # Runtime flow.
 _RUNTIME_MODE_ENV = "AGENT_CONTROL_RUNTIME_AUTH_MODE"
@@ -216,6 +217,7 @@ def _build_default_provider() -> RequestAuthorizer:
         extra_forward_headers = _parse_extra_forward_headers(
             os.environ.get(_UPSTREAM_EXTRA_FORWARD_HEADERS_ENV)
         )
+        ca_file = (os.environ.get(_UPSTREAM_CA_FILE_ENV) or "").strip() or None
         _logger.info("Default auth provider: http_upstream url=%s", url)
         return HttpUpstreamAuthProvider(
             HttpUpstreamConfig(
@@ -224,6 +226,7 @@ def _build_default_provider() -> RequestAuthorizer:
                 service_token=token,
                 service_token_header=token_header,
                 extra_forward_headers=extra_forward_headers,
+                ca_file=ca_file,
             )
         )
     raise RuntimeError(

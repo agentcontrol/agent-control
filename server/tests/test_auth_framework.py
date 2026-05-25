@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-
 from agent_control_server.auth_framework.core import (
     Operation,
     Principal,
@@ -227,6 +226,33 @@ def _build_upstream(
     return HttpUpstreamAuthProvider(config, client=client)
 
 
+def _patch_owned_upstream_client(monkeypatch) -> dict[str, Any]:
+    captured: dict[str, Any] = {}
+    ssl_context = object()
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def aclose(self) -> None:
+            captured["closed"] = True
+
+    def fake_create_default_context(*, cafile: str | None = None) -> object:
+        captured["cafile"] = cafile
+        return ssl_context
+
+    monkeypatch.setattr(
+        "agent_control_server.auth_framework.providers.http_upstream.httpx.AsyncClient",
+        FakeAsyncClient,
+    )
+    monkeypatch.setattr(
+        "agent_control_server.auth_framework.providers.http_upstream.ssl.create_default_context",
+        fake_create_default_context,
+    )
+    captured["ssl_context"] = ssl_context
+    return captured
+
+
 @pytest.mark.asyncio
 async def test_http_upstream_returns_principal_on_200():
     captured: dict[str, Any] = {}
@@ -289,6 +315,26 @@ def test_http_upstream_rejects_extra_forwarded_service_token_header_collision():
             service_token_header="X-Custom-Auth",
             extra_forward_headers=("x-custom-auth",),
         )
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_uses_ca_file_for_owned_client(monkeypatch):
+    captured = _patch_owned_upstream_client(monkeypatch)
+
+    provider = HttpUpstreamAuthProvider(
+        HttpUpstreamConfig(
+            url="https://upstream.example/check",
+            timeout_seconds=2.5,
+            ca_file="/etc/agent-control/auth-upstream-ca/ca.crt",
+        )
+    )
+
+    await provider.aclose()
+
+    assert captured["timeout"] == 2.5
+    assert captured["cafile"] == "/etc/agent-control/auth-upstream-ca/ca.crt"
+    assert captured["verify"] is captured["ssl_context"]
+    assert captured["closed"] is True
 
 
 @pytest.mark.asyncio
@@ -772,7 +818,6 @@ def test_runtime_token_rejects_empty_required_claims(kwargs, message):
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():
     """A token without ``domain=runtime`` must be rejected by runtime verify."""
     import jwt
-
     from agent_control_server.auth_framework.runtime_token import (
         RuntimeTokenError,
         verify_runtime_token,
@@ -1418,6 +1463,31 @@ async def test_configure_http_upstream_extra_forward_headers_env(monkeypatch):
             "X-Deployer-Auth",
             "X-Deployer-Trace",
         )
+    finally:
+        await auth_config.teardown_auth()
+
+
+@pytest.mark.asyncio
+async def test_configure_http_upstream_ca_file_env(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+    captured = _patch_owned_upstream_client(monkeypatch)
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv(
+        "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE",
+        " /etc/agent-control/auth-upstream-ca/ca.crt ",
+    )
+
+    try:
+        auth_config.configure_auth_from_env()
+        provider = get_authorizer(Operation.CONTROLS_READ)
+        assert isinstance(provider, HttpUpstreamAuthProvider)
+        assert provider._config.ca_file == "/etc/agent-control/auth-upstream-ca/ca.crt"
+        assert captured["cafile"] == "/etc/agent-control/auth-upstream-ca/ca.crt"
+        assert captured["verify"] is captured["ssl_context"]
     finally:
         await auth_config.teardown_auth()
 

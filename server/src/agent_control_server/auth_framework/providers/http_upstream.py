@@ -41,6 +41,7 @@ from local auth setup failures.
 
 from __future__ import annotations
 
+import ssl
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -150,6 +151,9 @@ class HttpUpstreamConfig:
     dropped. Names duplicating the default set or each other (after
     case-folding) are deduplicated."""
 
+    ca_file: str | None = None
+    """Optional CA bundle path used only when verifying the auth upstream."""
+
     def __post_init__(self) -> None:
         if self.service_token is None:
             return
@@ -174,7 +178,16 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
     ) -> None:
         self._config = config
         self._owns_client = client is None
-        self._client = client or httpx.AsyncClient(timeout=config.timeout_seconds)
+        if client is not None:
+            self._client = client
+        elif config.ca_file is not None:
+            ssl_context = ssl.create_default_context(cafile=config.ca_file)
+            self._client = httpx.AsyncClient(
+                timeout=config.timeout_seconds,
+                verify=ssl_context,
+            )
+        else:
+            self._client = httpx.AsyncClient(timeout=config.timeout_seconds)
 
     async def aclose(self) -> None:
         """Release the HTTP client if this provider created it."""
