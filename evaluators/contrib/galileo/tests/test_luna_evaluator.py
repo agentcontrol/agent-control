@@ -440,7 +440,8 @@ class TestLunaEvaluator:
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @pytest.mark.asyncio
-    async def test_evaluator_does_not_call_api_for_empty_data(self) -> None:
+    @pytest.mark.parametrize("data", ["", "   "])
+    async def test_evaluator_does_not_call_api_for_empty_data(self, data: str) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
@@ -449,7 +450,7 @@ class TestLunaEvaluator:
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
             # When: evaluating empty data
-            result = await evaluator.evaluate("")
+            result = await evaluator.evaluate(data)
 
         # Then: no remote scorer call is made
         assert result.matched is False

@@ -10,6 +10,7 @@ from hmac import new as hmac_new
 from json import dumps
 from time import time
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue
@@ -254,20 +255,28 @@ class GalileoLunaClient:
         )
 
     def _derive_api_url(self, console_url: str) -> str:
-        """Derive the API URL from a Galileo Console URL."""
+        """Derive the API URL from a Galileo Console URL.
+
+        Galileo Console hostnames use ``console.`` or ``console-`` prefixes for
+        canonical environments. For other HTTP(S) hosts, preserve the existing
+        fallback behavior of prefixing the hostname with ``api.``.
+        """
         url = console_url.rstrip("/")
+        parts = urlsplit(url)
+        host = parts.hostname or ""
 
-        if "console." in url:
-            return url.replace("console.", "api.")
-        if "console-" in url:
-            return url.replace("console-", "api-", 1)
+        if host.startswith("console."):
+            new_host = "api." + host[len("console."):]
+        elif host.startswith("console-"):
+            new_host = "api-" + host[len("console-"):]
+        elif parts.scheme in {"http", "https"} and host:
+            new_host = f"api.{host}"
+        else:
+            return url
 
-        if url.startswith("https://"):
-            return url.replace("https://", "https://api.")
-        if url.startswith("http://"):
-            return url.replace("http://", "http://api.")
-
-        return url
+        return urlunsplit(
+            parts._replace(netloc=parts.netloc.replace(host, new_host, 1))
+        )
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""

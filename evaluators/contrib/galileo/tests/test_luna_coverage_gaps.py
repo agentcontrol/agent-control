@@ -546,6 +546,20 @@ class TestDeriveApiUrl:
             == "https://api.example.com"
         )
 
+    def test_non_prefix_console_substring_gets_api_prefix(self, monkeypatch):
+        client = self._client(monkeypatch)
+        assert (
+            client._derive_api_url("https://my-console.example.com")
+            == "https://api.my-console.example.com"
+        )
+
+    def test_console_substring_in_path_does_not_rewrite_path(self, monkeypatch):
+        client = self._client(monkeypatch)
+        assert (
+            client._derive_api_url("https://app.galileo.ai/console.html")
+            == "https://api.app.galileo.ai/console.html"
+        )
+
     def test_plain_http_host_gets_api_prefix(self, monkeypatch):
         client = self._client(monkeypatch)
         assert client._derive_api_url("http://example.com") == "http://api.example.com"

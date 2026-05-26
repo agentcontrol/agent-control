@@ -44,7 +44,7 @@ def _coerce_payload_text(value: Any) -> str | None:
 
 
 def _has_text(value: str | None) -> bool:
-    return value is not None and value != ""
+    return value is not None and value.strip() != ""
 
 
 def _extract_dict_text(data: dict[str, Any], key: str) -> str | None:
