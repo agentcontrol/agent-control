@@ -5,6 +5,10 @@ description = "Agent Control direct Galileo Luna evaluator example"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "agent-control-engine",
+    "agent-control-evaluators",
+    "agent-control-models",
+    "agent-control-telemetry",
     "agent-control-sdk",
     "agent-control-evaluator-galileo",
 ]
