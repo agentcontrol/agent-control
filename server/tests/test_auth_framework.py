@@ -1492,6 +1492,35 @@ async def test_configure_http_upstream_ca_file_env(monkeypatch):
         await auth_config.teardown_auth()
 
 
+@pytest.mark.asyncio
+async def test_configure_http_upstream_ca_file_env_reports_bad_path(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    def fake_create_default_context(*, cafile: str | None = None) -> object:
+        raise FileNotFoundError(cafile or "")
+
+    clear_authorizers()
+    monkeypatch.setattr(
+        "agent_control_server.auth_framework.providers.http_upstream.ssl.create_default_context",
+        fake_create_default_context,
+    )
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv(
+        "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE",
+        "/etc/agent-control/auth-upstream-ca/missing-ca.crt",
+    )
+
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match=r"AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE=.*missing-ca\.crt.*not found or unreadable",
+        ):
+            auth_config.configure_auth_from_env()
+    finally:
+        await auth_config.teardown_auth()
+
+
 def test_configure_runtime_jwt_requires_secret(monkeypatch):
     from agent_control_server.auth_framework import config as auth_config
 
