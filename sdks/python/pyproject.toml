@@ -44,6 +44,7 @@ otel = [
     "opentelemetry-exporter-otlp-proto-http>=1.24.0",
 ]
 galileo = ["agent-control-evaluator-galileo>=7.5.0"]
+detect_secrets = ["agent-control-evaluator-detect_secrets>=7.5.0"]
 
 [dependency-groups]
 dev = [
@@ -97,3 +98,4 @@ agent-control-telemetry = { workspace = true }
 agent-control-evaluators = { workspace = true }
 # For local dev: use local galileo package instead of PyPI
 agent-control-evaluator-galileo = { path = "../../evaluators/contrib/galileo", editable = true }
+agent-control-evaluator-detect_secrets = { path = "../../evaluators/contrib/detect_secrets", editable = true }
