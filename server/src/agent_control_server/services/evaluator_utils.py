@@ -2,7 +2,7 @@
 
 Evaluator Type Name Formats:
     - Built-in: "regex", "list", "json", "sql"
-    - External: "galileo.luna2", "nvidia.nemo" (dot separator)
+    - External: "galileo.luna", "nvidia.nemo" (dot separator)
     - Agent-scoped: "my-agent:pii-detector" (colon separator)
 
 The key distinction is:
@@ -24,7 +24,7 @@ class ParsedEvaluatorRef:
 
     Attributes:
         type: The evaluator category ("builtin", "external", or "agent")
-        name: The full evaluator name (e.g., "regex", "galileo.luna2", "my-agent:pii")
+        name: The full evaluator name (e.g., "regex", "galileo.luna", "my-agent:pii")
         namespace: For external evaluators, the provider name; for agent-scoped, the agent name
         local_name: The evaluator name without namespace prefix
     """
@@ -53,7 +53,7 @@ def parse_evaluator_ref_full(evaluator_ref: str) -> ParsedEvaluatorRef:
         >>> parse_evaluator_ref_full("regex")
         ParsedEvaluatorRef(type="builtin", name="regex", ...)
 
-        >>> parse_evaluator_ref_full("galileo.luna2")
+        >>> parse_evaluator_ref_full("galileo.luna")
         ParsedEvaluatorRef(type="external", namespace="galileo", ...)
 
         >>> parse_evaluator_ref_full("my-agent:pii-detector")
@@ -69,7 +69,7 @@ def parse_evaluator_ref_full(evaluator_ref: str) -> ParsedEvaluatorRef:
             local_name=local_name,
         )
     elif "." in evaluator_ref:
-        # External: "galileo.luna2"
+        # External: "galileo.luna"
         provider, local_name = evaluator_ref.split(".", 1)
         return ParsedEvaluatorRef(
             type="external",

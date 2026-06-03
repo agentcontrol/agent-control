@@ -15,7 +15,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  *
  * Evaluator reference formats:
  * - Built-in: "regex", "list", "json", "sql"
- * - External: "galileo.luna2" (requires agent-control-evaluators[galileo])
+ * - External: "galileo.luna" (requires agent-control-evaluators[galileo])
  * - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
  */
 export type EvaluatorSpec = {

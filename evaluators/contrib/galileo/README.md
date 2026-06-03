@@ -1,6 +1,6 @@
-# Galileo Luna-2 Evaluator
+# Galileo Luna Evaluator
 
-Integration package for Galileo Luna-2 evaluator.
+Integration package for Galileo Luna evaluator.
 
 ## Install
 
@@ -24,4 +24,4 @@ pip install agent-control-evaluator-galileo
 
 See full documentation in: https://docs.agentcontrol.dev/concepts/evaluators/contributing-evaluator
 
-Example with usage: https://docs.agentcontrol.dev/examples/galileo-luna2
+Example with usage: https://docs.agentcontrol.dev/examples/galileo-luna

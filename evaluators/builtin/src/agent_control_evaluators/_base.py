@@ -43,7 +43,7 @@ class EvaluatorMetadata:
     """Metadata about an evaluator.
 
     Attributes:
-        name: Unique evaluator name (e.g., "regex", "galileo.luna2")
+        name: Unique evaluator name (e.g., "regex", "galileo.luna")
         version: Evaluator version string
         description: Human-readable description
         requires_api_key: Whether the evaluator requires an API key

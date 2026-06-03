@@ -19,7 +19,7 @@ tests/
     ├── list.spec.ts
     ├── json.spec.ts
     ├── sql.spec.ts
-    └── luna2.spec.ts
+    └── luna.spec.ts
 ```
 
 ## Running Tests

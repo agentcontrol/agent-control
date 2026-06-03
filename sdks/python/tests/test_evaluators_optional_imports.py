@@ -27,9 +27,7 @@ def _module_available(name: str) -> bool:
         return False
 
 
-_GALILEO_INSTALLED = _module_available(
-    "agent_control_evaluator_galileo.luna"
-) and _module_available("agent_control_evaluator_galileo.luna2")
+_GALILEO_INSTALLED = _module_available("agent_control_evaluator_galileo.luna")
 
 
 def _reload_evaluators_with_blocked(prefix: str) -> object:
@@ -78,18 +76,15 @@ def test_module_loads_when_galileo_luna_is_unavailable():
 
 
 def test_module_loads_when_galileo_package_is_unavailable():
-    """Hiding the whole package exercises both ImportError fallbacks at once."""
+    """Hiding the whole package exercises the ImportError fallback."""
     reloaded = _reload_evaluators_with_blocked("agent_control_evaluator_galileo")
 
     assert "Evaluator" in reloaded.__all__
-    # Both luna1 and luna2 optional names are absent.
+    # The optional luna names are absent.
     for absent in (
         "LunaEvaluator",
         "GalileoLunaClient",
-        "Luna2Evaluator",
-        "Luna2EvaluatorConfig",
         "LUNA_AVAILABLE",
-        "LUNA2_AVAILABLE",
     ):
         assert absent not in reloaded.__all__
 
@@ -108,9 +103,8 @@ def test_module_loads_galileo_optional_imports_when_available():
         import agent_control.evaluators as reloaded
 
         reloaded = importlib.reload(reloaded)
-        # Sanity: at least one luna1 and one luna2 name should reappear.
+        # Sanity: at least one luna name should reappear.
         assert "LunaEvaluator" in reloaded.__all__
-        assert "Luna2Evaluator" in reloaded.__all__
     finally:
         if saved is not None:
             sys.modules["agent_control.evaluators"] = saved

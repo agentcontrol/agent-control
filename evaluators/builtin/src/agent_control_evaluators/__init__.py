@@ -12,7 +12,7 @@ Available evaluators:
 
 Naming convention:
     - Built-in: "regex", "list", "json", "sql"
-    - External: "provider.name" (e.g., "galileo.luna2")
+    - External: "provider.name" (e.g., "galileo.luna")
     - Agent-scoped: "agent:name" (custom code deployed with agent)
 
 External evaluators are installed via separate packages (e.g., agent-control-evaluator-galileo).

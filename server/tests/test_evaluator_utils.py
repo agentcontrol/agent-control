@@ -26,13 +26,13 @@ class TestParseEvaluatorRefFull:
     def test_external_evaluator(self) -> None:
         """Given an external evaluator, when parsing full, then type is external."""
         # When
-        result = parse_evaluator_ref_full("galileo.luna2")
+        result = parse_evaluator_ref_full("galileo.luna")
 
         # Then
         assert result.type == "external"
-        assert result.name == "galileo.luna2"
+        assert result.name == "galileo.luna"
         assert result.namespace == "galileo"
-        assert result.local_name == "luna2"
+        assert result.local_name == "luna"
 
     def test_agent_scoped_evaluator(self) -> None:
         """Given an agent-scoped evaluator, when parsing full, then type is agent."""
@@ -75,7 +75,7 @@ class TestIsAgentScoped:
 
     def test_external_not_agent_scoped(self) -> None:
         """Given an external evaluator, when checking, then returns False."""
-        assert is_agent_scoped("galileo.luna2") is False
+        assert is_agent_scoped("galileo.luna") is False
 
     def test_agent_scoped_returns_true(self) -> None:
         """Given an agent-scoped evaluator, when checking, then returns True."""

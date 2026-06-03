@@ -15,10 +15,10 @@ import type {
 export type { JsonFormValues } from '@/core/evaluators/json/types';
 export type { ListFormValues } from '@/core/evaluators/list/types';
 export type {
-  Luna2FormValues,
-  Luna2Metric,
-  Luna2Operator,
-} from '@/core/evaluators/luna2/types';
+  LunaFormValues,
+  LunaOperator,
+  LunaPayloadField,
+} from '@/core/evaluators/luna/types';
 export type { RegexFormValues } from '@/core/evaluators/regex/types';
 export type { SqlFormValues } from '@/core/evaluators/sql/types';
 

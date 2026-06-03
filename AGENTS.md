@@ -77,7 +77,7 @@ All testing guidance (including "behavior changes require tests") lives in `TEST
 - Add an external evaluator package:
   1) copy `evaluators/contrib/template/` as a starting point
   2) implement evaluator class extending `Evaluator` from `agent_control_evaluators`
-  3) add entry point using `org.name` format (e.g., `galileo.luna2`)
+  3) add entry point using `org.name` format (e.g., `galileo.luna`)
   4) package is discovered automatically when installed alongside agent-control
 
 ## Git/PR workflow

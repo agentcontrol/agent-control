@@ -4,7 +4,6 @@ This package provides Galileo evaluators for agent-control.
 
 Available evaluators:
     - galileo.luna: Galileo Luna direct scorer evaluation
-    - galileo.luna2: Galileo Luna-2 runtime protection
 
 Installation:
     pip install agent-control-evaluator-galileo
@@ -29,13 +28,6 @@ from agent_control_evaluator_galileo.luna import (
     ScorerInvokeRequest,
     ScorerInvokeResponse,
 )
-from agent_control_evaluator_galileo.luna2 import (
-    LUNA2_AVAILABLE,
-    Luna2Evaluator,
-    Luna2EvaluatorConfig,
-    Luna2Metric,
-    Luna2Operator,
-)
 
 __all__ = [
     "GalileoLunaClient",
@@ -45,9 +37,4 @@ __all__ = [
     "LunaEvaluatorConfig",
     "LunaOperator",
     "LUNA_AVAILABLE",
-    "Luna2Evaluator",
-    "Luna2EvaluatorConfig",
-    "Luna2Metric",
-    "Luna2Operator",
-    "LUNA2_AVAILABLE",
 ]

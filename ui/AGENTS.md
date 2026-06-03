@@ -59,7 +59,7 @@ pnpm fetch-api-types  # regenerate API types from server (must be running on :80
 
 ### Evaluator forms (`core/evaluators/`)
 
-- Each evaluator type has its own folder: `json/`, `sql/`, `regex/`, `list/`, `luna2/`
+- Each evaluator type has its own folder: `json/`, `sql/`, `regex/`, `list/`, `luna/`
 - Each folder exports: `form.tsx` (React component), `types.ts` (form types), `index.ts` (re-exports)
 - Registry in `evaluators/index.ts` maps evaluator names to form components
 

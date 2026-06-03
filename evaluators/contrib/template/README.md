@@ -25,7 +25,7 @@ Keep the public evaluator reference separate from the package identifier:
   `EvaluatorMetadata.name` in your package code.
 - Single-evaluator packages can keep that public name flat, such as `budget`.
 - Packages that expose a family of evaluator ids should namespace it, such as
-  `cisco.ai_defense` or `galileo.luna2`.
+  `cisco.ai_defense` or `galileo.luna`.
 
 ## Scaffold a new contrib package
 

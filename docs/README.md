@@ -19,7 +19,6 @@ This repository keeps documentation concise. The full documentation lives on the
 - [Agent Control Demo](https://docs.agentcontrol.dev/examples/agent-control-demo) — End-to-end demo with server-side controls
 - [LangChain SQL](https://docs.agentcontrol.dev/examples/langchain-sql) — SQL injection protection for LangChain agents
 - [CrewAI](https://docs.agentcontrol.dev/examples/crewai) — Guardrails combined with CrewAI orchestration
-- [Galileo Luna-2](https://docs.agentcontrol.dev/examples/galileo-luna2) — AI-powered toxicity detection
 - [DeepEval](https://docs.agentcontrol.dev/examples/deepeval) — Custom evaluator built on GEval metrics
 
 ## Component Docs

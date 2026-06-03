@@ -23,7 +23,7 @@ Usage:
     # Server-side controls define:
     # - stage: "pre" or "post"
     # - selector.path: "input" or "output"
-    # - evaluator: regex, list, Luna2 evaluator, etc.
+    # - evaluator: regex, list, Luna evaluator, etc.
     # - action: deny, steer, or observe
 """
 

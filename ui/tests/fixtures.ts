@@ -428,16 +428,26 @@ const evaluatorsResponse: EvaluatorsResponse = {
       required: ['schema'],
     },
   },
-  'galileo.luna2': {
-    name: 'Galileo Luna-2',
+  'galileo.luna': {
+    name: 'Galileo Luna',
     version: '1.0.0',
-    description: 'AI-powered content moderation using Galileo Luna-2',
+    description: 'Galileo Luna direct scorer evaluation',
     requires_api_key: true,
-    timeout_ms: 30000,
+    timeout_ms: 10000,
     config_schema: {
       type: 'object',
       properties: {
-        threshold: { type: 'number' },
+        scorer_label: { type: 'string' },
+        scorer_id: { type: 'string' },
+        scorer_version_id: { type: 'string' },
+        threshold: {},
+        operator: {
+          type: 'string',
+          enum: ['gt', 'gte', 'lt', 'lte', 'eq', 'ne', 'contains', 'any'],
+        },
+        payload_field: { type: 'string', enum: ['input', 'output'] },
+        timeout_ms: { type: 'integer', minimum: 1000, maximum: 60000 },
+        config: { type: 'object' },
       },
     },
   },

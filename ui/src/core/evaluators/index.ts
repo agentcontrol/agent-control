@@ -35,7 +35,7 @@
 
 import { jsonEvaluator } from './json';
 import { listEvaluator } from './list';
-import { luna2Evaluator } from './luna2';
+import { lunaEvaluator } from './luna';
 import { regexEvaluator } from './regex';
 import { sqlEvaluator } from './sql';
 import type { AnyEvaluatorDefinition } from './types';
@@ -49,7 +49,7 @@ export const evaluators: AnyEvaluatorDefinition[] = [
   listEvaluator,
   jsonEvaluator,
   sqlEvaluator,
-  luna2Evaluator,
+  lunaEvaluator,
 ];
 
 /**
@@ -74,7 +74,7 @@ export const hasEvaluator = (id: string): boolean => evaluatorRegistry.has(id);
 // Re-export types and individual evaluators for direct imports
 export { jsonEvaluator } from './json';
 export { listEvaluator } from './list';
-export { luna2Evaluator } from './luna2';
+export { lunaEvaluator } from './luna';
 export { regexEvaluator } from './regex';
 export { sqlEvaluator } from './sql';
 export type {

@@ -20,7 +20,7 @@ sdks/python/src/agent_control/
 ├── tracing.py                # Distributed tracing support
 ├── py.typed                  # PEP 561 type marker
 └── evaluators/               # Evaluator base classes and discovery system
-    ├── __init__.py           # Evaluator discovery, registration, and Luna-2 integration
+    ├── __init__.py           # Evaluator discovery, registration, and Luna integration
     └── base.py               # Base Evaluator and EvaluatorMetadata classes
 ```
 
@@ -213,11 +213,11 @@ async def chat(message: str) -> str:
 **Key Components**:
 - Base evaluator classes (`Evaluator`, `EvaluatorMetadata`)
 - Evaluator discovery via entry points
-- Third-party evaluator integration (e.g., Luna-2, Guardrails AI)
+- Third-party evaluator integration (e.g., Luna, Guardrails AI)
 - Registration functions for custom evaluators
 
 **Structure**:
-- `__init__.py` - Evaluator discovery (`discover_evaluators()`, `list_evaluators()`), registration (`register_evaluator()`), and optional Luna-2 integration
+- `__init__.py` - Evaluator discovery (`discover_evaluators()`, `list_evaluators()`), registration (`register_evaluator()`), and optional Luna integration
 - `base.py` - Base `Evaluator` and `EvaluatorMetadata` classes (re-exported from `agent_control_models`)
 
 **Usage**:
