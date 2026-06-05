@@ -317,6 +317,26 @@ def test_http_upstream_rejects_extra_forwarded_service_token_header_collision():
         )
 
 
+@pytest.mark.parametrize(
+    "config_overrides, match",
+    [
+        ({"keepalive_expiry_seconds": -0.1}, "keepalive_expiry_seconds"),
+        ({"max_connections": 0}, "max_connections"),
+        ({"max_keepalive_connections": -1}, "max_keepalive_connections"),
+        (
+            {"max_connections": 2, "max_keepalive_connections": 3},
+            "max_keepalive_connections",
+        ),
+    ],
+)
+def test_http_upstream_rejects_invalid_connection_tuning(config_overrides, match):
+    with pytest.raises(ValueError, match=match):
+        HttpUpstreamConfig(
+            url="https://upstream.example/check",
+            **config_overrides,
+        )
+
+
 @pytest.mark.asyncio
 async def test_http_upstream_uses_ca_file_for_owned_client(monkeypatch):
     captured = _patch_owned_upstream_client(monkeypatch)
