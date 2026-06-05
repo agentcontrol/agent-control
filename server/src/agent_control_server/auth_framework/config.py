@@ -50,6 +50,11 @@ _UPSTREAM_TOKEN_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN"
 _UPSTREAM_TOKEN_HEADER_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN_HEADER"
 _UPSTREAM_EXTRA_FORWARD_HEADERS_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_EXTRA_FORWARD_HEADERS"
 _UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
+_UPSTREAM_KEEPALIVE_EXPIRY_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_KEEPALIVE_EXPIRY_SECONDS"
+_UPSTREAM_MAX_CONNECTIONS_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_MAX_CONNECTIONS"
+_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV = (
+    "AGENT_CONTROL_AUTH_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS"
+)
 
 # Runtime flow.
 _RUNTIME_MODE_ENV = "AGENT_CONTROL_RUNTIME_AUTH_MODE"
@@ -219,6 +224,11 @@ def _build_default_provider() -> RequestAuthorizer:
             os.environ.get(_UPSTREAM_EXTRA_FORWARD_HEADERS_ENV)
         )
         ca_file = (os.environ.get(_UPSTREAM_CA_FILE_ENV) or "").strip() or None
+        keepalive_expiry_seconds = float(os.environ.get(_UPSTREAM_KEEPALIVE_EXPIRY_ENV, "1.0"))
+        max_connections = int(os.environ.get(_UPSTREAM_MAX_CONNECTIONS_ENV, "20"))
+        max_keepalive_connections = int(
+            os.environ.get(_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV, "5")
+        )
         _logger.info("Default auth provider: http_upstream url=%s", url)
         try:
             return HttpUpstreamAuthProvider(
@@ -229,6 +239,9 @@ def _build_default_provider() -> RequestAuthorizer:
                     service_token_header=token_header,
                     extra_forward_headers=extra_forward_headers,
                     ca_file=ca_file,
+                    keepalive_expiry_seconds=keepalive_expiry_seconds,
+                    max_connections=max_connections,
+                    max_keepalive_connections=max_keepalive_connections,
                 )
             )
         except (OSError, ssl.SSLError) as exc:

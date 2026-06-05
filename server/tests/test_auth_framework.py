@@ -332,8 +332,28 @@ async def test_http_upstream_uses_ca_file_for_owned_client(monkeypatch):
     await provider.aclose()
 
     assert captured["timeout"] == 2.5
+    assert "limits" in captured
     assert captured["cafile"] == "/etc/agent-control/auth-upstream-ca/ca.crt"
     assert captured["verify"] is captured["ssl_context"]
+    assert captured["closed"] is True
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_uses_connection_limits_for_owned_client(monkeypatch):
+    captured = _patch_owned_upstream_client(monkeypatch)
+
+    provider = HttpUpstreamAuthProvider(
+        HttpUpstreamConfig(
+            url="https://upstream.example/check",
+            keepalive_expiry_seconds=0.5,
+            max_connections=7,
+            max_keepalive_connections=2,
+        )
+    )
+
+    await provider.aclose()
+
+    assert "limits" in captured
     assert captured["closed"] is True
 
 
@@ -480,6 +500,23 @@ async def test_http_upstream_fails_closed_on_network_error():
     with pytest.raises(APIError) as exc_info:
         await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
     assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_does_not_retry_network_errors():
+    calls = 0
+
+    def factory(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.RemoteProtocolError("server disconnected")
+
+    provider = _build_upstream(factory)
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+
+    assert exc_info.value.status_code == 503
+    assert calls == 1
 
 
 @pytest.mark.asyncio
@@ -1488,6 +1525,31 @@ async def test_configure_http_upstream_ca_file_env(monkeypatch):
         assert provider._config.ca_file == "/etc/agent-control/auth-upstream-ca/ca.crt"
         assert captured["cafile"] == "/etc/agent-control/auth-upstream-ca/ca.crt"
         assert captured["verify"] is captured["ssl_context"]
+    finally:
+        await auth_config.teardown_auth()
+
+
+@pytest.mark.asyncio
+async def test_configure_http_upstream_connection_tuning_env(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+    captured = _patch_owned_upstream_client(monkeypatch)
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_KEEPALIVE_EXPIRY_SECONDS", "0.75")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_MAX_CONNECTIONS", "11")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS", "3")
+
+    try:
+        auth_config.configure_auth_from_env()
+        provider = get_authorizer(Operation.CONTROLS_READ)
+        assert isinstance(provider, HttpUpstreamAuthProvider)
+        assert provider._config.keepalive_expiry_seconds == 0.75
+        assert provider._config.max_connections == 11
+        assert provider._config.max_keepalive_connections == 3
+        assert "limits" in captured
     finally:
         await auth_config.teardown_auth()
 

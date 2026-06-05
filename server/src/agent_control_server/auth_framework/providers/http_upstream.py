@@ -44,11 +44,13 @@ from __future__ import annotations
 import ssl
 from dataclasses import dataclass
 from datetime import datetime
+from time import perf_counter
 from typing import Any
 
 import httpx
 from agent_control_models.errors import ErrorCode, ErrorReason
 from fastapi import Request
+from prometheus_client import Counter, Histogram
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -65,6 +67,17 @@ from ..core import Operation, Principal, RequestAuthorizer
 _logger = get_logger(__name__)
 
 _DEFAULT_FORWARDED_HEADERS = ("X-API-Key", "Authorization", "Cookie")
+
+_AUTH_UPSTREAM_ATTEMPTS = Counter(
+    "agent_control_server_auth_upstream_attempts_total",
+    "Auth upstream HTTP attempts made by Agent Control.",
+    ("operation", "outcome", "status_code", "error_type"),
+)
+_AUTH_UPSTREAM_ATTEMPT_DURATION = Histogram(
+    "agent_control_server_auth_upstream_attempt_duration_seconds",
+    "Duration of auth upstream HTTP attempts made by Agent Control.",
+    ("operation", "outcome"),
+)
 
 
 class _UpstreamGrant(BaseModel):
@@ -154,7 +167,30 @@ class HttpUpstreamConfig:
     ca_file: str | None = None
     """Optional CA bundle path used only when verifying the auth upstream."""
 
+    keepalive_expiry_seconds: float = 1.0
+    """Idle lifetime for pooled upstream connections.
+
+    Keep this shorter than the upstream server's own keepalive/recycle window
+    so Agent Control does not reuse sockets the upstream has already closed.
+    """
+
+    max_connections: int = 20
+    """Maximum concurrent connections to the auth upstream."""
+
+    max_keepalive_connections: int = 5
+    """Maximum idle connections retained for the auth upstream."""
+
     def __post_init__(self) -> None:
+        if self.keepalive_expiry_seconds < 0:
+            raise ValueError("keepalive_expiry_seconds must be greater than or equal to 0")
+        if self.max_connections <= 0:
+            raise ValueError("max_connections must be greater than 0")
+        if self.max_keepalive_connections < 0:
+            raise ValueError("max_keepalive_connections must be greater than or equal to 0")
+        if self.max_keepalive_connections > self.max_connections:
+            raise ValueError(
+                "max_keepalive_connections must be less than or equal to max_connections"
+            )
         if self.service_token is None:
             return
         forwarded = {
@@ -180,14 +216,18 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         self._owns_client = client is None
         if client is not None:
             self._client = client
-        elif config.ca_file is not None:
-            ssl_context = ssl.create_default_context(cafile=config.ca_file)
-            self._client = httpx.AsyncClient(
-                timeout=config.timeout_seconds,
-                verify=ssl_context,
-            )
         else:
-            self._client = httpx.AsyncClient(timeout=config.timeout_seconds)
+            client_kwargs: dict[str, Any] = {
+                "timeout": config.timeout_seconds,
+                "limits": httpx.Limits(
+                    max_connections=config.max_connections,
+                    max_keepalive_connections=config.max_keepalive_connections,
+                    keepalive_expiry=config.keepalive_expiry_seconds,
+                ),
+            }
+            if config.ca_file is not None:
+                client_kwargs["verify"] = ssl.create_default_context(cafile=config.ca_file)
+            self._client = httpx.AsyncClient(**client_kwargs)
 
     async def aclose(self) -> None:
         """Release the HTTP client if this provider created it."""
@@ -205,6 +245,16 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         if context:
             payload["context"] = context
 
+        response = await self._post_upstream(operation, payload, headers)
+        return self._handle_response(response, operation, context)
+
+    async def _post_upstream(
+        self,
+        operation: Operation,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+    ) -> httpx.Response:
+        started = perf_counter()
         try:
             response = await self._client.post(
                 self._config.url,
@@ -212,20 +262,26 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 headers=headers,
             )
         except httpx.HTTPError as exc:
+            _observe_upstream_attempt(
+                operation,
+                perf_counter() - started,
+                outcome="http_error",
+                error=exc,
+            )
             _logger.warning(
                 "Auth upstream unreachable for operation %s: %s",
                 operation.value,
                 exc,
             )
-            raise APIError(
-                status_code=503,
-                error_code=ErrorCode.AUTH_MISCONFIGURED,
-                reason=ErrorReason.SERVICE_UNAVAILABLE,
-                detail="Authorization service unavailable.",
-                hint="Retry the request; if the failure persists, contact the operator.",
-            ) from exc
+            raise _authorization_service_unavailable_error() from exc
 
-        return self._handle_response(response, operation, context)
+        _observe_upstream_attempt(
+            operation,
+            perf_counter() - started,
+            outcome="response",
+            status_code=response.status_code,
+        )
+        return response
 
     def _forward_headers(self, request: Request) -> dict[str, str]:
         headers: dict[str, str] = {}
@@ -361,6 +417,36 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             scopes=grant.scopes,
             grant_expires_at=grant.expires_at,
         )
+
+
+def _observe_upstream_attempt(
+    operation: Operation,
+    duration_seconds: float,
+    *,
+    outcome: str,
+    status_code: int | None = None,
+    error: httpx.HTTPError | None = None,
+) -> None:
+    _AUTH_UPSTREAM_ATTEMPTS.labels(
+        operation=operation.value,
+        outcome=outcome,
+        status_code=str(status_code) if status_code is not None else "none",
+        error_type=type(error).__name__ if error is not None else "none",
+    ).inc()
+    _AUTH_UPSTREAM_ATTEMPT_DURATION.labels(
+        operation=operation.value,
+        outcome=outcome,
+    ).observe(duration_seconds)
+
+
+def _authorization_service_unavailable_error() -> APIError:
+    return APIError(
+        status_code=503,
+        error_code=ErrorCode.AUTH_MISCONFIGURED,
+        reason=ErrorReason.SERVICE_UNAVAILABLE,
+        detail="Authorization service unavailable.",
+        hint="Retry the request; if the failure persists, contact the operator.",
+    )
 
 
 def _ensure_target_context_matches_grant(
