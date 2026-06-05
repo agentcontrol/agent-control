@@ -42,6 +42,16 @@ const DEFAULT_EVALUATOR_CONFIGS: Record<string, Record<string, unknown>> = {
     match_mode: 'exact',
     case_sensitive: false,
   },
+  'galileo.luna': {
+    scorer_label: '',
+    scorer_id: '',
+    scorer_version_id: '',
+    threshold: 0.5,
+    operator: 'gte',
+    payload_field: 'input',
+    timeout_ms: 10000,
+    config: null,
+  },
 };
 
 function getDefaultConfigForEvaluator(

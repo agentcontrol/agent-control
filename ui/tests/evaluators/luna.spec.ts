@@ -50,5 +50,6 @@ test.describe('Luna Evaluator', () => {
 
     const thresholdInput = mockedPage.getByPlaceholder('0.5');
     await expect(thresholdInput).toBeEnabled();
+    await expect(thresholdInput).toHaveValue('0.5');
   });
 });
