@@ -174,10 +174,10 @@ class HttpUpstreamConfig:
     so Agent Control does not reuse sockets the upstream has already closed.
     """
 
-    max_connections: int = 20
+    max_connections: int = 100
     """Maximum concurrent connections to the auth upstream."""
 
-    max_keepalive_connections: int = 5
+    max_keepalive_connections: int = 20
     """Maximum idle connections retained for the auth upstream."""
 
     def __post_init__(self) -> None:

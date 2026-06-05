@@ -225,9 +225,9 @@ def _build_default_provider() -> RequestAuthorizer:
         )
         ca_file = (os.environ.get(_UPSTREAM_CA_FILE_ENV) or "").strip() or None
         keepalive_expiry_seconds = float(os.environ.get(_UPSTREAM_KEEPALIVE_EXPIRY_ENV, "1.0"))
-        max_connections = int(os.environ.get(_UPSTREAM_MAX_CONNECTIONS_ENV, "20"))
+        max_connections = int(os.environ.get(_UPSTREAM_MAX_CONNECTIONS_ENV, "100"))
         max_keepalive_connections = int(
-            os.environ.get(_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV, "5")
+            os.environ.get(_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV, "20")
         )
         _logger.info("Default auth provider: http_upstream url=%s", url)
         try:
