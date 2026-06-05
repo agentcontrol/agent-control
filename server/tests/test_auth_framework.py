@@ -1574,6 +1574,115 @@ async def test_configure_http_upstream_connection_tuning_env(monkeypatch):
         await auth_config.teardown_auth()
 
 
+@pytest.mark.parametrize(
+    "env_name, raw_value, expected",
+    [
+        ("AGENT_CONTROL_AUTH_UPSTREAM_TIMEOUT_SECONDS", "slow", "not a number"),
+        (
+            "AGENT_CONTROL_AUTH_UPSTREAM_KEEPALIVE_EXPIRY_SECONDS",
+            "soon",
+            "not a number",
+        ),
+        ("AGENT_CONTROL_AUTH_UPSTREAM_MAX_CONNECTIONS", "many", "not an integer"),
+        (
+            "AGENT_CONTROL_AUTH_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS",
+            "some",
+            "not an integer",
+        ),
+    ],
+)
+def test_build_default_provider_reports_invalid_http_upstream_numeric_env(
+    monkeypatch,
+    env_name,
+    raw_value,
+    expected,
+):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv(env_name, raw_value)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        auth_config._build_default_provider()
+
+    message = str(exc_info.value)
+    assert f"{env_name}={raw_value!r}" in message
+    assert expected in message
+
+
+@pytest.mark.parametrize(
+    "env_values, expected_parts",
+    [
+        (
+            {"AGENT_CONTROL_AUTH_UPSTREAM_KEEPALIVE_EXPIRY_SECONDS": "-0.1"},
+            [
+                "AGENT_CONTROL_AUTH_UPSTREAM_KEEPALIVE_EXPIRY_SECONDS=-0.1",
+                "greater than or equal to 0",
+            ],
+        ),
+        (
+            {"AGENT_CONTROL_AUTH_UPSTREAM_MAX_CONNECTIONS": "0"},
+            [
+                "AGENT_CONTROL_AUTH_UPSTREAM_MAX_CONNECTIONS=0",
+                "greater than 0",
+            ],
+        ),
+        (
+            {"AGENT_CONTROL_AUTH_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS": "-1"},
+            [
+                "AGENT_CONTROL_AUTH_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS=-1",
+                "greater than or equal to 0",
+            ],
+        ),
+        (
+            {
+                "AGENT_CONTROL_AUTH_UPSTREAM_MAX_CONNECTIONS": "20",
+                "AGENT_CONTROL_AUTH_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS": "30",
+            },
+            [
+                "AGENT_CONTROL_AUTH_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS=30",
+                "AGENT_CONTROL_AUTH_UPSTREAM_MAX_CONNECTIONS=20",
+            ],
+        ),
+    ],
+)
+def test_build_default_provider_reports_invalid_http_upstream_connection_env(
+    monkeypatch,
+    env_values,
+    expected_parts,
+):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    for env_name, value in env_values.items():
+        monkeypatch.setenv(env_name, value)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        auth_config._build_default_provider()
+
+    message = str(exc_info.value)
+    for part in expected_parts:
+        assert part in message
+
+
+def test_build_default_provider_wraps_http_upstream_config_errors(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN", "secret")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN_HEADER", "Authorization")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        auth_config._build_default_provider()
+
+    message = str(exc_info.value)
+    assert "Invalid http_upstream auth configuration" in message
+    assert "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN_HEADER" in message
+
+
 @pytest.mark.asyncio
 async def test_configure_http_upstream_ca_file_env_reports_bad_path(monkeypatch):
     from agent_control_server.auth_framework import config as auth_config

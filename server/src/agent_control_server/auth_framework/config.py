@@ -217,33 +217,42 @@ def _build_default_provider() -> RequestAuthorizer:
         url = os.environ.get(_UPSTREAM_URL_ENV)
         if not url:
             raise RuntimeError(f"{_MODE_ENV}=http_upstream but {_UPSTREAM_URL_ENV} is not set.")
-        timeout = float(os.environ.get(_UPSTREAM_TIMEOUT_ENV, "5.0"))
+        timeout = _load_float_env(_UPSTREAM_TIMEOUT_ENV, 5.0)
         token = os.environ.get(_UPSTREAM_TOKEN_ENV)
         token_header = os.environ.get(_UPSTREAM_TOKEN_HEADER_ENV, "X-Agent-Control-Service-Token")
         extra_forward_headers = _parse_extra_forward_headers(
             os.environ.get(_UPSTREAM_EXTRA_FORWARD_HEADERS_ENV)
         )
         ca_file = (os.environ.get(_UPSTREAM_CA_FILE_ENV) or "").strip() or None
-        keepalive_expiry_seconds = float(os.environ.get(_UPSTREAM_KEEPALIVE_EXPIRY_ENV, "1.0"))
-        max_connections = int(os.environ.get(_UPSTREAM_MAX_CONNECTIONS_ENV, "100"))
-        max_keepalive_connections = int(
-            os.environ.get(_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV, "20")
+        keepalive_expiry_seconds = _load_float_env(_UPSTREAM_KEEPALIVE_EXPIRY_ENV, 1.0)
+        max_connections = _load_int_env(_UPSTREAM_MAX_CONNECTIONS_ENV, 100)
+        max_keepalive_connections = _load_int_env(_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV, 20)
+        _validate_http_upstream_connection_config(
+            keepalive_expiry_seconds=keepalive_expiry_seconds,
+            max_connections=max_connections,
+            max_keepalive_connections=max_keepalive_connections,
         )
         _logger.info("Default auth provider: http_upstream url=%s", url)
         try:
-            return HttpUpstreamAuthProvider(
-                HttpUpstreamConfig(
-                    url=url,
-                    timeout_seconds=timeout,
-                    service_token=token,
-                    service_token_header=token_header,
-                    extra_forward_headers=extra_forward_headers,
-                    ca_file=ca_file,
-                    keepalive_expiry_seconds=keepalive_expiry_seconds,
-                    max_connections=max_connections,
-                    max_keepalive_connections=max_keepalive_connections,
-                )
+            upstream_config = HttpUpstreamConfig(
+                url=url,
+                timeout_seconds=timeout,
+                service_token=token,
+                service_token_header=token_header,
+                extra_forward_headers=extra_forward_headers,
+                ca_file=ca_file,
+                keepalive_expiry_seconds=keepalive_expiry_seconds,
+                max_connections=max_connections,
+                max_keepalive_connections=max_keepalive_connections,
             )
+        except ValueError as exc:
+            raise RuntimeError(
+                "Invalid http_upstream auth configuration from "
+                f"{_UPSTREAM_TOKEN_HEADER_ENV} or "
+                f"{_UPSTREAM_EXTRA_FORWARD_HEADERS_ENV}: {exc}"
+            ) from exc
+        try:
+            return HttpUpstreamAuthProvider(upstream_config)
         except (OSError, ssl.SSLError) as exc:
             raise RuntimeError(
                 f"{_UPSTREAM_CA_FILE_ENV}={ca_file!r} not found or unreadable."
@@ -290,6 +299,53 @@ def _parse_extra_forward_headers(raw: str | None) -> tuple[str, ...]:
         seen.add(lower)
         result.append(name)
     return tuple(result)
+
+
+def _load_float_env(env_name: str, default: float) -> float:
+    raw = os.environ.get(env_name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{env_name}={raw!r} is not a number.") from exc
+
+
+def _load_int_env(env_name: str, default: int) -> int:
+    raw = os.environ.get(env_name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{env_name}={raw!r} is not an integer.") from exc
+
+
+def _validate_http_upstream_connection_config(
+    *,
+    keepalive_expiry_seconds: float,
+    max_connections: int,
+    max_keepalive_connections: int,
+) -> None:
+    if keepalive_expiry_seconds < 0:
+        raise RuntimeError(
+            f"{_UPSTREAM_KEEPALIVE_EXPIRY_ENV}={keepalive_expiry_seconds} "
+            "must be greater than or equal to 0."
+        )
+    if max_connections <= 0:
+        raise RuntimeError(
+            f"{_UPSTREAM_MAX_CONNECTIONS_ENV}={max_connections} must be greater than 0."
+        )
+    if max_keepalive_connections < 0:
+        raise RuntimeError(
+            f"{_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
+            "must be greater than or equal to 0."
+        )
+    if max_keepalive_connections > max_connections:
+        raise RuntimeError(
+            f"{_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
+            f"must be less than or equal to {_UPSTREAM_MAX_CONNECTIONS_ENV}={max_connections}."
+        )
 
 
 def _resolve_runtime_mode() -> str:
