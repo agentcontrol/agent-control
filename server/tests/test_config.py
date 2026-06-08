@@ -89,6 +89,21 @@ def test_db_config_ignores_blank_agent_control_url_and_uses_legacy(monkeypatch) 
     assert config.get_url() == "sqlite:///tmp/legacy.db"
 
 
+def test_db_config_reads_pool_settings_from_env(monkeypatch) -> None:
+    # Given: database pool settings are configured via environment variables
+    monkeypatch.setenv("AGENT_CONTROL_DB_POOL_SIZE", "7")
+    monkeypatch.setenv("AGENT_CONTROL_DB_MAX_OVERFLOW", "2")
+    monkeypatch.setenv("AGENT_CONTROL_DB_POOL_TIMEOUT_SECONDS", "3.5")
+
+    # When: loading DB config from the environment
+    config = AgentControlServerDatabaseConfig()
+
+    # Then: the explicit pool settings are used
+    assert config.pool_size == 7
+    assert config.max_overflow == 2
+    assert config.pool_timeout_seconds == 3.5
+
+
 def test_settings_parses_cors_origins_string() -> None:
     # Given: a comma-separated CORS origins string
     settings = Settings(cors_origins="https://a.example, https://b.example")

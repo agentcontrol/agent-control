@@ -19,7 +19,7 @@ from starlette_exporter import PrometheusMiddleware, handle_metrics
 from . import __version__ as server_version
 from .auth import get_api_key_from_header
 from .config import observability_settings, settings
-from .db import AsyncSessionLocal
+from .db import AsyncSessionLocal, async_engine
 from .endpoints.agents import router as agent_router
 from .endpoints.auth import router as auth_router
 from .endpoints.control_bindings import router as control_binding_router
@@ -197,6 +197,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if sink is None or sink is not app.state.event_store:
             await app.state.event_store.close()
         logger.info("EventStore closed")
+
+    await async_engine.dispose()
+    logger.info("Database engine disposed")
 
 
 app = FastAPI(

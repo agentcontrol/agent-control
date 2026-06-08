@@ -125,6 +125,24 @@ class AgentControlServerDatabaseConfig(BaseSettings):
         "DB_DATABASE",
     )
     driver: str = _env_alias_field("psycopg", "AGENT_CONTROL_DB_DRIVER", "DB_DRIVER")
+    pool_size: int = Field(
+        default=5,
+        ge=1,
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_POOL_SIZE", "DB_POOL_SIZE"),
+    )
+    max_overflow: int = Field(
+        default=0,
+        ge=0,
+        validation_alias=AliasChoices("AGENT_CONTROL_DB_MAX_OVERFLOW", "DB_MAX_OVERFLOW"),
+    )
+    pool_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        validation_alias=AliasChoices(
+            "AGENT_CONTROL_DB_POOL_TIMEOUT_SECONDS",
+            "DB_POOL_TIMEOUT_SECONDS",
+        ),
+    )
 
     def get_url(self) -> str:
         """Get database URL, preferring an explicit URL if configured."""
