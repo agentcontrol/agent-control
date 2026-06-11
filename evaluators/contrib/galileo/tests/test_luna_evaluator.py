@@ -306,38 +306,6 @@ class TestGalileoLunaClient:
         assert limits.keepalive_expiry == DEFAULT_KEEPALIVE_EXPIRY_SECS
 
     @pytest.mark.asyncio
-    async def test_client_retries_once_after_server_disconnect(self) -> None:
-        from agent_control_evaluator_galileo.luna import GalileoLunaClient
-
-        calls = {"count": 0}
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            calls["count"] += 1
-            if calls["count"] == 1:
-                raise httpx.RemoteProtocolError(
-                    "Server disconnected without sending a response.", request=request
-                )
-            return httpx.Response(
-                200,
-                json={"scorer_label": "toxicity", "score": 0.1, "status": "success"},
-            )
-
-        # Given: a transport whose first attempt fails like a stale keepalive socket
-        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=True):
-            client = GalileoLunaClient(console_url="https://console.example.com")
-        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
-        try:
-            # When: invoking a scorer
-            response = await client.invoke(scorer_label="toxicity", output="hello")
-        finally:
-            await client.close()
-
-        # Then: the request is retried once and succeeds
-        assert calls["count"] == 2
-        assert response.score == 0.1
-
-    @pytest.mark.asyncio
     async def test_client_posts_to_scorers_invoke_without_protect_fields(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 

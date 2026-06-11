@@ -180,8 +180,6 @@ class GalileoLunaClient:
     Environment Variables:
         GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: Galileo API internal JWT signing secret.
         GALILEO_API_KEY: Galileo API key fallback for public scorer invocation.
-        GALILEO_LUNA_AUTH_MODE: Deprecated. The auth mode is inferred from which
-            credential is configured; set exactly one credential instead.
         GALILEO_LUNA_API_URL: Galileo Luna scorer invoke API URL override.
         GALILEO_API_CLUSTER_URL: Internal Galileo API URL used in internal auth mode.
         GALILEO_API_URL: Galileo API URL fallback.
@@ -211,8 +209,7 @@ class GalileoLunaClient:
                 then GALILEO_API_CLUSTER_URL in internal auth mode, then GALILEO_API_URL,
                 before deriving from the console URL.
             auth_mode: Auth mode to use. If not provided, inferred from the single
-                available credential. (Reading GALILEO_LUNA_AUTH_MODE from the
-                environment is deprecated.)
+                available credential.
             ca_file: CA bundle path used to verify the scorer API endpoint. If not
                 provided, reads from GALILEO_LUNA_CA_FILE. Leave unset for endpoints
                 with publicly-trusted certificates.
@@ -274,16 +271,14 @@ class GalileoLunaClient:
     ) -> AuthMode:
         if auth_mode == "public":
             if not api_key:
-                raise ValueError(
-                    "GALILEO_API_KEY is required when GALILEO_LUNA_AUTH_MODE=public."
-                )
+                raise ValueError("GALILEO_API_KEY is required for public Luna auth.")
             return "public"
 
         if auth_mode == "internal":
             if not api_secret:
                 raise ValueError(
-                    "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required when "
-                    "GALILEO_LUNA_AUTH_MODE=internal."
+                    "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for "
+                    "internal Luna auth."
                 )
             return "internal"
 
@@ -414,26 +409,12 @@ class GalileoLunaClient:
 
         try:
             client = await self._get_client()
-            try:
-                response = await client.post(
-                    endpoint,
-                    json=request_body,
-                    headers=request_headers,
-                    timeout=timeout,
-                )
-            except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:
-                # These errors occur before a response is received, typically when
-                # the server closed a pooled connection. The scorer invoke request
-                # is idempotent, so a single retry on a fresh connection is safe.
-                logger.warning(
-                    "[GalileoLunaClient] Retrying once after connection error: %s", exc
-                )
-                response = await client.post(
-                    endpoint,
-                    json=request_body,
-                    headers=request_headers,
-                    timeout=timeout,
-                )
+            response = await client.post(
+                endpoint,
+                json=request_body,
+                headers=request_headers,
+                timeout=timeout,
+            )
             response.raise_for_status()
             response_data = response.json()
             if not isinstance(response_data, dict):
