@@ -178,7 +178,7 @@ class GalileoLunaClient:
     """Thin HTTP client for Galileo Luna direct scorer invocation.
 
     Environment Variables:
-        GALILEO_API_SECRET_KEY: Galileo API internal JWT signing secret.
+        GALILEO_API_SECRET_KEY: Deployment-provided Galileo API internal JWT signing secret.
         GALILEO_API_KEY: Galileo API key fallback for public scorer invocation.
         GALILEO_LUNA_API_URL: Galileo Luna scorer invoke API URL override.
         GALILEO_API_URL: Galileo API URL fallback.
@@ -200,8 +200,8 @@ class GalileoLunaClient:
 
         Args:
             api_key: Galileo API key. If not provided, reads from GALILEO_API_KEY.
-            api_secret: Galileo API secret for internal JWT auth. If not provided,
-                reads from GALILEO_API_SECRET_KEY.
+            api_secret: Deployment-provided Galileo API secret for internal JWT auth.
+                If not provided, reads from GALILEO_API_SECRET_KEY.
             console_url: Galileo Console URL. If not provided, reads from
                 GALILEO_CONSOLE_URL or uses the production console URL.
             api_url: Galileo API URL. If not provided, reads from GALILEO_LUNA_API_URL,
