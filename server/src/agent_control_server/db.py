@@ -31,6 +31,31 @@ def _supports_queue_pool_config(url: str) -> bool:
     return make_url(url).get_backend_name() != "sqlite"
 
 
+def _build_connect_args(
+    url: str,
+    config: AgentControlServerDatabaseConfig,
+) -> dict[str, Any]:
+    """Build driver-level connect args bounding connection setup and statement runtime.
+
+    Pool timeouts only bound how long a request waits for a connection; these
+    args bound how long a connection takes to establish and how long any one
+    statement may hold it. Drivers without known timeout args get none.
+    """
+    driver = make_url(url).get_driver_name()
+    statement_timeout_ms = int(config.statement_timeout_seconds * 1000)
+    if driver == "psycopg":
+        connect_args: dict[str, Any] = {"connect_timeout": config.connect_timeout_seconds}
+        if statement_timeout_ms:
+            connect_args["options"] = f"-c statement_timeout={statement_timeout_ms}"
+        return connect_args
+    if driver == "asyncpg":
+        connect_args = {"timeout": float(config.connect_timeout_seconds)}
+        if statement_timeout_ms:
+            connect_args["server_settings"] = {"statement_timeout": str(statement_timeout_ms)}
+        return connect_args
+    return {}
+
+
 def _build_async_engine_kwargs(
     url: str,
     config: AgentControlServerDatabaseConfig,
@@ -47,11 +72,16 @@ def _build_async_engine_kwargs(
         pool_timeout=config.pool_timeout_seconds,
         pool_reset_on_return="rollback",
     )
+    connect_args = _build_connect_args(url, config)
+    if connect_args:
+        kwargs["connect_args"] = connect_args
     return kwargs
 
 
 def _instrument_connection_pool(engine: AsyncEngine) -> None:
     """Track checked-out connections from the async engine's underlying pool."""
+    # Create the labeled series eagerly so idle processes scrape as 0, not absent.
+    SQLALCHEMY_CHECKED_OUT_CONNECTIONS.labels("default").set(0)
 
     @event.listens_for(engine.sync_engine.pool, "checkin")
     def receive_checkin(dbapi_conn: Any, connection_record: Any) -> None:

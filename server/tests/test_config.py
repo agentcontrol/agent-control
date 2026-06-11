@@ -94,6 +94,8 @@ def test_db_config_reads_pool_settings_from_env(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_CONTROL_DB_POOL_SIZE", "7")
     monkeypatch.setenv("AGENT_CONTROL_DB_MAX_OVERFLOW", "2")
     monkeypatch.setenv("AGENT_CONTROL_DB_POOL_TIMEOUT_SECONDS", "3.5")
+    monkeypatch.setenv("AGENT_CONTROL_DB_CONNECT_TIMEOUT_SECONDS", "4")
+    monkeypatch.setenv("AGENT_CONTROL_DB_STATEMENT_TIMEOUT_SECONDS", "2.5")
 
     # When: loading DB config from the environment
     config = AgentControlServerDatabaseConfig()
@@ -102,6 +104,31 @@ def test_db_config_reads_pool_settings_from_env(monkeypatch) -> None:
     assert config.pool_size == 7
     assert config.max_overflow == 2
     assert config.pool_timeout_seconds == 3.5
+    assert config.connect_timeout_seconds == 4
+    assert config.statement_timeout_seconds == 2.5
+
+
+def test_db_config_pool_defaults(monkeypatch) -> None:
+    # Given: no pool or timeout settings in the environment
+    for name in (
+        "POOL_SIZE",
+        "MAX_OVERFLOW",
+        "POOL_TIMEOUT_SECONDS",
+        "CONNECT_TIMEOUT_SECONDS",
+        "STATEMENT_TIMEOUT_SECONDS",
+    ):
+        monkeypatch.delenv(f"AGENT_CONTROL_DB_{name}", raising=False)
+        monkeypatch.delenv(f"DB_{name}", raising=False)
+
+    # When: loading DB config from the environment
+    config = AgentControlServerDatabaseConfig()
+
+    # Then: the pool is bounded but keeps burst overflow and sane timeouts
+    assert config.pool_size == 5
+    assert config.max_overflow == 10
+    assert config.pool_timeout_seconds == 5.0
+    assert config.connect_timeout_seconds == 5
+    assert config.statement_timeout_seconds == 50.0
 
 
 def test_settings_parses_cors_origins_string() -> None:
