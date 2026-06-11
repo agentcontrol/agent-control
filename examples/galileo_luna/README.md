@@ -32,16 +32,18 @@ export GALILEO_CONSOLE_URL="https://console.demo-v2.galileocloud.io"
 `GALILEO_API_URL` when set, otherwise it derives the API URL from
 `GALILEO_CONSOLE_URL`.
 
-For deployments that use service-to-service internal auth, provide the API
-internal secret instead of an API key:
+For deployments that use service-to-service internal auth, the deployment
+environment should inject the API internal secret instead of an API key:
 
 ```bash
+# Set by deployment tooling, not by normal OSS users.
 export GALILEO_API_SECRET_KEY="your-api-secret"
 ```
 
-Deployment tooling may also set a custom scorer API endpoint and CA bundle. Use
-these only when the scorer API is not reachable through the default public API
-URL derivation, or when the endpoint uses a private CA:
+OSS users do not need to set `GALILEO_API_SECRET_KEY` manually for the public
+API-key path. Deployment tooling may also set a custom scorer API endpoint and
+CA bundle. Use these only when the scorer API is not reachable through the
+default public API URL derivation, or when the endpoint uses a private CA:
 
 ```bash
 export GALILEO_LUNA_API_URL="https://api.default.svc.cluster.local:8088"

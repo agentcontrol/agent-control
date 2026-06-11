@@ -5,7 +5,7 @@ Prerequisites:
     - Agent Control server running at AGENT_CONTROL_URL, default http://localhost:8000
     - Galileo credentials set where demo_agent.py will run:
       GALILEO_API_KEY for public auth, or
-      GALILEO_API_SECRET_KEY for internal auth
+      deployment-injected GALILEO_API_SECRET_KEY for internal auth
 
 Usage:
     uv run python setup_controls.py
