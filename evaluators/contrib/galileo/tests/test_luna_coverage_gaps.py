@@ -470,7 +470,8 @@ def test_client_uses_explicit_public_mode_when_both_credentials_are_present(monk
     monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "public")
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    client = GalileoLunaClient()
+    with pytest.warns(DeprecationWarning, match="GALILEO_LUNA_AUTH_MODE is deprecated"):
+        client = GalileoLunaClient()
 
     assert client.auth_mode == "public"
     endpoint, request_headers = client._endpoint_and_headers(None)
@@ -485,7 +486,8 @@ def test_client_uses_explicit_internal_mode_when_both_credentials_are_present(mo
     monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "internal")
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    client = GalileoLunaClient()
+    with pytest.warns(DeprecationWarning, match="GALILEO_LUNA_AUTH_MODE is deprecated"):
+        client = GalileoLunaClient()
 
     assert client.auth_mode == "internal"
     endpoint, request_headers = client._endpoint_and_headers(None)
@@ -501,8 +503,9 @@ def test_client_rejects_mode_without_matching_credential(monkeypatch):
     monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "internal")
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY"):
-        GalileoLunaClient()
+    with pytest.warns(DeprecationWarning, match="GALILEO_LUNA_AUTH_MODE is deprecated"):
+        with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY"):
+            GalileoLunaClient()
 
 
 def test_client_rejects_invalid_auth_mode(monkeypatch):
@@ -511,8 +514,9 @@ def test_client_rejects_invalid_auth_mode(monkeypatch):
     monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "sideways")
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with pytest.raises(ValueError, match="GALILEO_LUNA_AUTH_MODE"):
-        GalileoLunaClient()
+    with pytest.warns(DeprecationWarning, match="GALILEO_LUNA_AUTH_MODE is deprecated"):
+        with pytest.raises(ValueError, match="GALILEO_LUNA_AUTH_MODE"):
+            GalileoLunaClient()
 
 
 class TestDeriveApiUrl:

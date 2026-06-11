@@ -4,8 +4,8 @@
 Prerequisites:
     - Agent Control server running at AGENT_CONTROL_URL, default http://localhost:8000
     - Galileo credentials set where demo_agent.py will run:
-      GALILEO_API_KEY with GALILEO_LUNA_AUTH_MODE=public, or
-      GALILEO_API_SECRET_KEY/GALILEO_API_SECRET with GALILEO_LUNA_AUTH_MODE=internal
+      GALILEO_API_KEY for public auth, or
+      GALILEO_API_SECRET_KEY/GALILEO_API_SECRET for internal auth
 
 Usage:
     uv run python setup_controls.py
@@ -29,7 +29,6 @@ LUNA_SCORER_ID = os.getenv("GALILEO_LUNA_SCORER_ID")
 LUNA_SCORER_VERSION_ID = os.getenv("GALILEO_LUNA_SCORER_VERSION_ID")
 LUNA_THRESHOLD = float(os.getenv("GALILEO_LUNA_THRESHOLD", "0.5"))
 LUNA_PAYLOAD_FIELD = os.getenv("GALILEO_LUNA_PAYLOAD_FIELD", "output")
-LUNA_AUTH_MODE = os.getenv("GALILEO_LUNA_AUTH_MODE")
 
 if LUNA_PAYLOAD_FIELD not in {"input", "output"}:
     raise ValueError("GALILEO_LUNA_PAYLOAD_FIELD must be either 'input' or 'output'.")
@@ -175,7 +174,7 @@ async def setup_demo() -> None:
         f"threshold={LUNA_THRESHOLD}, "
         f"payload_field={LUNA_PAYLOAD_FIELD!r}"
     )
-    print(f"Auth:   GALILEO_LUNA_AUTH_MODE={LUNA_AUTH_MODE or '(auto if one credential)'}")
+    print("Auth:   inferred from the single configured Galileo credential")
 
     async with AgentControlClient(base_url=SERVER_URL, timeout=30.0) as client:
         await client.health_check()
