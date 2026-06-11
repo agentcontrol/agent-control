@@ -167,6 +167,9 @@ class GalileoLunaClient:
         GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: Galileo API internal JWT signing secret.
         GALILEO_API_KEY: Galileo API key fallback for public scorer invocation.
         GALILEO_LUNA_AUTH_MODE: Auth mode, either "public" or "internal".
+        GALILEO_LUNA_API_URL: Galileo Luna scorer invoke API URL override.
+        GALILEO_API_CLUSTER_URL: Internal Galileo API URL used in internal auth mode.
+        GALILEO_API_URL: Galileo API URL fallback.
         GALILEO_CONSOLE_URL: Galileo Console URL (optional, defaults to production).
     """
 
@@ -186,7 +189,8 @@ class GalileoLunaClient:
                 reads from GALILEO_API_SECRET_KEY or GALILEO_API_SECRET.
             console_url: Galileo Console URL. If not provided, reads from
                 GALILEO_CONSOLE_URL or uses the production console URL.
-            api_url: Galileo API URL. If not provided, reads from GALILEO_API_URL
+            api_url: Galileo API URL. If not provided, reads from GALILEO_LUNA_API_URL,
+                then GALILEO_API_CLUSTER_URL in internal auth mode, then GALILEO_API_URL,
                 before deriving from the console URL.
             auth_mode: Auth mode to use. If not provided, reads from
                 GALILEO_LUNA_AUTH_MODE, or infers from the single available credential.
@@ -211,11 +215,21 @@ class GalileoLunaClient:
         self.console_url = (
             console_url or os.getenv("GALILEO_CONSOLE_URL") or "https://console.galileo.ai"
         )
-        self.api_base = (api_url or os.getenv("GALILEO_API_URL") or "").rstrip(
-            "/"
-        ) or self._derive_api_url(self.console_url)
+        self.api_base = self._resolve_api_base(api_url, resolved_auth_mode)
         self._client: httpx.AsyncClient | None = None
         logger.info("[GalileoLunaClient] Auth mode selected: %s", self.auth_mode)
+
+    def _resolve_api_base(self, api_url: str | None, auth_mode: AuthMode) -> str:
+        """Resolve the scorer invoke API base URL from explicit and environment config."""
+        candidates = [api_url, os.getenv("GALILEO_LUNA_API_URL")]
+        if auth_mode == "internal":
+            candidates.append(os.getenv("GALILEO_API_CLUSTER_URL"))
+        candidates.append(os.getenv("GALILEO_API_URL"))
+
+        for candidate in candidates:
+            if candidate and candidate.strip():
+                return candidate.rstrip("/")
+        return self._derive_api_url(self.console_url)
 
     @staticmethod
     def _resolve_auth_mode(
