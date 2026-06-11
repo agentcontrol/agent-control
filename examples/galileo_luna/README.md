@@ -32,11 +32,11 @@ TLS certificate, provide the CA bundle:
 
 ```bash
 export GALILEO_API_SECRET_KEY="your-api-secret"
-export GALILEO_API_CLUSTER_URL="https://api.default.svc.cluster.local:8088"
+export GALILEO_LUNA_API_URL="https://api.default.svc.cluster.local:8088"
 export GALILEO_LUNA_CA_FILE="/etc/ssl/internal/ca.crt"
 ```
 
-`GALILEO_LUNA_API_URL` overrides the scorer API URL in either mode, and
+`GALILEO_LUNA_API_URL` overrides the scorer API URL in either mode.
 `GALILEO_API_URL` remains the public API URL fallback.
 
 Optional scorer settings:
@@ -56,8 +56,8 @@ scalar as the scorer `output` field. If a selector returns structured data with
 `input` and/or `output` keys, those keys are sent directly and override
 `GALILEO_LUNA_PAYLOAD_FIELD`.
 
-Setting both `GALILEO_API_KEY` and `GALILEO_API_SECRET_KEY`/`GALILEO_API_SECRET`
-is an error; unset one so the auth mode can be inferred.
+Setting both `GALILEO_API_KEY` and `GALILEO_API_SECRET_KEY` is an error; unset
+one so the auth mode can be inferred.
 
 Run:
 
