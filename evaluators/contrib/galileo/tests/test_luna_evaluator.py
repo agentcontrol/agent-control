@@ -176,41 +176,23 @@ class TestGalileoLunaClient:
         # Then: the Luna-specific URL wins without changing the general API URL contract
         assert client.api_base == "https://luna-api.example.com"
 
-    def test_client_uses_cluster_url_for_internal_auth(self) -> None:
+    def test_client_uses_luna_api_url_for_internal_auth(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
-        # Given: internal auth and both cluster and public API URLs are configured
+        # Given: internal auth and both Luna-specific and general API URLs are configured
         with patch.dict(
             os.environ,
             {
                 "GALILEO_API_SECRET_KEY": "test-secret",
-                "GALILEO_API_CLUSTER_URL": "https://api.default.svc.cluster.local:8088",
+                "GALILEO_LUNA_API_URL": "https://internal-api.example.com",
                 "GALILEO_API_URL": "https://api-public.example.com",
             },
             clear=True,
         ):
             client = GalileoLunaClient(console_url="https://console.example.com")
 
-        # Then: internal scorer invocation uses the cluster-local API base
-        assert client.api_base == "https://api.default.svc.cluster.local:8088"
-
-    def test_client_ignores_cluster_url_for_public_auth(self) -> None:
-        from agent_control_evaluator_galileo.luna import GalileoLunaClient
-
-        # Given: public auth with a cluster URL present in the environment
-        with patch.dict(
-            os.environ,
-            {
-                "GALILEO_API_KEY": "test-key",
-                "GALILEO_API_CLUSTER_URL": "https://api.default.svc.cluster.local:8088",
-                "GALILEO_API_URL": "https://api-public.example.com",
-            },
-            clear=True,
-        ):
-            client = GalileoLunaClient(console_url="https://console.example.com")
-
-        # Then: public scorer invocation still uses the public API URL
-        assert client.api_base == "https://api-public.example.com"
+        # Then: internal scorer invocation uses the Luna-specific API base
+        assert client.api_base == "https://internal-api.example.com"
 
     def test_client_derives_api_url_from_console_dash_hostname(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient

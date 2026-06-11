@@ -91,7 +91,7 @@ def init_agent() -> None:
 async def run_demo() -> None:
     """Run scripted scenarios."""
     api_key = os.getenv("GALILEO_API_KEY")
-    api_secret = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
+    api_secret = os.getenv("GALILEO_API_SECRET_KEY")
     if not api_key and not api_secret:
         print(
             "Galileo credentials are required for the galileo.luna evaluator. "
@@ -101,7 +101,7 @@ async def run_demo() -> None:
         return
     if api_key and api_secret:
         print(
-            "Both GALILEO_API_KEY and GALILEO_API_SECRET_KEY/GALILEO_API_SECRET are set. "
+            "Both GALILEO_API_KEY and GALILEO_API_SECRET_KEY are set. "
             "Unset one so the auth mode can be inferred."
         )
         return
