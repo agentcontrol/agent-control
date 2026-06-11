@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import ssl
+import warnings
 from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
@@ -20,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECS = 10.0
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
+# Keep pooled-connection reuse shorter than typical server keepalive/worker
+# recycle windows so requests do not pick up sockets the server already closed.
+DEFAULT_KEEPALIVE_EXPIRY_SECS = 1.0
+DEFAULT_MAX_CONNECTIONS = 100
+DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
 PUBLIC_SCORER_INVOKE_PATH = "/scorers/invoke"
 INTERNAL_SCORER_INVOKE_PATH = "/internal/scorers/invoke"
 AuthMode = Literal["public", "internal"]
@@ -56,6 +63,13 @@ def _env_auth_mode() -> AuthMode | None:
     value = os.getenv("GALILEO_LUNA_AUTH_MODE")
     if value is None or value.strip() == "":
         return None
+    warnings.warn(
+        "GALILEO_LUNA_AUTH_MODE is deprecated. Configure exactly one credential "
+        "(GALILEO_API_KEY for public auth, GALILEO_API_SECRET_KEY for internal "
+        "auth) or pass auth_mode to GalileoLunaClient.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     normalized = value.strip().lower()
     if normalized == "public":
         return "public"
@@ -166,10 +180,13 @@ class GalileoLunaClient:
     Environment Variables:
         GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: Galileo API internal JWT signing secret.
         GALILEO_API_KEY: Galileo API key fallback for public scorer invocation.
-        GALILEO_LUNA_AUTH_MODE: Auth mode, either "public" or "internal".
+        GALILEO_LUNA_AUTH_MODE: Deprecated. The auth mode is inferred from which
+            credential is configured; set exactly one credential instead.
         GALILEO_LUNA_API_URL: Galileo Luna scorer invoke API URL override.
         GALILEO_API_CLUSTER_URL: Internal Galileo API URL used in internal auth mode.
         GALILEO_API_URL: Galileo API URL fallback.
+        GALILEO_LUNA_CA_FILE: CA bundle used to verify the scorer API endpoint, for
+            deployments whose API serves an internally-issued TLS certificate.
         GALILEO_CONSOLE_URL: Galileo Console URL (optional, defaults to production).
     """
 
@@ -180,6 +197,7 @@ class GalileoLunaClient:
         console_url: str | None = None,
         api_url: str | None = None,
         auth_mode: AuthMode | None = None,
+        ca_file: str | None = None,
     ) -> None:
         """Initialize the Galileo Luna client.
 
@@ -192,12 +210,16 @@ class GalileoLunaClient:
             api_url: Galileo API URL. If not provided, reads from GALILEO_LUNA_API_URL,
                 then GALILEO_API_CLUSTER_URL in internal auth mode, then GALILEO_API_URL,
                 before deriving from the console URL.
-            auth_mode: Auth mode to use. If not provided, reads from
-                GALILEO_LUNA_AUTH_MODE, or infers from the single available credential.
+            auth_mode: Auth mode to use. If not provided, inferred from the single
+                available credential. (Reading GALILEO_LUNA_AUTH_MODE from the
+                environment is deprecated.)
+            ca_file: CA bundle path used to verify the scorer API endpoint. If not
+                provided, reads from GALILEO_LUNA_CA_FILE. Leave unset for endpoints
+                with publicly-trusted certificates.
 
         Raises:
             ValueError: If credentials are missing, ambiguous, or incompatible with
-                the selected auth mode.
+                the selected auth mode, or if the CA bundle cannot be loaded.
         """
         resolved_api_secret = (
             api_secret or os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
@@ -216,6 +238,8 @@ class GalileoLunaClient:
             console_url or os.getenv("GALILEO_CONSOLE_URL") or "https://console.galileo.ai"
         )
         self.api_base = self._resolve_api_base(api_url, resolved_auth_mode)
+        self.ca_file = (ca_file or os.getenv("GALILEO_LUNA_CA_FILE") or "").strip() or None
+        self._ssl_context = self._load_ssl_context(self.ca_file)
         self._client: httpx.AsyncClient | None = None
         logger.info("[GalileoLunaClient] Auth mode selected: %s", self.auth_mode)
 
@@ -228,8 +252,18 @@ class GalileoLunaClient:
 
         for candidate in candidates:
             if candidate and candidate.strip():
-                return candidate.rstrip("/")
+                return candidate.strip().rstrip("/")
         return self._derive_api_url(self.console_url)
+
+    @staticmethod
+    def _load_ssl_context(ca_file: str | None) -> ssl.SSLContext | None:
+        """Build a TLS verification context from a CA bundle path, if configured."""
+        if ca_file is None:
+            return None
+        try:
+            return ssl.create_default_context(cafile=ca_file)
+        except (OSError, ssl.SSLError) as exc:
+            raise ValueError(f"Failed to load CA bundle from {ca_file!r}: {exc}") from exc
 
     @staticmethod
     def _resolve_auth_mode(
@@ -255,9 +289,9 @@ class GalileoLunaClient:
 
         if api_key and api_secret:
             raise ValueError(
-                "Both Galileo API key and API secret are configured. Set "
-                "GALILEO_LUNA_AUTH_MODE to 'public' or 'internal' to choose the "
-                "runtime auth mode explicitly."
+                "Both a Galileo API key and a Galileo API secret are configured. "
+                "Unset one credential so the auth mode can be inferred, or pass "
+                "auth_mode='public' or auth_mode='internal' explicitly."
             )
         if api_secret:
             return "internal"
@@ -298,9 +332,18 @@ class GalileoLunaClient:
             headers = {"Content-Type": "application/json"}
             if self.auth_mode == "public" and self.api_key is not None:
                 headers["Galileo-API-Key"] = self.api_key
+            verify: ssl.SSLContext | bool = (
+                self._ssl_context if self._ssl_context is not None else True
+            )
             self._client = httpx.AsyncClient(
                 headers=headers,
                 timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECS),
+                limits=httpx.Limits(
+                    max_connections=DEFAULT_MAX_CONNECTIONS,
+                    max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
+                    keepalive_expiry=DEFAULT_KEEPALIVE_EXPIRY_SECS,
+                ),
+                verify=verify,
             )
         return self._client
 
@@ -371,12 +414,26 @@ class GalileoLunaClient:
 
         try:
             client = await self._get_client()
-            response = await client.post(
-                endpoint,
-                json=request_body,
-                headers=request_headers,
-                timeout=timeout,
-            )
+            try:
+                response = await client.post(
+                    endpoint,
+                    json=request_body,
+                    headers=request_headers,
+                    timeout=timeout,
+                )
+            except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+                # These errors occur before a response is received, typically when
+                # the server closed a pooled connection. The scorer invoke request
+                # is idempotent, so a single retry on a fresh connection is safe.
+                logger.warning(
+                    "[GalileoLunaClient] Retrying once after connection error: %s", exc
+                )
+                response = await client.post(
+                    endpoint,
+                    json=request_body,
+                    headers=request_headers,
+                    timeout=timeout,
+                )
             response.raise_for_status()
             response_data = response.json()
             if not isinstance(response_data, dict):
