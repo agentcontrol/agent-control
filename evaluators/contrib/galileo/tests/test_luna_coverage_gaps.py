@@ -457,7 +457,9 @@ def test_client_requires_explicit_mode_when_both_credentials_are_present(monkeyp
     monkeypatch.delenv("GALILEO_LUNA_AUTH_MODE", raising=False)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with pytest.raises(ValueError, match="Both Galileo API key and API secret"):
+    with pytest.raises(
+        ValueError, match="Both a Galileo API key and a Galileo API secret are configured"
+    ):
         GalileoLunaClient()
 
 
