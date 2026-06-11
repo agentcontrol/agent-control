@@ -17,21 +17,27 @@ Start the Agent Control server from the repo root:
 make server-run
 ```
 
-Configure Galileo public API-key auth:
+Configure exactly one Galileo credential. With an API key, the evaluator uses
+public API-key auth and calls the public scorer API:
 
 ```bash
-export GALILEO_LUNA_AUTH_MODE="public"
 export GALILEO_API_KEY="your-api-key"
 export GALILEO_CONSOLE_URL="https://console.demo-v2.galileocloud.io"
 ```
 
-For internal deployments, use internal auth instead:
+With the Galileo API internal secret, it uses internal auth and calls the
+internal scorer API. In-cluster deployments should point it at the
+cluster-local API endpoint and, when that endpoint serves an internally-issued
+TLS certificate, provide the CA bundle:
 
 ```bash
-export GALILEO_LUNA_AUTH_MODE="internal"
 export GALILEO_API_SECRET_KEY="your-api-secret"
-export GALILEO_API_URL="https://api.default.svc.cluster.local:8088"
+export GALILEO_API_CLUSTER_URL="https://api.default.svc.cluster.local:8088"
+export GALILEO_LUNA_CA_FILE="/etc/ssl/internal/ca.crt"
 ```
+
+`GALILEO_LUNA_API_URL` overrides the scorer API URL in either mode, and
+`GALILEO_API_URL` remains the public API URL fallback.
 
 Optional scorer settings:
 
@@ -50,9 +56,9 @@ scalar as the scorer `output` field. If a selector returns structured data with
 `input` and/or `output` keys, those keys are sent directly and override
 `GALILEO_LUNA_PAYLOAD_FIELD`.
 
-If both `GALILEO_API_KEY` and `GALILEO_API_SECRET_KEY`/`GALILEO_API_SECRET` are
-set, `GALILEO_LUNA_AUTH_MODE` is required so the client does not silently choose
-an auth path.
+Setting both `GALILEO_API_KEY` and `GALILEO_API_SECRET_KEY`/`GALILEO_API_SECRET`
+is an error; unset one so the auth mode can be inferred. `GALILEO_LUNA_AUTH_MODE`
+is deprecated and only honored as a legacy override.
 
 Run:
 

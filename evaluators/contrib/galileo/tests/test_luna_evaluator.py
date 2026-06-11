@@ -135,7 +135,7 @@ class TestGalileoLunaClient:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
         # Given: the same console URL shape used by Protect
-        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=True):
             client = GalileoLunaClient(console_url="https://console.demo-v2.galileocloud.io")
 
         # Then: the API URL is derived the same way
@@ -151,6 +151,7 @@ class TestGalileoLunaClient:
                 "GALILEO_API_KEY": "test-key",
                 "GALILEO_API_URL": "https://api-test-luna.gcp-dev.galileo.ai/",
             },
+            clear=True,
         ):
             client = GalileoLunaClient(console_url="https://console-test-luna.gcp-dev.galileo.ai")
 
@@ -215,11 +216,126 @@ class TestGalileoLunaClient:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
         # Given: a console-<stack> devstack hostname
-        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=False):
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=True):
             client = GalileoLunaClient(console_url="https://console-test-luna.gcp-dev.galileo.ai")
 
         # Then: the matching api-<stack> hostname is used
         assert client.api_base == "https://api-test-luna.gcp-dev.galileo.ai"
+
+    def test_client_strips_whitespace_from_env_url(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        # Given: a URL override padded with whitespace and a trailing slash
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_KEY": "test-key",
+                "GALILEO_LUNA_API_URL": "  https://luna-api.example.com/  ",
+            },
+            clear=True,
+        ):
+            client = GalileoLunaClient(console_url="https://console.example.com")
+
+        # Then: the resolved base URL is trimmed and slash-free
+        assert client.api_base == "https://luna-api.example.com"
+
+    def test_client_warns_when_deprecated_auth_mode_env_is_set(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        # Given: the deprecated auth-mode environment variable
+        with patch.dict(
+            os.environ,
+            {"GALILEO_API_KEY": "test-key", "GALILEO_LUNA_AUTH_MODE": "public"},
+            clear=True,
+        ):
+            # When/Then: construction still works but emits a deprecation warning
+            with pytest.warns(DeprecationWarning, match="GALILEO_LUNA_AUTH_MODE is deprecated"):
+                client = GalileoLunaClient(console_url="https://console.example.com")
+
+        assert client.auth_mode == "public"
+
+    def test_client_rejects_unreadable_ca_bundle(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        # Given: a CA bundle path that does not exist
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_SECRET_KEY": "test-secret",
+                "GALILEO_LUNA_CA_FILE": "/nonexistent/ca.pem",
+            },
+            clear=True,
+        ):
+            # When/Then: client construction fails fast instead of at first request
+            with pytest.raises(ValueError, match="Failed to load CA bundle"):
+                GalileoLunaClient(console_url="https://console.example.com")
+
+    @pytest.mark.asyncio
+    async def test_client_applies_ca_bundle_and_connection_limits(self) -> None:
+        import certifi
+
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+        from agent_control_evaluator_galileo.luna.client import DEFAULT_KEEPALIVE_EXPIRY_SECS
+
+        captured: dict[str, object] = {}
+        real_async_client = httpx.AsyncClient
+
+        def recording_client(**kwargs: object) -> httpx.AsyncClient:
+            captured.update(kwargs)
+            return real_async_client(**kwargs)
+
+        # Given: internal auth with a CA bundle configured
+        with patch.dict(os.environ, {"GALILEO_API_SECRET_KEY": "test-secret"}, clear=True):
+            client = GalileoLunaClient(
+                console_url="https://console.example.com", ca_file=certifi.where()
+            )
+
+        with patch(
+            "agent_control_evaluator_galileo.luna.client.httpx.AsyncClient", recording_client
+        ):
+            try:
+                await client._get_client()
+            finally:
+                await client.close()
+
+        # Then: TLS verification uses the configured CA bundle and pooled
+        # connections expire quickly so closed server sockets are not reused
+        assert captured["verify"] is client._ssl_context
+        limits = captured["limits"]
+        assert isinstance(limits, httpx.Limits)
+        assert limits.keepalive_expiry == DEFAULT_KEEPALIVE_EXPIRY_SECS
+
+    @pytest.mark.asyncio
+    async def test_client_retries_once_after_server_disconnect(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        calls = {"count": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise httpx.RemoteProtocolError(
+                    "Server disconnected without sending a response.", request=request
+                )
+            return httpx.Response(
+                200,
+                json={"scorer_label": "toxicity", "score": 0.1, "status": "success"},
+            )
+
+        # Given: a transport whose first attempt fails like a stale keepalive socket
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=True):
+            client = GalileoLunaClient(console_url="https://console.example.com")
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        try:
+            # When: invoking a scorer
+            response = await client.invoke(scorer_label="toxicity", output="hello")
+        finally:
+            await client.close()
+
+        # Then: the request is retried once and succeeds
+        assert calls["count"] == 2
+        assert response.score == 0.1
 
     @pytest.mark.asyncio
     async def test_client_posts_to_scorers_invoke_without_protect_fields(self) -> None:
@@ -242,7 +358,7 @@ class TestGalileoLunaClient:
             )
 
         # Given: a Luna client with a mock HTTP transport
-        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}):
+        with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=True):
             client = GalileoLunaClient(console_url="https://console.demo-v2.galileocloud.io")
         client._client = httpx.AsyncClient(
             transport=httpx.MockTransport(handler),
