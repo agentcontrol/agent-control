@@ -17,27 +17,40 @@ Start the Agent Control server from the repo root:
 make server-run
 ```
 
-Configure exactly one Galileo credential. With an API key, the evaluator uses
-public API-key auth and calls the public scorer API:
+Configure exactly one Galileo credential.
+
+For most OSS users, only an API key is required. This uses public API-key auth
+and calls the public scorer API:
 
 ```bash
 export GALILEO_API_KEY="your-api-key"
 export GALILEO_CONSOLE_URL="https://console.demo-v2.galileocloud.io"
 ```
 
-With the Galileo API internal secret, it uses internal auth and calls the
-internal scorer API. In-cluster deployments should point it at the
-cluster-local API endpoint and, when that endpoint serves an internally-issued
-TLS certificate, provide the CA bundle:
+`GALILEO_CONSOLE_URL` is optional when using the production console URL.
+`GALILEO_LUNA_API_URL` is not required for this path. The client uses
+`GALILEO_API_URL` when set, otherwise it derives the API URL from
+`GALILEO_CONSOLE_URL`.
+
+For deployments that use service-to-service internal auth, provide the API
+internal secret instead of an API key:
 
 ```bash
 export GALILEO_API_SECRET_KEY="your-api-secret"
+```
+
+Deployment tooling may also set a custom scorer API endpoint and CA bundle. Use
+these only when the scorer API is not reachable through the default public API
+URL derivation, or when the endpoint uses a private CA:
+
+```bash
 export GALILEO_LUNA_API_URL="https://api.default.svc.cluster.local:8088"
 export GALILEO_LUNA_CA_FILE="/etc/ssl/internal/ca.crt"
 ```
 
-`GALILEO_LUNA_API_URL` overrides the scorer API URL in either mode.
-`GALILEO_API_URL` remains the public API URL fallback.
+`GALILEO_LUNA_API_URL` overrides the scorer API URL in either auth mode.
+`GALILEO_LUNA_CA_FILE` is only needed for endpoints that are not trusted by the
+system CA store.
 
 Optional scorer settings:
 
