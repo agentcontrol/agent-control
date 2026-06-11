@@ -57,8 +57,7 @@ scalar as the scorer `output` field. If a selector returns structured data with
 `GALILEO_LUNA_PAYLOAD_FIELD`.
 
 Setting both `GALILEO_API_KEY` and `GALILEO_API_SECRET_KEY`/`GALILEO_API_SECRET`
-is an error; unset one so the auth mode can be inferred. `GALILEO_LUNA_AUTH_MODE`
-is deprecated and only honored as a legacy override.
+is an error; unset one so the auth mode can be inferred.
 
 Run:
 
