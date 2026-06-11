@@ -9,14 +9,13 @@ from agent_control_models import (
     EvaluatorResult,
     Step,
 )
-from fastapi.testclient import TestClient
-
 from agent_control_server.db import async_engine
 from agent_control_server.endpoints.evaluation import (
     SAFE_EVALUATOR_ERROR,
     SAFE_EVALUATOR_TIMEOUT_ERROR,
     _sanitize_control_match,
 )
+from fastapi.testclient import TestClient
 
 from .utils import create_and_assign_policy
 
