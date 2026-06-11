@@ -178,10 +178,9 @@ class GalileoLunaClient:
     """Thin HTTP client for Galileo Luna direct scorer invocation.
 
     Environment Variables:
-        GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: Galileo API internal JWT signing secret.
+        GALILEO_API_SECRET_KEY: Galileo API internal JWT signing secret.
         GALILEO_API_KEY: Galileo API key fallback for public scorer invocation.
         GALILEO_LUNA_API_URL: Galileo Luna scorer invoke API URL override.
-        GALILEO_API_CLUSTER_URL: Internal Galileo API URL used in internal auth mode.
         GALILEO_API_URL: Galileo API URL fallback.
         GALILEO_LUNA_CA_FILE: CA bundle used to verify the scorer API endpoint, for
             deployments whose API serves an internally-issued TLS certificate.
@@ -202,12 +201,11 @@ class GalileoLunaClient:
         Args:
             api_key: Galileo API key. If not provided, reads from GALILEO_API_KEY.
             api_secret: Galileo API secret for internal JWT auth. If not provided,
-                reads from GALILEO_API_SECRET_KEY or GALILEO_API_SECRET.
+                reads from GALILEO_API_SECRET_KEY.
             console_url: Galileo Console URL. If not provided, reads from
                 GALILEO_CONSOLE_URL or uses the production console URL.
             api_url: Galileo API URL. If not provided, reads from GALILEO_LUNA_API_URL,
-                then GALILEO_API_CLUSTER_URL in internal auth mode, then GALILEO_API_URL,
-                before deriving from the console URL.
+                then GALILEO_API_URL, before deriving from the console URL.
             auth_mode: Auth mode to use. If not provided, inferred from the single
                 available credential.
             ca_file: CA bundle path used to verify the scorer API endpoint. If not
@@ -234,17 +232,15 @@ class GalileoLunaClient:
         self.console_url = (
             console_url or os.getenv("GALILEO_CONSOLE_URL") or "https://console.galileo.ai"
         )
-        self.api_base = self._resolve_api_base(api_url, resolved_auth_mode)
+        self.api_base = self._resolve_api_base(api_url)
         self.ca_file = (ca_file or os.getenv("GALILEO_LUNA_CA_FILE") or "").strip() or None
         self._ssl_context = self._load_ssl_context(self.ca_file)
         self._client: httpx.AsyncClient | None = None
         logger.info("[GalileoLunaClient] Auth mode selected: %s", self.auth_mode)
 
-    def _resolve_api_base(self, api_url: str | None, auth_mode: AuthMode) -> str:
+    def _resolve_api_base(self, api_url: str | None) -> str:
         """Resolve the scorer invoke API base URL from explicit and environment config."""
         candidates = [api_url, os.getenv("GALILEO_LUNA_API_URL")]
-        if auth_mode == "internal":
-            candidates.append(os.getenv("GALILEO_API_CLUSTER_URL"))
         candidates.append(os.getenv("GALILEO_API_URL"))
 
         for candidate in candidates:
@@ -277,8 +273,7 @@ class GalileoLunaClient:
         if auth_mode == "internal":
             if not api_secret:
                 raise ValueError(
-                    "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for "
-                    "internal Luna auth."
+                    "GALILEO_API_SECRET_KEY is required for internal Luna auth."
                 )
             return "internal"
 
