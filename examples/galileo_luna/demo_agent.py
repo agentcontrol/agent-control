@@ -95,8 +95,8 @@ async def run_demo() -> None:
     if not api_key and not api_secret:
         print(
             "Galileo credentials are required for the galileo.luna evaluator. "
-            "Set GALILEO_API_KEY for public mode or GALILEO_API_SECRET_KEY for "
-            "internal mode."
+            "Set GALILEO_API_KEY for public mode. Deployments using internal "
+            "mode should inject GALILEO_API_SECRET_KEY."
         )
         return
     if api_key and api_secret:
