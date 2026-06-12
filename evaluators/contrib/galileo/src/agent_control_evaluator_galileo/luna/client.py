@@ -27,6 +27,9 @@ DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 DEFAULT_KEEPALIVE_EXPIRY_SECS = 1.0
 DEFAULT_MAX_CONNECTIONS = 100
 DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
+LUNA_KEEPALIVE_EXPIRY_ENV = "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS"
+LUNA_MAX_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_CONNECTIONS"
+LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS"
 PUBLIC_SCORER_INVOKE_PATH = "/scorers/invoke"
 INTERNAL_SCORER_INVOKE_PATH = "/internal/scorers/invoke"
 AuthMode = Literal["public", "internal"]
@@ -76,6 +79,51 @@ def _env_auth_mode() -> AuthMode | None:
     if normalized == "internal":
         return "internal"
     raise ValueError("GALILEO_LUNA_AUTH_MODE must be either 'public' or 'internal'.")
+
+
+def _load_float_env(env_name: str, default: float) -> float:
+    raw = os.getenv(env_name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{env_name}={raw!r} is not a number.") from exc
+
+
+def _load_int_env(env_name: str, default: int) -> int:
+    raw = os.getenv(env_name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{env_name}={raw!r} is not an integer.") from exc
+
+
+def _validate_connection_config(
+    *,
+    keepalive_expiry_seconds: float,
+    max_connections: int,
+    max_keepalive_connections: int,
+) -> None:
+    if keepalive_expiry_seconds < 0:
+        raise ValueError(
+            f"{LUNA_KEEPALIVE_EXPIRY_ENV}={keepalive_expiry_seconds} "
+            "must be greater than or equal to 0."
+        )
+    if max_connections <= 0:
+        raise ValueError(f"{LUNA_MAX_CONNECTIONS_ENV}={max_connections} must be greater than 0.")
+    if max_keepalive_connections < 0:
+        raise ValueError(
+            f"{LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
+            "must be greater than or equal to 0."
+        )
+    if max_keepalive_connections > max_connections:
+        raise ValueError(
+            f"{LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
+            f"must be less than or equal to {LUNA_MAX_CONNECTIONS_ENV}={max_connections}."
+        )
 
 
 def _as_float_or_none(value: JSONValue) -> float | None:
@@ -184,6 +232,9 @@ class GalileoLunaClient:
         GALILEO_API_URL: Galileo API URL fallback.
         GALILEO_LUNA_CA_FILE: CA bundle used to verify the scorer API endpoint, for
             deployments whose API serves an internally-issued TLS certificate.
+        GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS: HTTP pooled connection expiry.
+        GALILEO_LUNA_MAX_CONNECTIONS: Maximum outbound HTTP connections.
+        GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS: Maximum idle pooled HTTP connections.
         GALILEO_CONSOLE_URL: Galileo Console URL (optional, defaults to production).
     """
 
@@ -235,6 +286,18 @@ class GalileoLunaClient:
         self.api_base = self._resolve_api_base(api_url)
         self.ca_file = (ca_file or os.getenv("GALILEO_LUNA_CA_FILE") or "").strip() or None
         self._ssl_context = self._load_ssl_context(self.ca_file)
+        self.keepalive_expiry_seconds = _load_float_env(
+            LUNA_KEEPALIVE_EXPIRY_ENV, DEFAULT_KEEPALIVE_EXPIRY_SECS
+        )
+        self.max_connections = _load_int_env(LUNA_MAX_CONNECTIONS_ENV, DEFAULT_MAX_CONNECTIONS)
+        self.max_keepalive_connections = _load_int_env(
+            LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV, DEFAULT_MAX_KEEPALIVE_CONNECTIONS
+        )
+        _validate_connection_config(
+            keepalive_expiry_seconds=self.keepalive_expiry_seconds,
+            max_connections=self.max_connections,
+            max_keepalive_connections=self.max_keepalive_connections,
+        )
         self._client: httpx.AsyncClient | None = None
         logger.info("[GalileoLunaClient] Auth mode selected: %s", self.auth_mode)
 
@@ -329,9 +392,9 @@ class GalileoLunaClient:
                 headers=headers,
                 timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECS),
                 limits=httpx.Limits(
-                    max_connections=DEFAULT_MAX_CONNECTIONS,
-                    max_keepalive_connections=DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
-                    keepalive_expiry=DEFAULT_KEEPALIVE_EXPIRY_SECS,
+                    max_connections=self.max_connections,
+                    max_keepalive_connections=self.max_keepalive_connections,
+                    keepalive_expiry=self.keepalive_expiry_seconds,
                 ),
                 verify=verify,
             )
