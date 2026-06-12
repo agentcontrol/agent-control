@@ -257,7 +257,11 @@ class TestGalileoLunaClient:
         import certifi
 
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
-        from agent_control_evaluator_galileo.luna.client import DEFAULT_KEEPALIVE_EXPIRY_SECS
+        from agent_control_evaluator_galileo.luna.client import (
+            DEFAULT_KEEPALIVE_EXPIRY_SECS,
+            DEFAULT_MAX_CONNECTIONS,
+            DEFAULT_MAX_KEEPALIVE_CONNECTIONS,
+        )
 
         captured: dict[str, object] = {}
         real_async_client = httpx.AsyncClient
@@ -286,6 +290,84 @@ class TestGalileoLunaClient:
         limits = captured["limits"]
         assert isinstance(limits, httpx.Limits)
         assert limits.keepalive_expiry == DEFAULT_KEEPALIVE_EXPIRY_SECS
+        assert limits.max_connections == DEFAULT_MAX_CONNECTIONS
+        assert limits.max_keepalive_connections == DEFAULT_MAX_KEEPALIVE_CONNECTIONS
+
+    @pytest.mark.asyncio
+    async def test_client_applies_connection_tuning_env(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        captured: dict[str, object] = {}
+        real_async_client = httpx.AsyncClient
+
+        def recording_client(**kwargs: object) -> httpx.AsyncClient:
+            captured.update(kwargs)
+            return real_async_client(**kwargs)
+
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_SECRET_KEY": "test-secret",
+                "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS": "0.25",
+                "GALILEO_LUNA_MAX_CONNECTIONS": "17",
+                "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS": "4",
+            },
+            clear=True,
+        ):
+            client = GalileoLunaClient(console_url="https://console.example.com")
+
+        with patch(
+            "agent_control_evaluator_galileo.luna.client.httpx.AsyncClient", recording_client
+        ):
+            try:
+                await client._get_client()
+            finally:
+                await client.close()
+
+        assert client.keepalive_expiry_seconds == 0.25
+        assert client.max_connections == 17
+        assert client.max_keepalive_connections == 4
+        limits = captured["limits"]
+        assert isinstance(limits, httpx.Limits)
+        assert limits.keepalive_expiry == 0.25
+        assert limits.max_connections == 17
+        assert limits.max_keepalive_connections == 4
+
+    @pytest.mark.parametrize(
+        "env_values, expected",
+        [
+            ({"GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS": "soon"}, "not a number"),
+            ({"GALILEO_LUNA_MAX_CONNECTIONS": "many"}, "not an integer"),
+            ({"GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS": "some"}, "not an integer"),
+            (
+                {"GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS": "-0.1"},
+                "greater than or equal to 0",
+            ),
+            ({"GALILEO_LUNA_MAX_CONNECTIONS": "0"}, "greater than 0"),
+            (
+                {"GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS": "-1"},
+                "greater than or equal to 0",
+            ),
+            (
+                {
+                    "GALILEO_LUNA_MAX_CONNECTIONS": "2",
+                    "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS": "3",
+                },
+                "less than or equal",
+            ),
+        ],
+    )
+    def test_client_reports_invalid_connection_tuning_env(
+        self, env_values: dict[str, str], expected: str
+    ) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        env = {"GALILEO_API_SECRET_KEY": "test-secret"} | env_values
+        with patch.dict(os.environ, env, clear=True):
+            with pytest.raises(ValueError) as exc_info:
+                GalileoLunaClient(console_url="https://console.example.com")
+
+        assert expected in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_client_posts_to_scorers_invoke_without_protect_fields(self) -> None:
