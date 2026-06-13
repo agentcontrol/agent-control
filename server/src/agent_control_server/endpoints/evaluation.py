@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import dataclass
+from time import perf_counter
 
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
@@ -18,6 +19,7 @@ from ..auth_framework import Operation, Principal, require_operation
 from ..db import AsyncSessionLocal
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
+from ..metrics import observe_evaluation_stage, prometheus_evaluation_observer
 from ..models import Agent
 from ..services.controls import ControlService
 
@@ -196,11 +198,32 @@ async def evaluate(
     on the server; SDKs reconstruct and emit those events separately through
     the observability ingestion endpoint.
     """
-    engine_controls = await _load_engine_controls(request, principal)
-    engine = ControlEngine(engine_controls)
+    load_started_at = perf_counter()
+    try:
+        engine_controls = await _load_engine_controls(request, principal)
+    except Exception:
+        observe_evaluation_stage(
+            stage="load_controls",
+            outcome="error",
+            duration_seconds=perf_counter() - load_started_at,
+        )
+        raise
+    observe_evaluation_stage(
+        stage="load_controls",
+        outcome="success",
+        duration_seconds=perf_counter() - load_started_at,
+    )
+
+    engine = ControlEngine(engine_controls, observer=prometheus_evaluation_observer)
+    engine_started_at = perf_counter()
     try:
         raw_response = await engine.process(request)
     except ValueError:
+        observe_evaluation_stage(
+            stage="engine",
+            outcome="validation_error",
+            duration_seconds=perf_counter() - engine_started_at,
+        )
         _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(
             error_code=ErrorCode.EVALUATION_FAILED,
@@ -216,5 +239,32 @@ async def evaluate(
                 )
             ],
         )
+    except Exception:
+        observe_evaluation_stage(
+            stage="engine",
+            outcome="error",
+            duration_seconds=perf_counter() - engine_started_at,
+        )
+        raise
+    observe_evaluation_stage(
+        stage="engine",
+        outcome="success",
+        duration_seconds=perf_counter() - engine_started_at,
+    )
 
-    return _sanitize_evaluation_response(raw_response)
+    sanitize_started_at = perf_counter()
+    try:
+        response = _sanitize_evaluation_response(raw_response)
+    except Exception:
+        observe_evaluation_stage(
+            stage="sanitize_response",
+            outcome="error",
+            duration_seconds=perf_counter() - sanitize_started_at,
+        )
+        raise
+    observe_evaluation_stage(
+        stage="sanitize_response",
+        outcome="success",
+        duration_seconds=perf_counter() - sanitize_started_at,
+    )
+    return response
