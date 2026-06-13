@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import os
 from base64 import urlsafe_b64decode
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -364,6 +365,68 @@ class TestGalileoLunaClient:
         assert limits.keepalive_expiry == 0.25
         assert limits.max_connections == 17
         assert limits.max_keepalive_connections == 4
+
+    @pytest.mark.asyncio
+    async def test_client_emits_httpcore_phase_spans_when_enabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import agent_control_evaluator_galileo.luna.client as luna_client_module
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        spans: list[RecordedSpan] = []
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(luna_client_module, "trace_span", trace_span_recorder(spans))
+
+        class FakeAsyncClient:
+            is_closed = False
+
+            async def post(self, url: str, **kwargs: object) -> httpx.Response:
+                captured.update(kwargs)
+                extensions = kwargs.get("extensions")
+                assert isinstance(extensions, dict)
+                trace = cast(
+                    Callable[[str, dict[str, object]], Awaitable[None]],
+                    extensions["trace"],
+                )
+                await trace("connection.connect_tcp.started", {})
+                await trace("connection.connect_tcp.complete", {"return_value": object()})
+                await trace("http11.receive_response_headers.started", {})
+                await trace("http11.receive_response_headers.complete", {})
+                return httpx.Response(
+                    200,
+                    json={"scorer_label": "toxicity", "score": 0.2, "status": "success"},
+                    request=httpx.Request("POST", url),
+                )
+
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_SECRET_KEY": "test-secret",
+                "GALILEO_LUNA_HTTP_PHASE_TRACING": "true",
+            },
+            clear=True,
+        ):
+            client = GalileoLunaClient(console_url="https://console.example.com")
+        client._client = FakeAsyncClient()  # type: ignore[assignment]
+
+        response = await client.invoke(scorer_label="toxicity", output="hello")
+
+        assert response.score == 0.2
+        assert captured["extensions"] is not None
+        phase_spans = {
+            span.op: span.data
+            for span in spans
+            if span.op.startswith("agent_control.luna.httpcore.")
+        }
+        assert "agent_control.luna.httpcore.connection.connect_tcp" in phase_spans
+        assert "agent_control.luna.httpcore.http11.receive_response_headers" in phase_spans
+        assert phase_spans["agent_control.luna.httpcore.connection.connect_tcp"][
+            "httpcore.outcome"
+        ] == "complete"
+        assert "httpcore.duration_ms" in phase_spans[
+            "agent_control.luna.httpcore.connection.connect_tcp"
+        ]
 
     @pytest.mark.parametrize(
         "env_values, expected",
