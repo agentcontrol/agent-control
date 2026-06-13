@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import dataclass
+from time import perf_counter
 
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
@@ -19,6 +20,7 @@ from ..auth_framework import Operation, Principal, require_operation
 from ..db import get_async_db
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
+from ..metrics import observe_evaluation_stage, prometheus_evaluation_observer
 from ..models import Agent
 from ..services.controls import ControlService
 
@@ -164,37 +166,56 @@ async def evaluate(
     the observability ingestion endpoint.
     """
     namespace_key = principal.namespace_key
-
-    agent_result = await db.execute(
-        select(Agent).where(
-            Agent.name == request.agent_name,
-            Agent.namespace_key == namespace_key,
+    load_started_at = perf_counter()
+    try:
+        agent_result = await db.execute(
+            select(Agent).where(
+                Agent.name == request.agent_name,
+                Agent.namespace_key == namespace_key,
+            )
         )
-    )
-    agent = agent_result.scalar_one_or_none()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent '{request.agent_name}' not found",
-            resource="Agent",
-            resource_id=request.agent_name,
-            hint="Register the agent via initAgent before evaluating.",
+        agent = agent_result.scalar_one_or_none()
+        if agent is None:
+            raise NotFoundError(
+                error_code=ErrorCode.AGENT_NOT_FOUND,
+                detail=f"Agent '{request.agent_name}' not found",
+                resource="Agent",
+                resource_id=request.agent_name,
+                hint="Register the agent via initAgent before evaluating.",
+            )
+
+        runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
+            request.agent_name,
+            namespace_key=namespace_key,
+            target_type=request.target_type,
+            target_id=request.target_id,
+            allow_invalid_step_name_regex=True,
         )
 
-    runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
-        request.agent_name,
-        namespace_key=namespace_key,
-        target_type=request.target_type,
-        target_id=request.target_id,
-        allow_invalid_step_name_regex=True,
+        engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
+    except Exception:
+        observe_evaluation_stage(
+            stage="load_controls",
+            outcome="error",
+            duration_seconds=perf_counter() - load_started_at,
+        )
+        raise
+    observe_evaluation_stage(
+        stage="load_controls",
+        outcome="success",
+        duration_seconds=perf_counter() - load_started_at,
     )
 
-    engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
-
-    engine = ControlEngine(engine_controls)
+    engine = ControlEngine(engine_controls, observer=prometheus_evaluation_observer)
+    engine_started_at = perf_counter()
     try:
         raw_response = await engine.process(request)
     except ValueError:
+        observe_evaluation_stage(
+            stage="engine",
+            outcome="validation_error",
+            duration_seconds=perf_counter() - engine_started_at,
+        )
         _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(
             error_code=ErrorCode.EVALUATION_FAILED,
@@ -210,5 +231,32 @@ async def evaluate(
                 )
             ],
         )
+    except Exception:
+        observe_evaluation_stage(
+            stage="engine",
+            outcome="error",
+            duration_seconds=perf_counter() - engine_started_at,
+        )
+        raise
+    observe_evaluation_stage(
+        stage="engine",
+        outcome="success",
+        duration_seconds=perf_counter() - engine_started_at,
+    )
 
-    return _sanitize_evaluation_response(raw_response)
+    sanitize_started_at = perf_counter()
+    try:
+        response = _sanitize_evaluation_response(raw_response)
+    except Exception:
+        observe_evaluation_stage(
+            stage="sanitize_response",
+            outcome="error",
+            duration_seconds=perf_counter() - sanitize_started_at,
+        )
+        raise
+    observe_evaluation_stage(
+        stage="sanitize_response",
+        outcome="success",
+        duration_seconds=perf_counter() - sanitize_started_at,
+    )
+    return response

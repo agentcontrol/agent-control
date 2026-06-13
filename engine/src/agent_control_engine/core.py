@@ -7,6 +7,7 @@ import asyncio
 import functools
 import logging
 import os
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
@@ -193,6 +194,40 @@ class ControlWithIdentity(Protocol):
         """Runtime control payload used during evaluation."""
 
 
+EvaluatorObserverOutcome = Literal["success", "timeout", "error", "cancelled"]
+ControlObserverOutcome = Literal["matched", "not_matched", "error", "cancelled"]
+
+
+class EvaluationObserver(Protocol):
+    """Receives timing observations from control evaluation."""
+
+    def observe_evaluator_queue_duration(
+        self,
+        *,
+        evaluator_name: str,
+        duration_seconds: float,
+    ) -> None:
+        """Record time spent waiting for evaluator concurrency."""
+
+    def observe_evaluator_duration(
+        self,
+        *,
+        evaluator_name: str,
+        outcome: EvaluatorObserverOutcome,
+        duration_seconds: float,
+    ) -> None:
+        """Record time spent executing an evaluator."""
+
+    def observe_control_duration(
+        self,
+        *,
+        action: str,
+        outcome: ControlObserverOutcome,
+        duration_seconds: float,
+    ) -> None:
+        """Record time spent evaluating a top-level control."""
+
+
 @dataclass
 class _EvalTask:
     """Internal container for evaluation task context."""
@@ -228,14 +263,71 @@ class ControlEngine:
         context: Literal["sdk", "server"] = "server",
         *,
         include_raw_selected_data: bool | None = None,
+        observer: EvaluationObserver | None = None,
     ):
         self.controls = controls
         self.context = context
+        self.observer = observer
         self.include_raw_selected_data = (
             _env_flag("AGENT_CONTROL_INCLUDE_RAW_SELECTED_DATA")
             if include_raw_selected_data is None
             else include_raw_selected_data
         )
+
+    def _observe_evaluator_queue_duration(
+        self,
+        *,
+        evaluator_name: str,
+        duration_seconds: float,
+    ) -> None:
+        """Record evaluator queue timing without affecting evaluation."""
+        if self.observer is None:
+            return
+        try:
+            self.observer.observe_evaluator_queue_duration(
+                evaluator_name=evaluator_name,
+                duration_seconds=duration_seconds,
+            )
+        except Exception:
+            logger.debug("Evaluation observer failed while recording queue time", exc_info=True)
+
+    def _observe_evaluator_duration(
+        self,
+        *,
+        evaluator_name: str,
+        outcome: EvaluatorObserverOutcome,
+        duration_seconds: float,
+    ) -> None:
+        """Record evaluator execution timing without affecting evaluation."""
+        if self.observer is None:
+            return
+        try:
+            self.observer.observe_evaluator_duration(
+                evaluator_name=evaluator_name,
+                outcome=outcome,
+                duration_seconds=duration_seconds,
+            )
+        except Exception:
+            logger.debug("Evaluation observer failed while recording evaluator time", exc_info=True)
+
+    def _observe_control_duration(
+        self,
+        *,
+        action: str,
+        outcome: ControlObserverOutcome,
+        duration_seconds: float,
+    ) -> None:
+        """Record control evaluation timing without affecting evaluation."""
+        if self.observer is None:
+            return
+        try:
+            self.observer.observe_control_duration(
+                action=action,
+                outcome=outcome,
+                duration_seconds=duration_seconds,
+            )
+        except Exception:
+            logger.debug("Evaluation observer failed while recording control time", exc_info=True)
 
     @staticmethod
     def _truncated_message(message: str | None) -> str | None:
@@ -312,8 +404,16 @@ class ControlEngine:
         selector_path = selector.path or "*"
         data = select_data(request.step, selector_path)
 
-        try:
-            async with semaphore:
+        wait_started_at = time.perf_counter()
+        async with semaphore:
+            self._observe_evaluator_queue_duration(
+                evaluator_name=evaluator_spec.name,
+                duration_seconds=time.perf_counter() - wait_started_at,
+            )
+            evaluator_started_at = time.perf_counter()
+            outcome: EvaluatorObserverOutcome = "success"
+            timeout = DEFAULT_EVALUATOR_TIMEOUT
+            try:
                 evaluator = get_evaluator_instance(evaluator_spec)
                 timeout = evaluator.get_timeout_seconds()
                 if timeout <= 0:
@@ -323,26 +423,37 @@ class ControlEngine:
                     evaluator.evaluate(data),
                     timeout=timeout,
                 )
-        except TimeoutError:
-            error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
-            logger.warning(
-                "Evaluator timeout for control '%s' (evaluator: %s): %s",
-                item.name,
-                evaluator_spec.name,
-                error_msg,
-                exc_info=True,
-            )
-            result = self._build_error_result(error_msg)
-        except Exception as e:
-            error_msg = self._format_exception(e)
-            logger.error(
-                "Evaluator error for control '%s' (evaluator: %s): %s",
-                item.name,
-                evaluator_spec.name,
-                error_msg,
-                exc_info=True,
-            )
-            result = self._build_error_result(error_msg)
+            except asyncio.CancelledError:
+                outcome = "cancelled"
+                raise
+            except TimeoutError:
+                outcome = "timeout"
+                error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
+                logger.warning(
+                    "Evaluator timeout for control '%s' (evaluator: %s): %s",
+                    item.name,
+                    evaluator_spec.name,
+                    error_msg,
+                    exc_info=True,
+                )
+                result = self._build_error_result(error_msg)
+            except Exception as e:
+                outcome = "error"
+                error_msg = self._format_exception(e)
+                logger.error(
+                    "Evaluator error for control '%s' (evaluator: %s): %s",
+                    item.name,
+                    evaluator_spec.name,
+                    error_msg,
+                    exc_info=True,
+                )
+                result = self._build_error_result(error_msg)
+            finally:
+                self._observe_evaluator_duration(
+                    evaluator_name=evaluator_spec.name,
+                    outcome=outcome,
+                    duration_seconds=time.perf_counter() - evaluator_started_at,
+                )
 
         trace = {
             "type": "leaf",
@@ -661,6 +772,9 @@ class ControlEngine:
 
         async def evaluate_control(eval_task: _EvalTask) -> None:
             """Evaluate a single control, respecting cancellation and timeout."""
+            started_at = time.perf_counter()
+            action = eval_task.item.control.action.decision
+            outcome: ControlObserverOutcome = "cancelled"
             try:
                 evaluation = await self._evaluate_condition(
                     eval_task.item,
@@ -669,6 +783,13 @@ class ControlEngine:
                     semaphore,
                 )
                 eval_task.result = evaluation.result
+                outcome = (
+                    "error"
+                    if eval_task.result.error
+                    else "matched"
+                    if eval_task.result.matched
+                    else "not_matched"
+                )
 
                 if (
                     eval_task.result.matched
@@ -687,6 +808,13 @@ class ControlEngine:
                 eval_task.result = self._build_error_result(
                     error_msg,
                     message_prefix="Condition evaluation failed",
+                )
+                outcome = "error"
+            finally:
+                self._observe_control_duration(
+                    action=action,
+                    outcome=outcome,
+                    duration_seconds=time.perf_counter() - started_at,
                 )
 
         # Create and start all tasks
