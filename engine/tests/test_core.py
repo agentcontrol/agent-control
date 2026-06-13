@@ -1280,6 +1280,57 @@ class TestTimeoutEnforcement:
 class TestConcurrencyLimit:
     """Tests for semaphore-based concurrency limiting."""
 
+    def test_max_concurrency_env_prefers_agent_control_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The canonical Agent Control env var overrides the legacy short name."""
+        import agent_control_engine.core as core_module
+
+        monkeypatch.setenv("AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS", "7")
+        monkeypatch.setenv("MAX_CONCURRENT_EVALUATIONS", "2")
+
+        assert (
+            core_module._env_positive_int(
+                "AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS",
+                "MAX_CONCURRENT_EVALUATIONS",
+                default=3,
+            )
+            == 7
+        )
+
+    def test_max_concurrency_env_reads_legacy_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The existing env var remains supported for compatibility."""
+        import agent_control_engine.core as core_module
+
+        monkeypatch.delenv("AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS", raising=False)
+        monkeypatch.setenv("MAX_CONCURRENT_EVALUATIONS", "5")
+
+        assert (
+            core_module._env_positive_int(
+                "AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS",
+                "MAX_CONCURRENT_EVALUATIONS",
+                default=3,
+            )
+            == 5
+        )
+
+    def test_max_concurrency_env_rejects_non_positive_values(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The concurrency cap must always allow at least one evaluator."""
+        import agent_control_engine.core as core_module
+
+        monkeypatch.setenv("AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS", "0")
+
+        with pytest.raises(RuntimeError, match="greater than or equal to 1"):
+            core_module._env_positive_int(
+                "AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS",
+                "MAX_CONCURRENT_EVALUATIONS",
+                default=3,
+            )
+
     @pytest.mark.asyncio
     async def test_concurrency_limited_to_max(self, monkeypatch: pytest.MonkeyPatch):
         """Test that concurrent evaluations are limited by semaphore.
