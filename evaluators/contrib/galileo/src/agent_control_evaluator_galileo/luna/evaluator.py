@@ -14,6 +14,7 @@ from agent_control_models import EvaluatorResult, JSONValue
 
 from .client import GalileoLunaClient, ScorerInvokeResponse
 from .config import LunaEvaluatorConfig, coerce_number
+from .tracing import set_span_data, trace_span
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,11 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         Returns:
             EvaluatorResult with local threshold decision and scorer metadata.
         """
-        input_text, output_text = self._prepare_payload(data)
+        with trace_span(
+            op="agent_control.luna.evaluate.prepare_payload",
+            name="prepare_luna_payload",
+        ):
+            input_text, output_text = self._prepare_payload(data)
         if not (_has_text(input_text) or _has_text(output_text)):
             return EvaluatorResult(
                 matched=False,
@@ -212,21 +217,43 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             )
 
         try:
-            scorer_kwargs = self._scorer_kwargs()
-            response = await self._get_client().invoke(
-                **scorer_kwargs,
-                input=input_text if _has_text(input_text) else None,
-                output=output_text if _has_text(output_text) else None,
-                config=self.config.scorer_config,
-                timeout=self.get_timeout_seconds(),
-            )
+            with trace_span(
+                op="agent_control.luna.evaluate.scorer_kwargs",
+                name="build_scorer_kwargs",
+            ):
+                scorer_kwargs = self._scorer_kwargs()
+            with trace_span(
+                op="agent_control.luna.evaluate.invoke",
+                name="invoke_luna_scorer",
+                data={
+                    "payload.has_input": _has_text(input_text),
+                    "payload.has_output": _has_text(output_text),
+                },
+            ) as span:
+                response = await self._get_client().invoke(
+                    **scorer_kwargs,
+                    input=input_text if _has_text(input_text) else None,
+                    output=output_text if _has_text(output_text) else None,
+                    config=self.config.scorer_config,
+                    timeout=self.get_timeout_seconds(),
+                )
+                set_span_data(span, "scorer.status", response.status)
 
             if response.status.lower() != "success":
                 message = response.error_message or f"Luna scorer status: {response.status}"
                 raise RuntimeError(message)
 
-            matched = self._score_matches(response.score)
-            metadata = self._metadata(response)
+            with trace_span(
+                op="agent_control.luna.evaluate.score_match",
+                name="match_luna_score",
+            ) as span:
+                matched = self._score_matches(response.score)
+                set_span_data(span, "matched", matched)
+            with trace_span(
+                op="agent_control.luna.evaluate.metadata",
+                name="build_luna_metadata",
+            ):
+                metadata = self._metadata(response)
             operator = self.config.operator
             threshold = self.config.threshold
             state = "triggered" if matched else "not triggered"

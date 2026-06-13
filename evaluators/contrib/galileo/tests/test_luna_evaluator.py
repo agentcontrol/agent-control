@@ -6,12 +6,44 @@ import json
 import logging
 import os
 from base64 import urlsafe_b64decode
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 from agent_control_models import EvaluatorResult
 from pydantic import ValidationError
+
+
+@dataclass
+class RecordedSpan:
+    """Captures optional tracing span data for tests."""
+
+    op: str
+    name: str
+    data: dict[str, object] = field(default_factory=dict)
+
+    def set_data(self, key: str, value: object) -> None:
+        self.data[key] = value
+
+
+def trace_span_recorder(spans: list[RecordedSpan]):
+    """Return a trace_span replacement that records spans."""
+
+    @contextmanager
+    def _trace_span(
+        *,
+        op: str,
+        name: str,
+        data: dict[str, object] | None = None,
+    ) -> Iterator[RecordedSpan]:
+        span = RecordedSpan(op=op, name=name, data=dict(data or {}))
+        spans.append(span)
+        yield span
+
+    return _trace_span
 
 
 def _decode_jwt_payload(token: str) -> dict[str, object]:
@@ -473,6 +505,54 @@ class TestGalileoLunaClient:
         assert headers["galileo-api-key"] == "test-key"
 
     @pytest.mark.asyncio
+    async def test_client_emits_scorer_invoke_trace_spans(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import agent_control_evaluator_galileo.luna.client as luna_client_module
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        spans: list[RecordedSpan] = []
+        monkeypatch.setattr(luna_client_module, "trace_span", trace_span_recorder(spans))
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "scorer_label": "toxicity",
+                    "score": 0.82,
+                    "status": "success",
+                    "execution_time": 0.12,
+                },
+            )
+
+        with patch.dict(os.environ, {"GALILEO_API_SECRET_KEY": "test-secret"}, clear=True):
+            client = GalileoLunaClient(api_url="https://api.default.svc.cluster.local:8088")
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        try:
+            response = await client.invoke(scorer_label="toxicity", output="model answer")
+        finally:
+            await client.close()
+
+        assert response.status == "success"
+        assert {
+            span.op
+            for span in spans
+        } >= {
+            "agent_control.luna.request.build",
+            "agent_control.luna.request.endpoint",
+            "agent_control.luna.client.get",
+            "agent_control.luna.http.post",
+            "agent_control.luna.response.parse",
+            "agent_control.luna.response.model",
+        }
+        post_span = next(span for span in spans if span.op == "agent_control.luna.http.post")
+        assert post_span.data["auth.mode"] == "internal"
+        assert post_span.data["endpoint.path"] == "/internal/scorers/invoke"
+        assert post_span.data["http.status_code"] == 200
+
+    @pytest.mark.asyncio
     async def test_client_uses_internal_jwt_when_api_secret_is_set(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
@@ -686,6 +766,53 @@ class TestLunaEvaluator:
             config=None,
             timeout=10.0,
         )
+
+    @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
+    @pytest.mark.asyncio
+    async def test_evaluator_emits_phase_trace_spans(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import agent_control_evaluator_galileo.luna.evaluator as luna_evaluator_module
+        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
+        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+        spans: list[RecordedSpan] = []
+        monkeypatch.setattr(luna_evaluator_module, "trace_span", trace_span_recorder(spans))
+        evaluator = LunaEvaluator.from_dict(
+            {"scorer_label": "toxicity", "threshold": 0.7, "operator": "gte"}
+        )
+
+        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = ScorerInvokeResponse(
+                scorer_label="toxicity",
+                score=0.82,
+                status="success",
+            )
+
+            result = await evaluator.evaluate({"input": "user prompt", "output": "model answer"})
+
+        assert result.matched is True
+        assert {
+            span.op
+            for span in spans
+        } >= {
+            "agent_control.luna.evaluate.prepare_payload",
+            "agent_control.luna.evaluate.scorer_kwargs",
+            "agent_control.luna.evaluate.invoke",
+            "agent_control.luna.evaluate.score_match",
+            "agent_control.luna.evaluate.metadata",
+        }
+        invoke_span = next(
+            span for span in spans if span.op == "agent_control.luna.evaluate.invoke"
+        )
+        score_span = next(
+            span for span in spans if span.op == "agent_control.luna.evaluate.score_match"
+        )
+        assert invoke_span.data["payload.has_input"] is True
+        assert invoke_span.data["payload.has_output"] is True
+        assert invoke_span.data["scorer.status"] == "success"
+        assert score_span.data["matched"] is True
 
     @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
     @pytest.mark.asyncio

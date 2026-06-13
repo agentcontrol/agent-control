@@ -7,6 +7,8 @@ These tests verify:
 """
 
 import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -205,6 +207,35 @@ class RecordingObserver:
         duration_seconds: float,
     ) -> None:
         self.control_durations.append((action, outcome, duration_seconds))
+
+
+@dataclass
+class RecordedSpan:
+    """Captures optional tracing span data for tests."""
+
+    op: str
+    name: str
+    data: dict[str, object] = field(default_factory=dict)
+
+    def set_data(self, key: str, value: object) -> None:
+        self.data[key] = value
+
+
+def trace_span_recorder(spans: list[RecordedSpan]):
+    """Return a trace_span replacement that records spans."""
+
+    @contextmanager
+    def _trace_span(
+        *,
+        op: str,
+        name: str,
+        data: dict[str, object] | None = None,
+    ) -> Iterator[RecordedSpan]:
+        span = RecordedSpan(op=op, name=name, data=dict(data or {}))
+        spans.append(span)
+        yield span
+
+    return _trace_span
 
 
 @pytest.fixture(autouse=True)
@@ -1498,6 +1529,45 @@ class TestEvaluationObserver:
         result = await engine.process(request)
 
         assert result.is_safe is True
+
+    @pytest.mark.asyncio
+    async def test_engine_emits_fanout_trace_spans(self, monkeypatch: pytest.MonkeyPatch):
+        """Test that optional tracing spans capture control and evaluator phases."""
+        import agent_control_engine.core as core_module
+
+        spans: list[RecordedSpan] = []
+        monkeypatch.setattr(core_module, "trace_span", trace_span_recorder(spans))
+
+        controls = [make_control(1, "allow", "test-allow", action="observe")]
+        engine = ControlEngine(controls)
+
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        assert result.is_safe is True
+        assert {
+            span.op
+            for span in spans
+        } >= {
+            "agent_control.engine.control",
+            "agent_control.engine.evaluator.queue",
+            "agent_control.engine.evaluator.get_instance",
+            "agent_control.engine.evaluator.evaluate",
+        }
+        control_span = next(
+            span for span in spans if span.op == "agent_control.engine.control"
+        )
+        evaluator_span = next(
+            span for span in spans if span.op == "agent_control.engine.evaluator.evaluate"
+        )
+        assert control_span.data["control.action"] == "observe"
+        assert control_span.data["outcome"] == "not_matched"
+        assert evaluator_span.data["evaluator.name"] == "test-allow"
+        assert evaluator_span.data["outcome"] == "success"
 
 
 # =============================================================================
