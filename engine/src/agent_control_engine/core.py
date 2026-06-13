@@ -8,7 +8,8 @@ import functools
 import logging
 import os
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -191,6 +192,52 @@ class ControlWithIdentity(Protocol):
     @property
     def control(self) -> ControlDefinitionLike:
         """Runtime control payload used during evaluation."""
+
+
+class TraceSpan(Protocol):
+    """Subset of tracing span behavior used by the engine."""
+
+    def set_data(self, key: str, value: object) -> None:
+        """Attach diagnostic data to the active span."""
+
+
+@contextmanager
+def trace_span(
+    *,
+    op: str,
+    name: str,
+    data: dict[str, object] | None = None,
+) -> Iterator[TraceSpan | None]:
+    """Start an optional tracing span when a tracing SDK is installed."""
+    start_span = _load_start_span()
+    if start_span is None:
+        yield None
+        return
+
+    with start_span(op=op, name=name) as span:
+        for key, value in (data or {}).items():
+            span.set_data(key, value)
+        yield span
+
+
+@functools.lru_cache(maxsize=1)
+def _load_start_span() -> Any | None:
+    """Load the optional tracing span factory once per process."""
+    try:
+        from sentry_sdk import start_span  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    return start_span
+
+
+def set_span_data(span: TraceSpan | None, key: str, value: object) -> None:
+    """Attach span data without letting tracing failures affect evaluation."""
+    if span is None:
+        return
+    try:
+        span.set_data(key, value)
+    except Exception:
+        logger.debug("Tracing span failed while setting data", exc_info=True)
 
 
 EvaluatorObserverOutcome = Literal["success", "timeout", "error", "cancelled"]
@@ -404,55 +451,95 @@ class ControlEngine:
         data = select_data(request.step, selector_path)
 
         wait_started_at = time.perf_counter()
-        async with semaphore:
-            self._observe_evaluator_queue_duration(
-                evaluator_name=evaluator_spec.name,
-                duration_seconds=time.perf_counter() - wait_started_at,
-            )
-            evaluator_started_at = time.perf_counter()
-            outcome: EvaluatorObserverOutcome = "success"
-            timeout = DEFAULT_EVALUATOR_TIMEOUT
-            try:
+        with trace_span(
+            op="agent_control.engine.evaluator.queue",
+            name="wait_for_evaluator_slot",
+            data={
+                "evaluator.name": evaluator_spec.name,
+                "selector.path": selector_path,
+            },
+        ):
+            await semaphore.acquire()
+
+        self._observe_evaluator_queue_duration(
+            evaluator_name=evaluator_spec.name,
+            duration_seconds=time.perf_counter() - wait_started_at,
+        )
+        evaluator_started_at = time.perf_counter()
+        outcome: EvaluatorObserverOutcome = "success"
+        timeout = DEFAULT_EVALUATOR_TIMEOUT
+        try:
+            with trace_span(
+                op="agent_control.engine.evaluator.get_instance",
+                name="get_evaluator_instance",
+                data={"evaluator.name": evaluator_spec.name},
+            ):
                 evaluator = get_evaluator_instance(evaluator_spec)
                 timeout = evaluator.get_timeout_seconds()
                 if timeout <= 0:
                     timeout = DEFAULT_EVALUATOR_TIMEOUT
 
-                result = await asyncio.wait_for(
-                    evaluator.evaluate(data),
-                    timeout=timeout,
-                )
-            except asyncio.CancelledError:
-                outcome = "cancelled"
-                raise
-            except TimeoutError:
-                outcome = "timeout"
-                error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
-                logger.warning(
-                    "Evaluator timeout for control '%s' (evaluator: %s): %s",
-                    item.name,
-                    evaluator_spec.name,
-                    error_msg,
-                    exc_info=True,
-                )
-                result = self._build_error_result(error_msg)
-            except Exception as e:
-                outcome = "error"
-                error_msg = self._format_exception(e)
-                logger.error(
-                    "Evaluator error for control '%s' (evaluator: %s): %s",
-                    item.name,
-                    evaluator_spec.name,
-                    error_msg,
-                    exc_info=True,
-                )
-                result = self._build_error_result(error_msg)
-            finally:
-                self._observe_evaluator_duration(
-                    evaluator_name=evaluator_spec.name,
-                    outcome=outcome,
-                    duration_seconds=time.perf_counter() - evaluator_started_at,
-                )
+            with trace_span(
+                op="agent_control.engine.evaluator.evaluate",
+                name="evaluate_evaluator",
+                data={
+                    "evaluator.name": evaluator_spec.name,
+                    "timeout.seconds": timeout,
+                },
+            ) as span:
+                try:
+                    result = await asyncio.wait_for(
+                        evaluator.evaluate(data),
+                        timeout=timeout,
+                    )
+                except asyncio.CancelledError:
+                    outcome = "cancelled"
+                    raise
+                except TimeoutError:
+                    outcome = "timeout"
+                    error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
+                    logger.warning(
+                        "Evaluator timeout for control '%s' (evaluator: %s): %s",
+                        item.name,
+                        evaluator_spec.name,
+                        error_msg,
+                        exc_info=True,
+                    )
+                    result = self._build_error_result(error_msg)
+                except Exception as e:
+                    outcome = "error"
+                    error_msg = self._format_exception(e)
+                    logger.error(
+                        "Evaluator error for control '%s' (evaluator: %s): %s",
+                        item.name,
+                        evaluator_spec.name,
+                        error_msg,
+                        exc_info=True,
+                    )
+                    result = self._build_error_result(error_msg)
+                finally:
+                    set_span_data(span, "outcome", outcome)
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            raise
+        except Exception as e:
+            outcome = "error"
+            error_msg = self._format_exception(e)
+            logger.error(
+                "Evaluator error for control '%s' (evaluator: %s): %s",
+                item.name,
+                evaluator_spec.name,
+                error_msg,
+                exc_info=True,
+            )
+            result = self._build_error_result(error_msg)
+        finally:
+            self._observe_evaluator_duration(
+                evaluator_name=evaluator_spec.name,
+                outcome=outcome,
+                duration_seconds=time.perf_counter() - evaluator_started_at,
+            )
+            semaphore.release()
 
         trace = {
             "type": "leaf",
@@ -775,40 +862,54 @@ class ControlEngine:
             action = eval_task.item.control.action.decision
             outcome: ControlObserverOutcome = "cancelled"
             try:
-                evaluation = await self._evaluate_condition(
-                    eval_task.item,
-                    eval_task.item.control.condition,
-                    request,
-                    semaphore,
-                )
-                eval_task.result = evaluation.result
-                outcome = (
-                    "error"
-                    if eval_task.result.error
-                    else "matched"
-                    if eval_task.result.matched
-                    else "not_matched"
-                )
+                with trace_span(
+                    op="agent_control.engine.control",
+                    name="evaluate_control",
+                    data={
+                        "control.id": eval_task.item.id,
+                        "control.name": eval_task.item.name,
+                        "control.action": action,
+                    },
+                ) as span:
+                    try:
+                        evaluation = await self._evaluate_condition(
+                            eval_task.item,
+                            eval_task.item.control.condition,
+                            request,
+                            semaphore,
+                        )
+                    except asyncio.CancelledError:
+                        outcome = "cancelled"
+                        raise
+                    except Exception as error:
+                        error_msg = self._format_exception(error)
+                        logger.exception(
+                            "Unexpected condition evaluation error for control '%s': %s",
+                            eval_task.item.name,
+                            error_msg,
+                        )
+                        eval_task.result = self._build_error_result(
+                            error_msg,
+                            message_prefix="Condition evaluation failed",
+                        )
+                        outcome = "error"
+                    else:
+                        eval_task.result = evaluation.result
+                        outcome = (
+                            "error"
+                            if eval_task.result.error
+                            else "matched"
+                            if eval_task.result.matched
+                            else "not_matched"
+                        )
 
-                if (
-                    eval_task.result.matched
-                    and eval_task.item.control.action.decision == "deny"
-                ):
-                    deny_found.set()
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:
-                error_msg = self._format_exception(error)
-                logger.exception(
-                    "Unexpected condition evaluation error for control '%s': %s",
-                    eval_task.item.name,
-                    error_msg,
-                )
-                eval_task.result = self._build_error_result(
-                    error_msg,
-                    message_prefix="Condition evaluation failed",
-                )
-                outcome = "error"
+                        if (
+                            eval_task.result.matched
+                            and eval_task.item.control.action.decision == "deny"
+                        ):
+                            deny_found.set()
+                    finally:
+                        set_span_data(span, "outcome", outcome)
             finally:
                 self._observe_control_duration(
                     action=action,

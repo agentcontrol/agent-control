@@ -18,6 +18,8 @@ import httpx
 from agent_control_models import JSONObject, JSONValue
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
+from .tracing import set_span_data, trace_span
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECS = 10.0
@@ -33,6 +35,7 @@ LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS"
 PUBLIC_SCORER_INVOKE_PATH = "/scorers/invoke"
 INTERNAL_SCORER_INVOKE_PATH = "/internal/scorers/invoke"
 AuthMode = Literal["public", "internal"]
+ScorerIdentifierKind = Literal["label", "id", "version_id"]
 
 
 def _b64url(data: bytes) -> str:
@@ -147,6 +150,23 @@ def _has_value(value: JSONValue) -> bool:
     if isinstance(value, (list, dict)):
         return len(value) > 0
     return True
+
+
+def _scorer_identifier_kind(
+    *,
+    scorer_label: str | None,
+    scorer_id: str | None,
+    scorer_version_id: str | None,
+) -> ScorerIdentifierKind:
+    if scorer_label:
+        return "label"
+    if scorer_id:
+        return "id"
+    return "version_id"
+
+
+def _endpoint_path(endpoint: str) -> str:
+    return urlsplit(endpoint).path
 
 
 class ScorerInvokeInputs(BaseModel):
@@ -382,22 +402,33 @@ class GalileoLunaClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""
         if self._client is None or self._client.is_closed:
-            headers = {"Content-Type": "application/json"}
-            if self.auth_mode == "public" and self.api_key is not None:
-                headers["Galileo-API-Key"] = self.api_key
-            verify: ssl.SSLContext | bool = (
-                self._ssl_context if self._ssl_context is not None else True
-            )
-            self._client = httpx.AsyncClient(
-                headers=headers,
-                timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECS),
-                limits=httpx.Limits(
-                    max_connections=self.max_connections,
-                    max_keepalive_connections=self.max_keepalive_connections,
-                    keepalive_expiry=self.keepalive_expiry_seconds,
-                ),
-                verify=verify,
-            )
+            with trace_span(
+                op="agent_control.luna.client.create",
+                name="create_http_client",
+                data={
+                    "auth.mode": self.auth_mode,
+                    "limits.max_connections": self.max_connections,
+                    "limits.max_keepalive_connections": self.max_keepalive_connections,
+                    "limits.keepalive_expiry_seconds": self.keepalive_expiry_seconds,
+                    "tls.ca_file_configured": self.ca_file is not None,
+                },
+            ):
+                headers = {"Content-Type": "application/json"}
+                if self.auth_mode == "public" and self.api_key is not None:
+                    headers["Galileo-API-Key"] = self.api_key
+                verify: ssl.SSLContext | bool = (
+                    self._ssl_context if self._ssl_context is not None else True
+                )
+                self._client = httpx.AsyncClient(
+                    headers=headers,
+                    timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECS),
+                    limits=httpx.Limits(
+                        max_connections=self.max_connections,
+                        max_keepalive_connections=self.max_keepalive_connections,
+                        keepalive_expiry=self.keepalive_expiry_seconds,
+                    ),
+                    verify=verify,
+                )
         return self._client
 
     def _endpoint_and_headers(
@@ -451,34 +482,77 @@ class GalileoLunaClient:
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
-        request_body = ScorerInvokeRequest(
+        identifier_kind = _scorer_identifier_kind(
             scorer_label=scorer_label,
             scorer_id=scorer_id,
             scorer_version_id=scorer_version_id,
-            inputs=ScorerInvokeInputs(
-                query="" if input is None else input, response="" if output is None else output
-            ),
-            config=config,
-        ).to_dict()
-        endpoint, request_headers = self._endpoint_and_headers(headers)
+        )
+        with trace_span(
+            op="agent_control.luna.request.build",
+            name="build_scorer_request",
+            data={"scorer.identifier_kind": identifier_kind},
+        ):
+            request_body = ScorerInvokeRequest(
+                scorer_label=scorer_label,
+                scorer_id=scorer_id,
+                scorer_version_id=scorer_version_id,
+                inputs=ScorerInvokeInputs(
+                    query="" if input is None else input,
+                    response="" if output is None else output,
+                ),
+                config=config,
+            ).to_dict()
+        with trace_span(
+            op="agent_control.luna.request.endpoint",
+            name="resolve_scorer_endpoint",
+            data={"auth.mode": self.auth_mode},
+        ) as span:
+            endpoint, request_headers = self._endpoint_and_headers(headers)
+            set_span_data(span, "endpoint.path", _endpoint_path(endpoint))
 
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
         logger.debug("[GalileoLunaClient] Request body: %s", request_body)
 
         try:
-            client = await self._get_client()
-            response = await client.post(
-                endpoint,
-                json=request_body,
-                headers=request_headers,
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            response_data = response.json()
+            with trace_span(
+                op="agent_control.luna.client.get",
+                name="get_http_client",
+                data={"auth.mode": self.auth_mode},
+            ):
+                client = await self._get_client()
+            with trace_span(
+                op="agent_control.luna.http.post",
+                name="post_scorer_invoke",
+                data={
+                    "auth.mode": self.auth_mode,
+                    "endpoint.path": _endpoint_path(endpoint),
+                    "scorer.identifier_kind": identifier_kind,
+                    "timeout.seconds": timeout,
+                },
+            ) as span:
+                response = await client.post(
+                    endpoint,
+                    json=request_body,
+                    headers=request_headers,
+                    timeout=timeout,
+                )
+                set_span_data(span, "http.status_code", response.status_code)
+                response.raise_for_status()
+            with trace_span(
+                op="agent_control.luna.response.parse",
+                name="parse_scorer_response",
+                data={"http.status_code": response.status_code},
+            ):
+                response_data = response.json()
             if not isinstance(response_data, dict):
                 raise RuntimeError("Invalid response payload: not a JSON object")
 
-            parsed = ScorerInvokeResponse.from_dict(response_data)
+            with trace_span(
+                op="agent_control.luna.response.model",
+                name="model_scorer_response",
+                data={"http.status_code": response.status_code},
+            ):
+                parsed = ScorerInvokeResponse.from_dict(response_data)
             logger.debug("[GalileoLunaClient] Response: %s", parsed.raw_response)
             return parsed
         except httpx.HTTPStatusError as exc:
