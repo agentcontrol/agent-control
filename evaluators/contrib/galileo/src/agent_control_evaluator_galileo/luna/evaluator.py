@@ -8,6 +8,7 @@ import os
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
+import httpx
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult, JSONValue
 
@@ -27,6 +28,7 @@ def _resolve_package_version() -> str:
 
 _PACKAGE_VERSION = _resolve_package_version()
 LUNA_AVAILABLE = True
+_HTTP_ERROR_BODY_LIMIT = 500
 
 
 def _coerce_payload_text(value: Any) -> str | None:
@@ -72,6 +74,32 @@ def _confidence_from_score(score: JSONValue) -> float:
     if number is not None and 0.0 <= number <= 1.0:
         return number
     return 1.0
+
+
+def _truncated_http_response_body(body: str) -> tuple[str, bool]:
+    if len(body) <= _HTTP_ERROR_BODY_LIMIT:
+        return body, False
+    return body[:_HTTP_ERROR_BODY_LIMIT], True
+
+
+def _http_status_error_metadata(error: httpx.HTTPStatusError) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+
+    request = error.request
+    metadata["http_method"] = request.method
+    metadata["http_endpoint_path"] = request.url.path
+
+    response = error.response
+    metadata["http_status_code"] = response.status_code
+    metadata["http_response_content_type"] = response.headers.get("content-type")
+
+    body = response.text
+    if body:
+        metadata["http_response_body"], metadata["http_response_body_truncated"] = (
+            _truncated_http_response_body(body)
+        )
+
+    return {key: value for key, value in metadata.items() if value is not None}
 
 
 @register_evaluator
@@ -252,16 +280,20 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         error: Exception,
     ) -> EvaluatorResult:
         error_detail = str(error)
+        metadata: dict[str, Any] = {
+            "error_type": type(error).__name__,
+            "scorer_label": self.config.scorer_label,
+            "scorer_id": self.config.scorer_id,
+            "scorer_version_id": self.config.scorer_version_id,
+        }
+        if isinstance(error, httpx.HTTPStatusError):
+            metadata.update(_http_status_error_metadata(error))
+
         return EvaluatorResult(
             matched=False,
             confidence=0.0,
             message=f"Luna evaluation error: {error_detail}",
-            metadata={
-                "error_type": type(error).__name__,
-                "scorer_label": self.config.scorer_label,
-                "scorer_id": self.config.scorer_id,
-                "scorer_version_id": self.config.scorer_version_id,
-            },
+            metadata=metadata,
             error=error_detail,
         )
 
