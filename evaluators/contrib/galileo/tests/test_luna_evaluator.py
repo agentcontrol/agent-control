@@ -337,6 +337,47 @@ class TestGalileoLunaClient:
         assert limits.max_connections == 17
         assert limits.max_keepalive_connections == 4
 
+    @pytest.mark.asyncio
+    async def test_client_pool_size_rotates_across_http_clients(self) -> None:
+        import agent_control_evaluator_galileo.luna.client as luna_client_module
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        class FakeAsyncClient:
+            def __init__(self, **kwargs: object) -> None:
+                self.kwargs = kwargs
+                self.is_closed = False
+
+            async def aclose(self) -> None:
+                self.is_closed = True
+
+        created: list[FakeAsyncClient] = []
+
+        def recording_client(**kwargs: object) -> FakeAsyncClient:
+            client = FakeAsyncClient(**kwargs)
+            created.append(client)
+            return client
+
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_SECRET_KEY": "test-secret",
+                "GALILEO_LUNA_CLIENT_POOL_SIZE": "3",
+            },
+            clear=True,
+        ):
+            client = GalileoLunaClient(console_url="https://console.example.com")
+
+        with patch.object(luna_client_module.httpx, "AsyncClient", recording_client):
+            try:
+                selected = [await client._get_client() for _ in range(5)]
+            finally:
+                await client.close()
+
+        assert client.client_pool_size == 3
+        assert len(created) == 3
+        assert selected == [created[0], created[1], created[2], created[0], created[1]]
+        assert all(created_client.is_closed for created_client in created)
+
     @pytest.mark.parametrize(
         "env_values, expected",
         [
@@ -359,6 +400,8 @@ class TestGalileoLunaClient:
                 },
                 "less than or equal",
             ),
+            ({"GALILEO_LUNA_CLIENT_POOL_SIZE": "many"}, "not an integer"),
+            ({"GALILEO_LUNA_CLIENT_POOL_SIZE": "0"}, "greater than 0"),
         ],
     )
     def test_client_reports_invalid_connection_tuning_env(
