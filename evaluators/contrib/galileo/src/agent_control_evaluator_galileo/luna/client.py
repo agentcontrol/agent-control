@@ -6,6 +6,7 @@ import logging
 import os
 import ssl
 import warnings
+from asyncio import Lock
 from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
@@ -27,9 +28,11 @@ DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 DEFAULT_KEEPALIVE_EXPIRY_SECS = 1.0
 DEFAULT_MAX_CONNECTIONS = 100
 DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
+DEFAULT_CLIENT_POOL_SIZE = 1
 LUNA_KEEPALIVE_EXPIRY_ENV = "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS"
 LUNA_MAX_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_CONNECTIONS"
 LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS"
+LUNA_CLIENT_POOL_SIZE_ENV = "GALILEO_LUNA_CLIENT_POOL_SIZE"
 PUBLIC_SCORER_INVOKE_PATH = "/scorers/invoke"
 INTERNAL_SCORER_INVOKE_PATH = "/internal/scorers/invoke"
 AuthMode = Literal["public", "internal"]
@@ -106,6 +109,7 @@ def _validate_connection_config(
     keepalive_expiry_seconds: float,
     max_connections: int,
     max_keepalive_connections: int,
+    client_pool_size: int,
 ) -> None:
     if keepalive_expiry_seconds < 0:
         raise ValueError(
@@ -124,6 +128,8 @@ def _validate_connection_config(
             f"{LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
             f"must be less than or equal to {LUNA_MAX_CONNECTIONS_ENV}={max_connections}."
         )
+    if client_pool_size <= 0:
+        raise ValueError(f"{LUNA_CLIENT_POOL_SIZE_ENV}={client_pool_size} must be greater than 0.")
 
 
 def _as_float_or_none(value: JSONValue) -> float | None:
@@ -235,6 +241,7 @@ class GalileoLunaClient:
         GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS: HTTP pooled connection expiry.
         GALILEO_LUNA_MAX_CONNECTIONS: Maximum outbound HTTP connections.
         GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS: Maximum idle pooled HTTP connections.
+        GALILEO_LUNA_CLIENT_POOL_SIZE: Number of outbound HTTP clients to rotate across.
         GALILEO_CONSOLE_URL: Galileo Console URL (optional, defaults to production).
     """
 
@@ -293,12 +300,19 @@ class GalileoLunaClient:
         self.max_keepalive_connections = _load_int_env(
             LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV, DEFAULT_MAX_KEEPALIVE_CONNECTIONS
         )
+        self.client_pool_size = _load_int_env(
+            LUNA_CLIENT_POOL_SIZE_ENV, DEFAULT_CLIENT_POOL_SIZE
+        )
         _validate_connection_config(
             keepalive_expiry_seconds=self.keepalive_expiry_seconds,
             max_connections=self.max_connections,
             max_keepalive_connections=self.max_keepalive_connections,
+            client_pool_size=self.client_pool_size,
         )
         self._client: httpx.AsyncClient | None = None
+        self._clients: list[httpx.AsyncClient] = []
+        self._next_client_index = 0
+        self._client_lock = Lock()
         logger.info("[GalileoLunaClient] Auth mode selected: %s", self.auth_mode)
 
     def _resolve_api_base(self, api_url: str | None) -> str:
@@ -379,26 +393,58 @@ class GalileoLunaClient:
             parts._replace(netloc=parts.netloc.replace(host, new_host, 1))
         )
 
+    def _create_client(self) -> httpx.AsyncClient:
+        """Create an HTTP client with the configured auth, TLS, and connection limits."""
+        headers = {"Content-Type": "application/json"}
+        if self.auth_mode == "public" and self.api_key is not None:
+            headers["Galileo-API-Key"] = self.api_key
+        verify: ssl.SSLContext | bool = (
+            self._ssl_context if self._ssl_context is not None else True
+        )
+        return httpx.AsyncClient(
+            headers=headers,
+            timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECS),
+            limits=httpx.Limits(
+                max_connections=self.max_connections,
+                max_keepalive_connections=self.max_keepalive_connections,
+                keepalive_expiry=self.keepalive_expiry_seconds,
+            ),
+            verify=verify,
+        )
+
+    def _select_pooled_client(self) -> httpx.AsyncClient:
+        """Select the next pooled client without awaiting on the hot path."""
+        client = self._clients[self._next_client_index % len(self._clients)]
+        self._next_client_index = (self._next_client_index + 1) % len(self._clients)
+        return client
+
     async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create the HTTP client."""
-        if self._client is None or self._client.is_closed:
-            headers = {"Content-Type": "application/json"}
-            if self.auth_mode == "public" and self.api_key is not None:
-                headers["Galileo-API-Key"] = self.api_key
-            verify: ssl.SSLContext | bool = (
-                self._ssl_context if self._ssl_context is not None else True
-            )
-            self._client = httpx.AsyncClient(
-                headers=headers,
-                timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECS),
-                limits=httpx.Limits(
-                    max_connections=self.max_connections,
-                    max_keepalive_connections=self.max_keepalive_connections,
-                    keepalive_expiry=self.keepalive_expiry_seconds,
-                ),
-                verify=verify,
-            )
-        return self._client
+        """Get or create the next HTTP client."""
+        if self._client is not None and not self._client.is_closed:
+            return self._client
+        if self._client is not None and self._client.is_closed:
+            self._client = None
+
+        if (
+            self.client_pool_size > 1
+            and len(self._clients) == self.client_pool_size
+            and all(not client.is_closed for client in self._clients)
+        ):
+            return self._select_pooled_client()
+
+        async with self._client_lock:
+            if self._client is not None and not self._client.is_closed:
+                return self._client
+
+            self._clients = [client for client in self._clients if not client.is_closed]
+            while len(self._clients) < self.client_pool_size:
+                self._clients.append(self._create_client())
+
+            if self.client_pool_size == 1:
+                self._client = self._clients[0]
+                return self._client
+
+            return self._select_pooled_client()
 
     def _endpoint_and_headers(
         self,
@@ -497,6 +543,11 @@ class GalileoLunaClient:
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+        for client in self._clients:
+            if not client.is_closed:
+                await client.aclose()
+        self._clients = []
+        self._next_client_index = 0
 
     async def __aenter__(self) -> GalileoLunaClient:
         """Async context manager entry."""
