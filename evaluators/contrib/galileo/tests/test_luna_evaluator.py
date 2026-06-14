@@ -729,3 +729,41 @@ class TestLunaEvaluator:
         assert "error" not in result.metadata
         assert result.metadata["error_type"] == "RuntimeError"
         assert "fallback_action" not in result.metadata
+
+    @patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"})
+    @pytest.mark.asyncio
+    async def test_evaluator_error_metadata_includes_http_status_context(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+        evaluator = LunaEvaluator.from_dict({"scorer_label": "toxicity", "threshold": 0.5})
+        request = httpx.Request(
+            "POST",
+            "https://api.example.test/internal/scorers/invoke?token=secret",
+        )
+        response = httpx.Response(
+            503,
+            headers={"content-type": "application/json"},
+            text='{"detail":"busy"}',
+            request=request,
+        )
+
+        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.side_effect = httpx.HTTPStatusError(
+                "service unavailable",
+                request=request,
+                response=response,
+            )
+
+            result = await evaluator.evaluate("hello")
+
+        assert result.matched is False
+        assert result.metadata is not None
+        assert result.metadata["error_type"] == "HTTPStatusError"
+        assert result.metadata["http_status_code"] == 503
+        assert result.metadata["http_method"] == "POST"
+        assert result.metadata["http_endpoint_path"] == "/internal/scorers/invoke"
+        assert result.metadata["http_response_content_type"] == "application/json"
+        assert result.metadata["http_response_body"] == '{"detail":"busy"}'
+        assert result.metadata["http_response_body_truncated"] is False
+        assert "token=secret" not in str(result.metadata)
