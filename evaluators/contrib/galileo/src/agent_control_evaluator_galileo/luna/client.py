@@ -63,13 +63,13 @@ def _env_auth_mode() -> AuthMode | None:
     value = os.getenv("GALILEO_LUNA_AUTH_MODE")
     if value is None or value.strip() == "":
         return None
-    warnings.warn(
+    deprecation_message = (
         "GALILEO_LUNA_AUTH_MODE is deprecated. Configure exactly one credential "
         "(GALILEO_API_KEY for public auth, GALILEO_API_SECRET_KEY for internal "
-        "auth) or pass auth_mode to GalileoLunaClient.",
-        DeprecationWarning,
-        stacklevel=2,
+        "auth) or pass auth_mode to GalileoLunaClient."
     )
+    warnings.warn(deprecation_message, DeprecationWarning, stacklevel=2)
+    logger.warning(deprecation_message)
     normalized = value.strip().lower()
     if normalized == "public":
         return "public"
