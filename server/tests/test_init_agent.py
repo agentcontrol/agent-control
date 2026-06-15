@@ -4,7 +4,6 @@ import uuid
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
@@ -46,14 +45,17 @@ def make_agent_payload(
     }
 
 
-def test_init_agent_route_exists(app: FastAPI) -> None:
-    # Given: an application router
-    paths = {getattr(route, "path", None) for route in app.router.routes}
-    # When: inspecting registered paths
-    # (computation done above to gather all paths)
-    # Then: initAgent and agent retrieval endpoints are present
-    assert "/api/v1/agents/initAgent" in paths
-    assert "/api/v1/agents/{agent_name}" in paths
+def test_agent_routes_are_registered(client: TestClient) -> None:
+    # Given: malformed requests that should still match registered agent routes
+    # When: calling initAgent without the required body fields
+    init_resp = client.post("/api/v1/agents/initAgent", json={})
+
+    # And: using an unsupported method on the agent resource route
+    agent_resp = client.post("/api/v1/agents/some-agent")
+
+    # Then: routing reached the expected endpoints instead of falling through to 404
+    assert init_resp.status_code == 422
+    assert agent_resp.status_code == 405
 
 
 def test_init_agent_creates_and_gets_agent(client: TestClient) -> None:
