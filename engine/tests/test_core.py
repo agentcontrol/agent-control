@@ -7,7 +7,9 @@ These tests verify:
 """
 
 import asyncio
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
@@ -170,6 +172,70 @@ class MockControlWithIdentity:
     id: int
     name: str
     control: ControlDefinition
+
+
+@dataclass
+class RecordingObserver:
+    """Captures engine timing observations for assertions."""
+
+    evaluator_queue_durations: list[tuple[str, float]] = field(default_factory=list)
+    evaluator_durations: list[tuple[str, str, float]] = field(default_factory=list)
+    control_durations: list[tuple[str, str, float]] = field(default_factory=list)
+
+    def observe_evaluator_queue_duration(
+        self,
+        *,
+        evaluator_name: str,
+        duration_seconds: float,
+    ) -> None:
+        self.evaluator_queue_durations.append((evaluator_name, duration_seconds))
+
+    def observe_evaluator_duration(
+        self,
+        *,
+        evaluator_name: str,
+        outcome: str,
+        duration_seconds: float,
+    ) -> None:
+        self.evaluator_durations.append((evaluator_name, outcome, duration_seconds))
+
+    def observe_control_duration(
+        self,
+        *,
+        action: str,
+        outcome: str,
+        duration_seconds: float,
+    ) -> None:
+        self.control_durations.append((action, outcome, duration_seconds))
+
+
+@dataclass
+class RecordedSpan:
+    """Captures optional tracing span data for tests."""
+
+    op: str
+    name: str
+    data: dict[str, object] = field(default_factory=dict)
+
+    def set_data(self, key: str, value: object) -> None:
+        self.data[key] = value
+
+
+def trace_span_recorder(spans: list[RecordedSpan]):
+    """Return a trace_span replacement that records spans."""
+
+    @contextmanager
+    def _trace_span(
+        *,
+        op: str,
+        name: str,
+        data: dict[str, object] | None = None,
+    ) -> Iterator[RecordedSpan]:
+        span = RecordedSpan(op=op, name=name, data=dict(data or {}))
+        spans.append(span)
+        yield span
+
+    return _trace_span
 
 
 @pytest.fixture(autouse=True)
@@ -1391,6 +1457,117 @@ class TestConcurrencyLimit:
 
         # Then: Max concurrent should not exceed the limit
         assert _max_concurrent <= 2, f"Expected max 2 concurrent, got {_max_concurrent}"
+
+
+class TestEvaluationObserver:
+    """Tests for optional engine timing observations."""
+
+    @pytest.mark.asyncio
+    async def test_observer_records_evaluator_and_control_timings(self):
+        """Test that observer callbacks receive bounded timing labels."""
+        controls = [
+            make_control(1, "allow", "test-allow", action="observe", config_value="a"),
+            make_control(2, "deny", "test-deny", action="deny", config_value="d"),
+        ]
+        observer = RecordingObserver()
+        engine = ControlEngine(controls, observer=observer)
+
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        await engine.process(request)
+
+        assert {name for name, _ in observer.evaluator_queue_durations} == {
+            "test-allow",
+            "test-deny",
+        }
+        assert {
+            (name, outcome)
+            for name, outcome, _ in observer.evaluator_durations
+        } == {
+            ("test-allow", "success"),
+            ("test-deny", "success"),
+        }
+        assert {
+            (action, outcome)
+            for action, outcome, _ in observer.control_durations
+        } == {
+            ("observe", "not_matched"),
+            ("deny", "matched"),
+        }
+        assert all(
+            duration >= 0
+            for _, duration in observer.evaluator_queue_durations
+        )
+        assert all(duration >= 0 for _, _, duration in observer.evaluator_durations)
+        assert all(duration >= 0 for _, _, duration in observer.control_durations)
+
+    @pytest.mark.asyncio
+    async def test_observer_errors_do_not_fail_evaluation(self):
+        """Test that observability failures do not affect control decisions."""
+
+        class RaisingObserver(RecordingObserver):
+            def observe_evaluator_duration(
+                self,
+                *,
+                evaluator_name: str,
+                outcome: str,
+                duration_seconds: float,
+            ) -> None:
+                raise RuntimeError("metrics backend unavailable")
+
+        controls = [make_control(1, "allow", "test-allow", action="observe")]
+        engine = ControlEngine(controls, observer=RaisingObserver())
+
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        assert result.is_safe is True
+
+    @pytest.mark.asyncio
+    async def test_engine_emits_fanout_trace_spans(self, monkeypatch: pytest.MonkeyPatch):
+        """Test that optional tracing spans capture control and evaluator phases."""
+        import agent_control_engine.core as core_module
+
+        spans: list[RecordedSpan] = []
+        monkeypatch.setattr(core_module, "trace_span", trace_span_recorder(spans))
+
+        controls = [make_control(1, "allow", "test-allow", action="observe")]
+        engine = ControlEngine(controls)
+
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+        result = await engine.process(request)
+
+        assert result.is_safe is True
+        assert {
+            span.op
+            for span in spans
+        } >= {
+            "agent_control.engine.control",
+            "agent_control.engine.evaluator.queue",
+            "agent_control.engine.evaluator.get_instance",
+            "agent_control.engine.evaluator.evaluate",
+        }
+        control_span = next(
+            span for span in spans if span.op == "agent_control.engine.control"
+        )
+        evaluator_span = next(
+            span for span in spans if span.op == "agent_control.engine.evaluator.evaluate"
+        )
+        assert control_span.data["control.action"] == "observe"
+        assert control_span.data["outcome"] == "not_matched"
+        assert evaluator_span.data["evaluator.name"] == "test-allow"
+        assert evaluator_span.data["outcome"] == "success"
 
 
 # =============================================================================

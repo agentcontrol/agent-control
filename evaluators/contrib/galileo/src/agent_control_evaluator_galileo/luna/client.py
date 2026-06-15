@@ -11,13 +11,16 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import time
-from typing import Literal
+from time import perf_counter, time
+from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
+
+from .metrics import observe_luna_client_stage, observe_luna_httpcore_phase
+from .tracing import TraceSpan, set_span_data, trace_span
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,7 @@ DEFAULT_KEEPALIVE_EXPIRY_SECS = 1.0
 DEFAULT_MAX_CONNECTIONS = 100
 DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
 DEFAULT_CLIENT_POOL_SIZE = 1
+LUNA_HTTP_PHASE_TRACING_ENV = "GALILEO_LUNA_HTTP_PHASE_TRACING"
 LUNA_KEEPALIVE_EXPIRY_ENV = "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS"
 LUNA_MAX_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_CONNECTIONS"
 LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS"
@@ -36,6 +40,7 @@ LUNA_CLIENT_POOL_SIZE_ENV = "GALILEO_LUNA_CLIENT_POOL_SIZE"
 PUBLIC_SCORER_INVOKE_PATH = "/scorers/invoke"
 INTERNAL_SCORER_INVOKE_PATH = "/internal/scorers/invoke"
 AuthMode = Literal["public", "internal"]
+ScorerIdentifierKind = Literal["label", "id", "version_id"]
 
 
 def _b64url(data: bytes) -> str:
@@ -104,6 +109,13 @@ def _load_int_env(env_name: str, default: int) -> int:
         raise ValueError(f"{env_name}={raw!r} is not an integer.") from exc
 
 
+def _load_bool_env(env_name: str, default: bool = False) -> bool:
+    raw = os.getenv(env_name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _validate_connection_config(
     *,
     keepalive_expiry_seconds: float,
@@ -153,6 +165,85 @@ def _has_value(value: JSONValue) -> bool:
     if isinstance(value, (list, dict)):
         return len(value) > 0
     return True
+
+
+def _scorer_identifier_kind(
+    *,
+    scorer_label: str | None,
+    scorer_id: str | None,
+    scorer_version_id: str | None,
+) -> ScorerIdentifierKind:
+    if scorer_label:
+        return "label"
+    if scorer_id:
+        return "id"
+    return "version_id"
+
+
+def _endpoint_path(endpoint: str) -> str:
+    return urlsplit(endpoint).path
+
+
+def _split_httpcore_trace_event(event_name: str) -> tuple[str, str] | None:
+    if event_name.endswith(".started"):
+        return event_name.removesuffix(".started"), "started"
+    if event_name.endswith(".complete"):
+        return event_name.removesuffix(".complete"), "complete"
+    if event_name.endswith(".failed"):
+        return event_name.removesuffix(".failed"), "failed"
+    return None
+
+
+def _safe_trace_value(value: object) -> object:
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if isinstance(value, bytes):
+        return value.decode("ascii", errors="ignore")
+    return type(value).__name__
+
+
+class _HttpCorePhaseTrace:
+    """Convert httpcore phase trace events into optional tracing spans."""
+
+    def __init__(self) -> None:
+        self._active: dict[str, tuple[Any, TraceSpan | None, float]] = {}
+
+    async def __call__(self, event_name: str, info: dict[str, Any]) -> None:
+        parsed = _split_httpcore_trace_event(event_name)
+        if parsed is None:
+            return
+        phase, state = parsed
+
+        if state == "started":
+            manager = trace_span(
+                op=f"agent_control.luna.httpcore.{phase}",
+                name=phase,
+                data={"httpcore.phase": phase},
+            )
+            span = manager.__enter__()
+            self._active[phase] = (manager, span, perf_counter())
+            return
+
+        manager, span, started_at = self._active.pop(phase, (None, None, perf_counter()))
+        duration_seconds = perf_counter() - started_at
+        duration_ms = duration_seconds * 1000
+        set_span_data(span, "httpcore.phase", phase)
+        set_span_data(span, "httpcore.outcome", state)
+        set_span_data(span, "httpcore.duration_ms", duration_ms)
+        observe_luna_httpcore_phase(
+            phase=phase,
+            outcome=state,
+            duration_seconds=duration_seconds,
+        )
+
+        if "return_value" in info:
+            set_span_data(span, "httpcore.return_type", _safe_trace_value(info["return_value"]))
+        if "exception" in info:
+            exception = info["exception"]
+            set_span_data(span, "exception.type", type(exception).__name__)
+
+        if manager is not None:
+            manager.__exit__(None, None, None)
 
 
 class ScorerInvokeInputs(BaseModel):
@@ -238,6 +329,7 @@ class GalileoLunaClient:
         GALILEO_API_URL: Galileo API URL fallback.
         GALILEO_LUNA_CA_FILE: CA bundle used to verify the scorer API endpoint, for
             deployments whose API serves an internally-issued TLS certificate.
+        GALILEO_LUNA_HTTP_PHASE_TRACING: Enable per-request HTTP transport phase spans.
         GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS: HTTP pooled connection expiry.
         GALILEO_LUNA_MAX_CONNECTIONS: Maximum outbound HTTP connections.
         GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS: Maximum idle pooled HTTP connections.
@@ -293,6 +385,7 @@ class GalileoLunaClient:
         self.api_base = self._resolve_api_base(api_url)
         self.ca_file = (ca_file or os.getenv("GALILEO_LUNA_CA_FILE") or "").strip() or None
         self._ssl_context = self._load_ssl_context(self.ca_file)
+        self.http_phase_tracing_enabled = _load_bool_env(LUNA_HTTP_PHASE_TRACING_ENV)
         self.keepalive_expiry_seconds = _load_float_env(
             LUNA_KEEPALIVE_EXPIRY_ENV, DEFAULT_KEEPALIVE_EXPIRY_SECS
         )
@@ -437,8 +530,21 @@ class GalileoLunaClient:
                 return self._client
 
             self._clients = [client for client in self._clients if not client.is_closed]
-            while len(self._clients) < self.client_pool_size:
-                self._clients.append(self._create_client())
+            if len(self._clients) < self.client_pool_size:
+                with trace_span(
+                    op="agent_control.luna.client.create",
+                    name="create_http_client",
+                    data={
+                        "auth.mode": self.auth_mode,
+                        "limits.max_connections": self.max_connections,
+                        "limits.max_keepalive_connections": self.max_keepalive_connections,
+                        "limits.keepalive_expiry_seconds": self.keepalive_expiry_seconds,
+                        "client.pool_size": self.client_pool_size,
+                        "tls.ca_file_configured": self.ca_file is not None,
+                    },
+                ):
+                    while len(self._clients) < self.client_pool_size:
+                        self._clients.append(self._create_client())
 
             if self.client_pool_size == 1:
                 self._client = self._clients[0]
@@ -497,34 +603,122 @@ class GalileoLunaClient:
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
-        request_body = ScorerInvokeRequest(
+        identifier_kind = _scorer_identifier_kind(
             scorer_label=scorer_label,
             scorer_id=scorer_id,
             scorer_version_id=scorer_version_id,
-            inputs=ScorerInvokeInputs(
-                query="" if input is None else input, response="" if output is None else output
-            ),
-            config=config,
-        ).to_dict()
-        endpoint, request_headers = self._endpoint_and_headers(headers)
+        )
+        endpoint_path = "unknown"
+        with trace_span(
+            op="agent_control.luna.request.build",
+            name="build_scorer_request",
+            data={"scorer.identifier_kind": identifier_kind},
+        ):
+            with observe_luna_client_stage(
+                stage="build_request",
+                auth_mode=self.auth_mode,
+                endpoint_path=endpoint_path,
+                scorer_identifier_kind=identifier_kind,
+            ):
+                request_body = ScorerInvokeRequest(
+                    scorer_label=scorer_label,
+                    scorer_id=scorer_id,
+                    scorer_version_id=scorer_version_id,
+                    inputs=ScorerInvokeInputs(
+                        query="" if input is None else input,
+                        response="" if output is None else output,
+                    ),
+                    config=config,
+                ).to_dict()
+        with trace_span(
+            op="agent_control.luna.request.endpoint",
+            name="resolve_scorer_endpoint",
+            data={"auth.mode": self.auth_mode},
+        ) as span:
+            with observe_luna_client_stage(
+                stage="resolve_endpoint",
+                auth_mode=self.auth_mode,
+                endpoint_path=endpoint_path,
+                scorer_identifier_kind=identifier_kind,
+            ):
+                endpoint, request_headers = self._endpoint_and_headers(headers)
+                endpoint_path = _endpoint_path(endpoint)
+                set_span_data(span, "endpoint.path", endpoint_path)
 
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
         logger.debug("[GalileoLunaClient] Request body: %s", request_body)
 
         try:
-            client = await self._get_client()
-            response = await client.post(
-                endpoint,
-                json=request_body,
-                headers=request_headers,
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            response_data = response.json()
+            with trace_span(
+                op="agent_control.luna.client.get",
+                name="get_http_client",
+                data={"auth.mode": self.auth_mode},
+            ):
+                with observe_luna_client_stage(
+                    stage="get_http_client",
+                    auth_mode=self.auth_mode,
+                    endpoint_path=endpoint_path,
+                    scorer_identifier_kind=identifier_kind,
+                ):
+                    client = await self._get_client()
+            with trace_span(
+                op="agent_control.luna.http.post",
+                name="post_scorer_invoke",
+                data={
+                    "auth.mode": self.auth_mode,
+                    "endpoint.path": endpoint_path,
+                    "scorer.identifier_kind": identifier_kind,
+                    "http_phase_tracing.enabled": self.http_phase_tracing_enabled,
+                    "timeout.seconds": timeout,
+                },
+            ) as span:
+                extensions: dict[str, object] | None = (
+                    {"trace": _HttpCorePhaseTrace()}
+                    if self.http_phase_tracing_enabled
+                    else None
+                )
+                with observe_luna_client_stage(
+                    stage="http_post",
+                    auth_mode=self.auth_mode,
+                    endpoint_path=endpoint_path,
+                    scorer_identifier_kind=identifier_kind,
+                ):
+                    response = await client.post(
+                        endpoint,
+                        json=request_body,
+                        headers=request_headers,
+                        timeout=timeout,
+                        extensions=extensions,
+                    )
+                    set_span_data(span, "http.status_code", response.status_code)
+                    response.raise_for_status()
+            with trace_span(
+                op="agent_control.luna.response.parse",
+                name="parse_scorer_response",
+                data={"http.status_code": response.status_code},
+            ):
+                with observe_luna_client_stage(
+                    stage="parse_json",
+                    auth_mode=self.auth_mode,
+                    endpoint_path=endpoint_path,
+                    scorer_identifier_kind=identifier_kind,
+                ):
+                    response_data = response.json()
             if not isinstance(response_data, dict):
                 raise RuntimeError("Invalid response payload: not a JSON object")
 
-            parsed = ScorerInvokeResponse.from_dict(response_data)
+            with trace_span(
+                op="agent_control.luna.response.model",
+                name="model_scorer_response",
+                data={"http.status_code": response.status_code},
+            ):
+                with observe_luna_client_stage(
+                    stage="model_response",
+                    auth_mode=self.auth_mode,
+                    endpoint_path=endpoint_path,
+                    scorer_identifier_kind=identifier_kind,
+                ):
+                    parsed = ScorerInvokeResponse.from_dict(response_data)
             logger.debug("[GalileoLunaClient] Response: %s", parsed.raw_response)
             return parsed
         except httpx.HTTPStatusError as exc:

@@ -7,12 +7,12 @@ integration-style tests in ``test_luna_evaluator.py`` skip past.
 from __future__ import annotations
 
 import json
-import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-
 
 # =============================================================================
 # luna/evaluator.py: utility helpers
@@ -425,11 +425,12 @@ class TestScorerInvokeRequestValidation:
     """``ScorerInvokeRequest`` rejects malformed input combos."""
 
     def test_missing_all_identifiers_raises(self):
+        from pydantic import ValidationError
+
         from agent_control_evaluator_galileo.luna.client import (
             ScorerInvokeInputs,
             ScorerInvokeRequest,
         )
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="One of scorer_label"):
             ScorerInvokeRequest(inputs=ScorerInvokeInputs(query="hello"))
@@ -676,6 +677,81 @@ async def test_invoke_propagates_request_error(monkeypatch):
             await client.invoke(scorer_label="toxicity", input="hello")
     finally:
         await client.close()
+
+
+@pytest.mark.asyncio
+async def test_invoke_records_luna_client_stage_metrics(monkeypatch):
+    """Successful scorer invocation records stage metrics without changing behavior."""
+    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    import agent_control_evaluator_galileo.luna.client as luna_client_module
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    observed: list[dict[str, str]] = []
+
+    @contextmanager
+    def record_stage(**labels: str) -> Iterator[None]:
+        observed.append(labels)
+        yield
+
+    monkeypatch.setattr(luna_client_module, "observe_luna_client_stage", record_stage)
+
+    fake_response = MagicMock()
+    fake_response.status_code = 200
+    fake_response.raise_for_status = MagicMock()
+    fake_response.json = MagicMock(
+        return_value={"scorer_label": "toxicity", "score": 0.1, "status": "success"}
+    )
+
+    fake_http = AsyncMock()
+    fake_http.post = AsyncMock(return_value=fake_response)
+    fake_http.is_closed = False
+
+    client = GalileoLunaClient(api_url="https://api.example.test")
+    client._client = fake_http
+
+    try:
+        response = await client.invoke(scorer_label="toxicity", input="hello")
+    finally:
+        await client.close()
+
+    assert response.score == 0.1
+    assert [item["stage"] for item in observed] == [
+        "build_request",
+        "resolve_endpoint",
+        "get_http_client",
+        "http_post",
+        "parse_json",
+        "model_response",
+    ]
+    assert all(item["auth_mode"] == "public" for item in observed)
+    assert all(item["scorer_identifier_kind"] == "label" for item in observed)
+    assert next(item for item in observed if item["stage"] == "http_post")[
+        "endpoint_path"
+    ] == "/scorers/invoke"
+
+
+@pytest.mark.asyncio
+async def test_httpcore_phase_trace_records_metrics(monkeypatch):
+    """HTTP transport phase tracing records matching Prometheus metrics."""
+    import agent_control_evaluator_galileo.luna.client as luna_client_module
+
+    observed: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        luna_client_module,
+        "observe_luna_httpcore_phase",
+        lambda **labels: observed.append(labels),
+    )
+
+    trace = luna_client_module._HttpCorePhaseTrace()
+
+    await trace("connection.connect_tcp.started", {})
+    await trace("connection.connect_tcp.complete", {"return_value": "ok"})
+
+    assert len(observed) == 1
+    assert observed[0]["phase"] == "connection.connect_tcp"
+    assert observed[0]["outcome"] == "complete"
+    assert isinstance(observed[0]["duration_seconds"], float)
+    assert observed[0]["duration_seconds"] >= 0
 
 
 @pytest.mark.asyncio
