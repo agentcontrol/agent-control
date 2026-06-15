@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from base64 import urlsafe_b64decode
 from unittest.mock import AsyncMock, patch
@@ -221,10 +222,13 @@ class TestGalileoLunaClient:
         # Then: the resolved base URL is trimmed and slash-free
         assert client.api_base == "https://luna-api.example.com"
 
-    def test_client_warns_when_deprecated_auth_mode_env_is_set(self) -> None:
+    def test_client_warns_when_deprecated_auth_mode_env_is_set(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
         # Given: the deprecated auth-mode environment variable
+        caplog.set_level(logging.WARNING)
         with patch.dict(
             os.environ,
             {"GALILEO_API_KEY": "test-key", "GALILEO_LUNA_AUTH_MODE": "public"},
@@ -235,6 +239,7 @@ class TestGalileoLunaClient:
                 client = GalileoLunaClient(console_url="https://console.example.com")
 
         assert client.auth_mode == "public"
+        assert "GALILEO_LUNA_AUTH_MODE is deprecated" in caplog.text
 
     def test_client_rejects_unreadable_ca_bundle(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
@@ -255,7 +260,6 @@ class TestGalileoLunaClient:
     @pytest.mark.asyncio
     async def test_client_applies_ca_bundle_and_connection_limits(self) -> None:
         import certifi
-
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
         from agent_control_evaluator_galileo.luna.client import DEFAULT_KEEPALIVE_EXPIRY_SECS
 
