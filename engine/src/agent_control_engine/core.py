@@ -47,7 +47,8 @@ def _env_positive_int(*names: str, default: int) -> int:
 # Default timeout for evaluator execution (seconds)
 DEFAULT_EVALUATOR_TIMEOUT = float(os.environ.get("EVALUATOR_TIMEOUT_SECONDS", "30"))
 
-# Max concurrent evaluations (limits task spawning overhead for large policies)
+# Max concurrent evaluations (limits task spawning overhead for large policies).
+# Prefer the namespaced env var; MAX_CONCURRENT_EVALUATIONS is kept for compatibility.
 MAX_CONCURRENT_EVALUATIONS = _env_positive_int(
     "AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS",
     "MAX_CONCURRENT_EVALUATIONS",
