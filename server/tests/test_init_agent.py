@@ -1,16 +1,13 @@
-import json
 import logging
 import uuid
 from typing import Any
 
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.orm import Session
-
 from agent_control_server.config import db_config
 from agent_control_server.models import Agent
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
 # Create sync engine for raw database queries in tests
 engine = create_engine(db_config.get_url(), echo=False)
@@ -44,7 +41,9 @@ def make_agent_payload(
     name: str = "testagent0001",
     steps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    resolved_name = name if name != "testagent0001" else (agent_name or f"agent-{uuid.uuid4().hex[:12]}")
+    resolved_name = (
+        name if name != "testagent0001" else (agent_name or f"agent-{uuid.uuid4().hex[:12]}")
+    )
     canonical_name = resolved_name.lower().replace(" ", "-")
     if len(canonical_name) < 10:
         canonical_name = f"{canonical_name}-agent".replace("--", "-")
@@ -59,7 +58,6 @@ def make_agent_payload(
         ]
     return {
         "agent": {
-            "agent_name": canonical_name,
             "agent_name": canonical_name,
             "agent_description": "desc",
             "agent_version": "1.0",
@@ -77,6 +75,19 @@ def test_init_agent_route_exists(app: FastAPI) -> None:
     # Then: initAgent and agent retrieval endpoints are present
     assert "/api/v1/agents/initAgent" in paths
     assert "/api/v1/agents/{agent_name}" in paths
+
+
+def test_agent_routes_are_registered(client: TestClient) -> None:
+    # Given: malformed requests that should still match registered agent routes
+    # When: calling initAgent without the required body fields
+    init_resp = client.post("/api/v1/agents/initAgent", json={})
+
+    # And: using an unsupported method on the agent resource route
+    agent_resp = client.post("/api/v1/agents/some-agent")
+
+    # Then: routing reached the expected endpoints instead of falling through to 404
+    assert init_resp.status_code == 422
+    assert agent_resp.status_code == 405
 
 
 def test_init_agent_creates_and_gets_agent(client: TestClient) -> None:
@@ -329,9 +340,6 @@ def test_init_agent_logs_warning_on_bad_existing_data(client: TestClient, caplog
         messages = [rec.getMessage() for rec in caplog.records]
         assert any("Failed to parse existing agent data" in m for m in messages)
 
-
-import uuid
-
 def _create_policy(client: TestClient) -> int:
     # Helper: create a policy via API and return id
     name = f"pol-{uuid.uuid4()}"
@@ -477,7 +485,7 @@ def test_list_agent_controls_with_policy(client: TestClient) -> None:
     assert isinstance(body.get("controls"), list)
     # Verify control data is present and matches description
     assert any(
-        item.get("control", {}).get("description") == data_payload["description"] 
+        item.get("control", {}).get("description") == data_payload["description"]
         for item in body["controls"]
     )
 
