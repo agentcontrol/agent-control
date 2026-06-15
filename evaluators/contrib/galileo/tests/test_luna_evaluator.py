@@ -145,19 +145,19 @@ class TestGalileoLunaClient:
     def test_client_uses_galileo_api_url_when_set(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
-        # Given: an explicit devstack API URL
+        # Given: an explicit custom-environment API URL
         with patch.dict(
             os.environ,
             {
                 "GALILEO_API_KEY": "test-key",
-                "GALILEO_API_URL": "https://api-test-luna.gcp-dev.galileo.ai/",
+                "GALILEO_API_URL": "https://api-test-luna.example.com/",
             },
             clear=True,
         ):
-            client = GalileoLunaClient(console_url="https://console-test-luna.gcp-dev.galileo.ai")
+            client = GalileoLunaClient(console_url="https://console-test-luna.example.com")
 
         # Then: the explicit API URL wins over console URL derivation
-        assert client.api_base == "https://api-test-luna.gcp-dev.galileo.ai"
+        assert client.api_base == "https://api-test-luna.example.com"
 
     def test_client_uses_luna_api_url_when_set(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
@@ -198,12 +198,12 @@ class TestGalileoLunaClient:
     def test_client_derives_api_url_from_console_dash_hostname(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
-        # Given: a console-<stack> devstack hostname
+        # Given: a console-<environment> hostname
         with patch.dict(os.environ, {"GALILEO_API_KEY": "test-key"}, clear=True):
-            client = GalileoLunaClient(console_url="https://console-test-luna.gcp-dev.galileo.ai")
+            client = GalileoLunaClient(console_url="https://console-test-luna.example.com")
 
-        # Then: the matching api-<stack> hostname is used
-        assert client.api_base == "https://api-test-luna.gcp-dev.galileo.ai"
+        # Then: the matching api-<environment> hostname is used
+        assert client.api_base == "https://api-test-luna.example.com"
 
     def test_client_strips_whitespace_from_env_url(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
