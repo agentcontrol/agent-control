@@ -1,6 +1,11 @@
 """Tests for server database engine configuration."""
 
+import logging
 from typing import cast
+
+import pytest
+from prometheus_client import REGISTRY
+from sqlalchemy.ext.asyncio.engine import AsyncEngine
 
 from agent_control_server.config import AgentControlServerDatabaseConfig
 from agent_control_server.db import (
@@ -9,8 +14,6 @@ from agent_control_server.db import (
     _instrument_connection_pool,
     async_engine,
 )
-from prometheus_client import REGISTRY
-from sqlalchemy.ext.asyncio.engine import AsyncEngine
 
 
 class _PoolWithCheckedout:
@@ -127,6 +130,28 @@ def test_build_async_engine_kwargs_skips_pool_config_for_sqlite() -> None:
 
     # Then: SQLite keeps SQLAlchemy's default local-dev pool behavior
     assert kwargs == {"echo": False}
+
+
+def test_build_async_engine_kwargs_logs_when_driver_timeout_args_unknown(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Given: a non-sqlite backend whose driver has no known timeout connect args
+    config = AgentControlServerDatabaseConfig()
+
+    # When: building async engine kwargs
+    with caplog.at_level(logging.DEBUG, logger="agent_control_server.db"):
+        kwargs = _build_async_engine_kwargs(
+            "postgresql+someasync://user:password@localhost:5432/agent_control",
+            config,
+        )
+
+    # Then: pool bounds still apply, but the missing driver-level timeouts are visible
+    assert kwargs["pool_pre_ping"] is True
+    assert "connect_args" not in kwargs
+    assert (
+        "No driver-level database timeout connect args configured for "
+        "backend=postgresql driver=someasync"
+    ) in caplog.text
 
 
 def test_checked_out_connections_gauge_reports_zero_when_idle() -> None:

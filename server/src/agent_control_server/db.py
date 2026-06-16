@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio.engine import AsyncEngine
 from sqlalchemy.orm import DeclarativeBase
 
 from .config import AgentControlServerDatabaseConfig, db_config
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -74,6 +77,13 @@ def _build_async_engine_kwargs(
     connect_args = _build_connect_args(url, config)
     if connect_args:
         kwargs["connect_args"] = connect_args
+    else:
+        parsed_url = make_url(url)
+        logger.debug(
+            "No driver-level database timeout connect args configured for backend=%s driver=%s",
+            parsed_url.get_backend_name(),
+            parsed_url.get_driver_name(),
+        )
     return kwargs
 
 
