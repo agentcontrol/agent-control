@@ -1,8 +1,49 @@
 """Tests for server database engine configuration."""
 
+from typing import cast
+
 from agent_control_server.config import AgentControlServerDatabaseConfig
-from agent_control_server.db import _build_async_engine_kwargs
+from agent_control_server.db import (
+    _build_async_engine_kwargs,
+    _checked_out_connection_count,
+    _instrument_connection_pool,
+    async_engine,
+)
 from prometheus_client import REGISTRY
+from sqlalchemy.ext.asyncio.engine import AsyncEngine
+
+
+class _PoolWithCheckedout:
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def checkedout(self) -> int:
+        return self.value
+
+
+class _PoolWithoutCheckedout:
+    pass
+
+
+class _SyncEngine:
+    def __init__(self, pool: object) -> None:
+        self.pool = pool
+
+
+class _Engine:
+    def __init__(self, pool: object) -> None:
+        self.sync_engine = _SyncEngine(pool)
+
+
+def _engine_with_pool(pool: object) -> AsyncEngine:
+    return cast(AsyncEngine, _Engine(pool))
+
+
+def _checked_out_connections_sample() -> float | None:
+    return REGISTRY.get_sample_value(
+        "agent_control_server_sqlalchemy_checked_out_connections",
+        {"pool_name": "default"},
+    )
 
 
 def test_build_async_engine_kwargs_applies_postgres_pool_config() -> None:
@@ -92,10 +133,40 @@ def test_checked_out_connections_gauge_reports_zero_when_idle() -> None:
     # Given: the database module is imported and the pool is instrumented
 
     # When: reading the gauge while no connection is checked out
-    value = REGISTRY.get_sample_value(
-        "agent_control_server_sqlalchemy_checked_out_connections",
-        {"pool_name": "default"},
-    )
+    value = _checked_out_connections_sample()
 
     # Then: the series exists and reports zero instead of being absent
+    assert value == 0.0
+
+
+def test_checked_out_connections_gauge_reads_pool_state_at_collection() -> None:
+    # Given: a pool whose checked-out connection count changes over time
+    pool = _PoolWithCheckedout(3)
+
+    try:
+        _instrument_connection_pool(_engine_with_pool(pool))
+
+        # When: the Prometheus registry collects the gauge
+        value = _checked_out_connections_sample()
+
+        # Then: the gauge reports the pool's current checked-out count
+        assert value == 3.0
+
+        # When: the pool state changes without any metric event
+        pool.value = 1
+
+        # Then: the next collection reflects the new pool state directly
+        assert _checked_out_connections_sample() == 1.0
+    finally:
+        _instrument_connection_pool(async_engine)
+
+
+def test_checked_out_connection_count_defaults_to_zero_without_pool_support() -> None:
+    # Given: a pool implementation without SQLAlchemy QueuePool's checkedout method
+    engine = _engine_with_pool(_PoolWithoutCheckedout())
+
+    # When: reading the checked-out connection count
+    value = _checked_out_connection_count(engine)
+
+    # Then: unsupported pools report zero instead of failing metrics collection
     assert value == 0.0

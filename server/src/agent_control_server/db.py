@@ -2,7 +2,6 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from prometheus_client import Gauge
-from sqlalchemy import event
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
@@ -78,18 +77,19 @@ def _build_async_engine_kwargs(
     return kwargs
 
 
+def _checked_out_connection_count(engine: AsyncEngine) -> float:
+    """Return the current checked-out connection count when the pool exposes it."""
+    checkedout = getattr(engine.sync_engine.pool, "checkedout", None)
+    if not callable(checkedout):
+        return 0.0
+    return float(checkedout())
+
+
 def _instrument_connection_pool(engine: AsyncEngine) -> None:
-    """Track checked-out connections from the async engine's underlying pool."""
-    # Create the labeled series eagerly so idle processes scrape as 0, not absent.
-    SQLALCHEMY_CHECKED_OUT_CONNECTIONS.labels("default").set(0)
-
-    @event.listens_for(engine.sync_engine.pool, "checkin")
-    def receive_checkin(dbapi_conn: Any, connection_record: Any) -> None:
-        SQLALCHEMY_CHECKED_OUT_CONNECTIONS.labels("default").dec()
-
-    @event.listens_for(engine.sync_engine.pool, "checkout")
-    def receive_checkout(dbapi_conn: Any, connection_record: Any, connection_proxy: Any) -> None:
-        SQLALCHEMY_CHECKED_OUT_CONNECTIONS.labels("default").inc()
+    """Report checked-out connections from the async engine's underlying pool."""
+    SQLALCHEMY_CHECKED_OUT_CONNECTIONS.labels("default").set_function(
+        lambda: _checked_out_connection_count(engine)
+    )
 
 
 async_engine = create_async_engine(db_url, **_build_async_engine_kwargs(db_url, db_config))
