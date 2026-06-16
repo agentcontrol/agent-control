@@ -99,17 +99,13 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             config: Validated LunaEvaluatorConfig instance.
 
         Raises:
-            ValueError: If neither GALILEO_API_SECRET_KEY nor GALILEO_API_KEY is set.
+            ValueError: If neither GALILEO_API_SECRET_KEY nor GALILEO_API_SECRET is set.
         """
-        has_auth = (
-            os.getenv("GALILEO_API_SECRET_KEY")
-            or os.getenv("GALILEO_API_SECRET")
-            or os.getenv("GALILEO_API_KEY")
-        )
-        if not has_auth:
+        has_secret = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
+        if not has_secret:
             raise ValueError(
-                "GALILEO_API_SECRET_KEY or GALILEO_API_KEY environment variable must be set. "
-                "Set an API secret for internal auth or a Galileo API key before using "
+                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for Luna "
+                "runners-api invocation. Set one as an environment variable before using "
                 "galileo.luna."
             )
 
@@ -216,28 +212,30 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             return self._handle_error(exc)
 
     def _base_metadata(self) -> dict[str, Any]:
-        metadata = {
-            "scorer_label": self.config.scorer_label,
-            "scorer_id": self.config.scorer_id,
-            "scorer_version_id": self.config.scorer_version_id,
-        }
-        return {key: value for key, value in metadata.items() if value is not None}
+        metadata: dict[str, Any] = {"scorer_id": self.config.scorer_id}
+        if self.config.scorer_version_id is not None:
+            metadata["scorer_version_id"] = self.config.scorer_version_id
+        if self.config.scorer_label is not None:
+            metadata["scorer_label"] = self.config.scorer_label
+        return metadata
 
     def _scorer_kwargs(self) -> dict[str, Any]:
-        kwargs = {
-            "scorer_label": self.config.scorer_label,
-            "scorer_id": self.config.scorer_id,
-            "scorer_version_id": self.config.scorer_version_id,
-        }
-        return {key: value for key, value in kwargs.items() if value is not None}
+        kwargs: dict[str, Any] = {"scorer_id": self.config.scorer_id}
+        if self.config.scorer_version_id is not None:
+            kwargs["scorer_version_id"] = self.config.scorer_version_id
+        if self.config.scorer_label is not None:
+            kwargs["scorer_label"] = self.config.scorer_label
+        return kwargs
 
     def _metadata(
         self,
         response: ScorerInvokeResponse,
     ) -> dict[str, Any]:
         metadata: dict[str, Any] = self._base_metadata()
+        echoed_label = response.scorer_label or self.config.scorer_label
+        if echoed_label is not None:
+            metadata["scorer_label"] = echoed_label
         metadata.update({
-            "scorer_label": response.scorer_label or self.config.scorer_label,
             "score": response.score,
             "threshold": self.config.threshold,
             "operator": self.config.operator,
@@ -257,10 +255,8 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             confidence=0.0,
             message=f"Luna evaluation error: {error_detail}",
             metadata={
+                **self._base_metadata(),
                 "error_type": type(error).__name__,
-                "scorer_label": self.config.scorer_label,
-                "scorer_id": self.config.scorer_id,
-                "scorer_version_id": self.config.scorer_version_id,
             },
             error=error_detail,
         )

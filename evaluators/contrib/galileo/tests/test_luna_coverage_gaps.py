@@ -8,10 +8,22 @@ from __future__ import annotations
 
 import json
 import os
+from base64 import urlsafe_b64decode
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+
+RUNNERS_ENV = {
+    "GALILEO_API_SECRET_KEY": "test-secret",
+    "GALILEO_RUNNERS_API_URL": "http://runners-api:8090",
+}
+
+
+def _decode_jwt_payload(token: str) -> dict[str, object]:
+    payload_segment = token.split(".")[1]
+    padded = payload_segment + ("=" * (-len(payload_segment) % 4))
+    return json.loads(urlsafe_b64decode(padded.encode()).decode())
 
 
 # =============================================================================
@@ -52,8 +64,6 @@ class TestCoercePayloadText:
             def __repr__(self):
                 return "<CannotJson>"
 
-        # json.dumps with default=str would actually serialize this, so use
-        # something that breaks both the JSON pass AND triggers TypeError.
         cannot = CannotJson()
         result = _coerce_payload_text({"obj": cannot})
 
@@ -108,7 +118,6 @@ class TestContains:
     def test_other_types_return_false(self):
         from agent_control_evaluator_galileo.luna.evaluator import _contains
 
-        # Non-iterable score => no match.
         assert _contains(42, 42) is False
 
 
@@ -133,7 +142,6 @@ class TestConfidenceFromScore:
     def test_out_of_range_falls_back_to_one(self):
         from agent_control_evaluator_galileo.luna.evaluator import _confidence_from_score
 
-        # Above 1.0 → fall back to default confidence
         assert _confidence_from_score(7.2) == 1.0
 
     def test_non_numeric_falls_back_to_one(self):
@@ -150,11 +158,12 @@ class TestConfidenceFromScore:
 @pytest.fixture
 def luna_evaluator(monkeypatch):
     """A ready-to-use LunaEvaluator instance with auth env wired up."""
-    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna import LunaEvaluator
 
     return LunaEvaluator.from_dict(
-        {"scorer_label": "toxicity", "threshold": 0.5, "operator": "gte"}
+        {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
     )
 
 
@@ -162,15 +171,12 @@ class TestScoreMatchesOperators:
     """Every operator branch in ``_score_matches`` should evaluate."""
 
     def _make(self, operator, threshold, monkeypatch):
-        monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+        for key, value in RUNNERS_ENV.items():
+            monkeypatch.setenv(key, value)
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
-        if operator in {"eq", "ne", "contains"}:
-            threshold_value = threshold
-        else:
-            threshold_value = threshold
         return LunaEvaluator.from_dict(
-            {"scorer_label": "toxicity", "threshold": threshold_value, "operator": operator}
+            {"scorer_id": "scorer-123", "threshold": threshold, "operator": operator}
         )
 
     def test_any_truthy_score_matches(self, monkeypatch):
@@ -218,11 +224,12 @@ class TestScoreMatchesOperators:
 class TestPreparePayload:
     """``_prepare_payload`` routes scalar data using explicit config."""
 
-    def test_scalar_routed_to_input_when_label_lacks_output(self, monkeypatch):
-        monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    def test_scalar_routed_to_input_by_default(self, monkeypatch):
+        for key, value in RUNNERS_ENV.items():
+            monkeypatch.setenv(key, value)
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
-        evaluator = LunaEvaluator.from_dict({"scorer_label": "toxicity", "threshold": 0.5})
+        evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
 
         input_text, output_text = evaluator._prepare_payload("hello")
 
@@ -230,15 +237,12 @@ class TestPreparePayload:
         assert output_text is None
 
     def test_scalar_routed_to_output_when_payload_field_is_output(self, monkeypatch):
-        monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+        for key, value in RUNNERS_ENV.items():
+            monkeypatch.setenv(key, value)
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
         evaluator = LunaEvaluator.from_dict(
-            {
-                "scorer_label": "toxicity",
-                "threshold": 0.5,
-                "payload_field": "output",
-            }
+            {"scorer_id": "scorer-123", "threshold": 0.5, "payload_field": "output"}
         )
 
         input_text, output_text = evaluator._prepare_payload("hello")
@@ -246,32 +250,13 @@ class TestPreparePayload:
         assert input_text is None
         assert output_text == "hello"
 
-    def test_scalar_output_label_without_payload_field_still_defaults_to_input(
-        self,
-        monkeypatch,
-    ):
-        monkeypatch.setenv("GALILEO_API_KEY", "test-key")
-        from agent_control_evaluator_galileo.luna import LunaEvaluator
-
-        evaluator = LunaEvaluator.from_dict(
-            {"scorer_label": "output_correctness", "threshold": 0.5}
-        )
-
-        input_text, output_text = evaluator._prepare_payload("hello")
-
-        assert input_text == "hello"
-        assert output_text is None
-
     def test_structured_payload_uses_input_output_keys_over_payload_field(self, monkeypatch):
-        monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+        for key, value in RUNNERS_ENV.items():
+            monkeypatch.setenv(key, value)
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
         evaluator = LunaEvaluator.from_dict(
-            {
-                "scorer_label": "toxicity",
-                "threshold": 0.5,
-                "payload_field": "output",
-            }
+            {"scorer_id": "scorer-123", "threshold": 0.5, "payload_field": "output"}
         )
 
         input_text, output_text = evaluator._prepare_payload(
@@ -285,10 +270,11 @@ class TestPreparePayload:
 @pytest.mark.asyncio
 async def test_evaluator_aclose_closes_underlying_client(monkeypatch):
     """``aclose`` must release the eagerly-created client without clearing it."""
-    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna import LunaEvaluator
 
-    evaluator = LunaEvaluator.from_dict({"scorer_label": "toxicity", "threshold": 0.5})
+    evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
 
     fake = MagicMock()
     fake.close = AsyncMock()
@@ -303,12 +289,13 @@ async def test_evaluator_aclose_closes_underlying_client(monkeypatch):
 @pytest.mark.asyncio
 async def test_evaluator_handles_non_success_status(monkeypatch):
     """A non-success status from the scorer must surface as an error result."""
-    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     evaluator = LunaEvaluator.from_dict(
-        {"scorer_label": "toxicity", "threshold": 0.5, "operator": "gte"}
+        {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
     )
 
     with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
@@ -417,184 +404,98 @@ class TestHasValue:
         from agent_control_evaluator_galileo.luna.client import _has_value
 
         assert _has_value(42) is True
-        assert _has_value(0) is True  # 0 is a real value, not empty
+        assert _has_value(0) is True
         assert _has_value(True) is True
 
 
 class TestScorerInvokeRequestValidation:
     """``ScorerInvokeRequest`` rejects malformed input combos."""
 
-    def test_missing_all_identifiers_raises(self):
+    def test_missing_scorer_id_raises(self):
         from agent_control_evaluator_galileo.luna.client import (
             ScorerInvokeInputs,
             ScorerInvokeRequest,
         )
         from pydantic import ValidationError
 
-        with pytest.raises(ValidationError, match="One of scorer_label"):
+        with pytest.raises(ValidationError, match="scorer_id"):
             ScorerInvokeRequest(inputs=ScorerInvokeInputs(query="hello"))
 
 
-def test_client_raises_when_no_credentials(monkeypatch):
-    """The client requires at least an API secret or an API key."""
-    for name in (
-        "GALILEO_API_SECRET_KEY",
-        "GALILEO_API_SECRET",
-        "GALILEO_API_KEY",
-        "GALILEO_LUNA_AUTH_MODE",
-    ):
+def test_client_raises_when_no_api_secret(monkeypatch):
+    """The client requires GALILEO_API_SECRET_KEY or GALILEO_API_SECRET."""
+    for name in ("GALILEO_API_SECRET_KEY", "GALILEO_API_SECRET"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GALILEO_RUNNERS_API_URL", "http://runners-api:8090")
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY"):
+    with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_SECRET"):
         GalileoLunaClient()
 
 
-def test_client_requires_explicit_mode_when_both_credentials_are_present(monkeypatch):
-    """A mixed credential environment must not silently choose an auth route."""
-    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
-    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "internal-secret")
-    monkeypatch.delenv("GALILEO_LUNA_AUTH_MODE", raising=False)
+def test_client_raises_when_no_runners_api_url(monkeypatch):
+    """The client requires GALILEO_RUNNERS_API_URL."""
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.delenv("GALILEO_RUNNERS_API_URL", raising=False)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with pytest.raises(ValueError, match="Both Galileo API key and API secret"):
+    with pytest.raises(ValueError, match="GALILEO_RUNNERS_API_URL"):
         GalileoLunaClient()
 
 
-def test_client_uses_explicit_public_mode_when_both_credentials_are_present(monkeypatch):
-    """Explicit public mode should use the API-key route even if a secret is also set."""
-    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
-    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "internal-secret")
-    monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "public")
+def test_client_jwt_has_internal_scope(monkeypatch):
+    """JWT produced by the client must carry internal=True and scope=scorers.invoke."""
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
+    _, auth_header = client._endpoint_and_auth_header()
 
-    assert client.auth_mode == "public"
-    endpoint, request_headers = client._endpoint_and_headers(None)
-    assert endpoint.endswith("/scorers/invoke")
-    assert "Authorization" not in request_headers
+    assert auth_header.startswith("Bearer ")
+    payload = _decode_jwt_payload(auth_header.removeprefix("Bearer "))
+    assert payload["internal"] is True
+    assert payload["scope"] == "scorers.invoke"
 
 
-def test_client_uses_explicit_internal_mode_when_both_credentials_are_present(monkeypatch):
-    """Explicit internal mode should use the internal JWT route."""
-    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
-    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "internal-secret")
-    monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "internal")
+def test_client_posts_to_correct_runners_api_endpoint(monkeypatch):
+    """_endpoint_and_auth_header must return the runners-api /api/v1/scorers/invoke path."""
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
+    endpoint, _ = client._endpoint_and_auth_header()
 
-    assert client.auth_mode == "internal"
-    endpoint, request_headers = client._endpoint_and_headers(None)
-    assert endpoint.endswith("/internal/scorers/invoke")
-    assert request_headers["Authorization"].startswith("Bearer ")
+    assert endpoint == "http://runners-api:8090/api/v1/scorers/invoke"
 
 
-def test_client_rejects_mode_without_matching_credential(monkeypatch):
-    """The selected mode must have its matching credential configured."""
-    monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
-    monkeypatch.delenv("GALILEO_API_SECRET", raising=False)
-    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
-    monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "internal")
+def test_client_does_not_use_old_api_paths(monkeypatch):
+    """The client must not reference /scorers/invoke or /internal/scorers/invoke."""
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY"):
-        GalileoLunaClient()
+    client = GalileoLunaClient()
+    endpoint, _ = client._endpoint_and_auth_header()
 
-
-def test_client_rejects_invalid_auth_mode(monkeypatch):
-    """Invalid auth mode values should fail during client initialization."""
-    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
-    monkeypatch.setenv("GALILEO_LUNA_AUTH_MODE", "sideways")
-    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-    with pytest.raises(ValueError, match="GALILEO_LUNA_AUTH_MODE"):
-        GalileoLunaClient()
-
-
-class TestDeriveApiUrl:
-    """URL derivation covers every console.* → api.* substitution branch."""
-
-    def _client(self, monkeypatch):
-        monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
-        monkeypatch.delenv("GALILEO_API_SECRET", raising=False)
-        monkeypatch.delenv("GALILEO_LUNA_AUTH_MODE", raising=False)
-        monkeypatch.setenv("GALILEO_API_KEY", "test-key")
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        return GalileoLunaClient()
-
-    def test_console_dot_rewritten_to_api_dot(self, monkeypatch):
-        client = self._client(monkeypatch)
-        assert (
-            client._derive_api_url("https://console.galileo.ai")
-            == "https://api.galileo.ai"
-        )
-
-    def test_console_dash_rewritten_to_api_dash(self, monkeypatch):
-        client = self._client(monkeypatch)
-        assert (
-            client._derive_api_url("https://console-staging.galileo.ai")
-            == "https://api-staging.galileo.ai"
-        )
-
-    def test_plain_https_host_gets_api_prefix(self, monkeypatch):
-        client = self._client(monkeypatch)
-        assert (
-            client._derive_api_url("https://example.com")
-            == "https://api.example.com"
-        )
-
-    def test_non_prefix_console_substring_gets_api_prefix(self, monkeypatch):
-        client = self._client(monkeypatch)
-        assert (
-            client._derive_api_url("https://my-console.example.com")
-            == "https://api.my-console.example.com"
-        )
-
-    def test_console_substring_in_path_does_not_rewrite_path(self, monkeypatch):
-        client = self._client(monkeypatch)
-        assert (
-            client._derive_api_url("https://app.galileo.ai/console.html")
-            == "https://api.app.galileo.ai/console.html"
-        )
-
-    def test_plain_http_host_gets_api_prefix(self, monkeypatch):
-        client = self._client(monkeypatch)
-        assert client._derive_api_url("http://example.com") == "http://api.example.com"
-
-    def test_unknown_scheme_returned_as_is(self, monkeypatch):
-        client = self._client(monkeypatch)
-        # No console./console- prefix, no http(s) scheme → return unchanged.
-        assert client._derive_api_url("api.example.com") == "api.example.com"
+    assert "/scorers/invoke" in endpoint
+    assert endpoint.startswith("http://runners-api:8090/api/v1/")
+    assert "/internal/scorers/invoke" not in endpoint
 
 
 @pytest.mark.asyncio
-async def test_get_client_adds_api_key_header_when_no_secret(monkeypatch):
-    """When only an API key is configured, the public-API header is set."""
-    monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
-    monkeypatch.delenv("GALILEO_API_SECRET", raising=False)
-    monkeypatch.setenv("GALILEO_API_KEY", "public-key")
+async def test_get_client_does_not_set_galileo_api_key_header(monkeypatch):
+    """The HTTP client must never include a Galileo-API-Key header."""
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
     http_client = await client._get_client()
     try:
-        assert http_client.headers.get("Galileo-API-Key") == "public-key"
-    finally:
-        await client.close()
-
-
-@pytest.mark.asyncio
-async def test_invoke_rejects_missing_scorer_identifier(monkeypatch):
-    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
-    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-    client = GalileoLunaClient()
-    try:
-        with pytest.raises(ValueError, match="At least one scorer identifier"):
-            await client.invoke(input="hello")
+        assert "Galileo-API-Key" not in http_client.headers
+        assert "galileo-api-key" not in http_client.headers
     finally:
         await client.close()
 
@@ -602,7 +503,8 @@ async def test_invoke_rejects_missing_scorer_identifier(monkeypatch):
 @pytest.mark.asyncio
 async def test_invoke_raises_when_response_is_not_a_json_object(monkeypatch):
     """A non-object JSON body must surface as a clear RuntimeError."""
-    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
@@ -618,7 +520,7 @@ async def test_invoke_raises_when_response_is_not_a_json_object(monkeypatch):
 
     try:
         with pytest.raises(RuntimeError, match="not a JSON object"):
-            await client.invoke(scorer_label="toxicity", input="hello")
+            await client.invoke(scorer_id="scorer-123", input="hello")
     finally:
         await client.close()
 
@@ -626,7 +528,8 @@ async def test_invoke_raises_when_response_is_not_a_json_object(monkeypatch):
 @pytest.mark.asyncio
 async def test_invoke_propagates_http_status_error(monkeypatch):
     """The client logs and re-raises HTTP status errors."""
-    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
@@ -647,7 +550,7 @@ async def test_invoke_propagates_http_status_error(monkeypatch):
 
     try:
         with pytest.raises(httpx.HTTPStatusError):
-            await client.invoke(scorer_label="toxicity", input="hello")
+            await client.invoke(scorer_id="scorer-123", input="hello")
     finally:
         await client.close()
 
@@ -655,7 +558,8 @@ async def test_invoke_propagates_http_status_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_invoke_propagates_request_error(monkeypatch):
     """RequestError is logged and re-raised so callers can decide policy."""
-    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
@@ -667,7 +571,7 @@ async def test_invoke_propagates_request_error(monkeypatch):
 
     try:
         with pytest.raises(httpx.RequestError):
-            await client.invoke(scorer_label="toxicity", input="hello")
+            await client.invoke(scorer_id="scorer-123", input="hello")
     finally:
         await client.close()
 
@@ -675,13 +579,68 @@ async def test_invoke_propagates_request_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_client_async_context_manager_closes_on_exit(monkeypatch):
     """Entering/exiting the async context manager must close the client."""
-    monkeypatch.setenv("GALILEO_API_KEY", "test-key")
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     async with GalileoLunaClient() as client:
-        # Trigger lazy client creation so close() has work to do.
         await client._get_client()
         assert client._client is not None
 
-    # __aexit__ closes the underlying httpx client.
     assert client._client is None
+
+
+@pytest.mark.asyncio
+async def test_invoke_strips_caller_supplied_galileo_api_key_header(monkeypatch):
+    """Regression: a Galileo-API-Key passed via the headers kwarg must be stripped."""
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+    client = GalileoLunaClient()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    try:
+        await client.invoke(
+            scorer_id="scorer-123",
+            input="hello",
+            headers={"Galileo-API-Key": "should-be-stripped", "X-Custom": "keep-me"},
+        )
+    finally:
+        await client.close()
+
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert "galileo-api-key" not in headers
+    assert headers.get("x-custom") == "keep-me"
+
+
+@pytest.mark.asyncio
+async def test_invoke_always_emits_config_field(monkeypatch):
+    """Regression: config must always be present in the request body, defaulting to {}."""
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"score": 0.5, "status": "success"})
+
+    client = GalileoLunaClient()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    try:
+        await client.invoke(scorer_id="scorer-123", input="hello")
+    finally:
+        await client.close()
+
+    assert "config" in captured["body"]
+    assert captured["body"]["config"] == {}

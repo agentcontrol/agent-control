@@ -4,7 +4,9 @@
 Prerequisites:
     1. Start server: make server-run
     2. Create controls: uv run python setup_controls.py
-    3. Set Galileo credentials where this script runs
+    3. Set Galileo credentials where this script runs:
+       GALILEO_API_SECRET_KEY or GALILEO_API_SECRET
+       GALILEO_RUNNERS_API_URL
 
 Usage:
     uv run python demo_agent.py
@@ -21,7 +23,6 @@ from agent_control import ControlViolationError, control
 
 AGENT_NAME = "galileo-luna-agent"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
-LUNA_AUTH_MODE = os.getenv("GALILEO_LUNA_AUTH_MODE")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -91,37 +92,25 @@ def init_agent() -> None:
 
 async def run_demo() -> None:
     """Run scripted scenarios."""
-    api_key = os.getenv("GALILEO_API_KEY")
     api_secret = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
-    if not api_key and not api_secret:
+    runners_url = os.getenv("GALILEO_RUNNERS_API_URL")
+
+    if not api_secret:
         print(
-            "Galileo credentials are required for the galileo.luna evaluator. "
-            "Set GALILEO_API_KEY for public mode or GALILEO_API_SECRET_KEY for "
-            "internal mode."
+            "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for the "
+            "galileo.luna evaluator."
         )
         return
-    if api_key and api_secret and LUNA_AUTH_MODE not in {"public", "internal"}:
-        print(
-            "Both GALILEO_API_KEY and GALILEO_API_SECRET_KEY/GALILEO_API_SECRET are set. "
-            "Set GALILEO_LUNA_AUTH_MODE to 'public' or 'internal'."
-        )
-        return
-    if LUNA_AUTH_MODE == "public" and not api_key:
-        print("GALILEO_API_KEY is required when GALILEO_LUNA_AUTH_MODE=public.")
-        return
-    if LUNA_AUTH_MODE == "internal" and not api_secret:
-        print(
-            "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required when "
-            "GALILEO_LUNA_AUTH_MODE=internal."
-        )
+    if not runners_url:
+        print("GALILEO_RUNNERS_API_URL is required for the galileo.luna evaluator.")
         return
 
     print("=" * 72)
     print("Direct Galileo Luna Evaluator Demo")
     print("=" * 72)
-    print(f"Server: {SERVER_URL}")
-    print(f"Agent:  {AGENT_NAME}")
-    print(f"Auth:   GALILEO_LUNA_AUTH_MODE={LUNA_AUTH_MODE or '(auto if one credential)'}")
+    print(f"Server:      {SERVER_URL}")
+    print(f"Agent:       {AGENT_NAME}")
+    print(f"Runners API: {runners_url}")
     print()
 
     init_agent()

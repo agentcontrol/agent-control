@@ -41,7 +41,7 @@ Enforce runtime guardrails through a centralized control layer—configure once 
 
 ## Quick Start
 
-Prerequisites: Docker and Python 3.12+.
+Prerequisites: Docker (or Podman, see [Podman setup](#podman-setup)) and Python 3.12+.
 
 Quick start flow:
 
@@ -291,6 +291,51 @@ Explore working examples for popular frameworks.
 - [CrewAI](examples/crewai/) - combine Agent Control with CrewAI guardrails
 - [AWS Strands](examples/strands_agents/) - protect Strands workflows and tool calls
 - [Google ADK Decorator](examples/google_adk_decorator/) - add controls with `@control()`
+
+## Podman Setup
+
+If Docker Desktop is not available, you can use [Podman](https://podman-desktop.io) as a drop-in replacement. No changes to repo files are needed — the setup below makes `docker` and `docker compose` transparently resolve to Podman.
+
+**One-time setup:**
+
+1. Install [Podman Desktop](https://podman-desktop.io) and create a machine from its UI (start it before continuing).
+
+2. Install `podman-compose`:
+
+```bash
+brew install podman-compose
+```
+
+3. Create a `docker` shim that routes `docker compose` to `podman-compose` and everything else to `podman`:
+
+```bash
+mkdir -p ~/.local/bin
+cat > ~/.local/bin/docker << 'EOF'
+#!/bin/zsh
+if [[ "$1" == "compose" ]]; then
+  shift
+  exec podman-compose "$@"
+fi
+exec podman "$@"
+EOF
+chmod +x ~/.local/bin/docker
+```
+
+4. Add `~/.local/bin` early in your PATH (if not already):
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Verify:**
+
+```bash
+docker ps
+docker compose version
+```
+
+After this, all existing `docker`/`docker compose` commands and `make` targets work as-is.
 
 ## How It Works
 
