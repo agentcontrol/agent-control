@@ -16,7 +16,7 @@ dependencies = [
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "SQLAlchemy>=2.0.0",
-    "psycopg[binary]>=3.1",
+    "psycopg>=3.1",
     "asyncpg>=0.29.0",
     "greenlet>=3.0",
     "alembic>=1.13.0",
@@ -34,6 +34,8 @@ license = {text = "Apache-2.0"}
 
 [project.optional-dependencies]
 galileo = ["agent-control-evaluator-galileo>=7.5.0"]
+binary = ["psycopg[binary]>=3.1"]
+c = ["psycopg[c]>=3.1"]
 
 [dependency-groups]
 dev = [

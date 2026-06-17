@@ -16,6 +16,29 @@ from agent_control_server.models import Agent
 engine = create_engine(db_config.get_url(), echo=False)
 
 
+def _collect_route_paths(routes: list[Any], prefix: str = "") -> set[str]:
+    paths: set[str] = set()
+    for route in routes:
+        path = getattr(route, "path", None)
+        if isinstance(path, str):
+            paths.add(f"{prefix}{path}")
+            continue
+
+        include_context = getattr(route, "include_context", None)
+        included_router = getattr(include_context, "included_router", None)
+        if included_router is None:
+            continue
+
+        include_prefix = getattr(include_context, "prefix", "")
+        paths.update(
+            _collect_route_paths(
+                list(getattr(included_router, "routes", [])),
+                f"{prefix}{include_prefix}",
+            )
+        )
+    return paths
+
+
 def make_agent_payload(
     agent_name: str | None = None,
     name: str = "testagent0001",
@@ -46,24 +69,11 @@ def make_agent_payload(
     }
 
 
-def _collect_paths(routes: list, prefix: str = "") -> set[str]:
-    """Recursively collect route paths, handling FastAPI's _IncludedRouter wrapper."""
-    paths: set[str] = set()
-    for route in routes:
-        path = getattr(route, "path", None)
-        if path:
-            paths.add(prefix + path)
-        nested = getattr(route, "original_router", None)
-        if nested:
-            ctx = getattr(route, "include_context", None)
-            pfx = getattr(ctx, "prefix", "") if ctx else ""
-            paths |= _collect_paths(nested.routes, prefix + pfx)
-    return paths
-
-
 def test_init_agent_route_exists(app: FastAPI) -> None:
-    # Given: an application router (FastAPI 0.130+ uses _IncludedRouter wrappers)
-    paths = _collect_paths(app.routes)
+    # Given: an application router
+    paths = _collect_route_paths(list(app.router.routes))
+    # When: inspecting registered paths
+    # (computation done above to gather all paths)
     # Then: initAgent and agent retrieval endpoints are present
     assert "/api/v1/agents/initAgent" in paths
     assert "/api/v1/agents/{agent_name}" in paths
