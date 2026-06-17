@@ -501,6 +501,37 @@ async def test_get_client_does_not_set_galileo_api_key_header(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_client_uses_configured_runners_api_ca_file(monkeypatch):
+    """The HTTP client should verify internal runners-api TLS with the configured CA."""
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("GALILEO_RUNNERS_API_CA_FILE", "/etc/galileo/runners-api-ca.crt")
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    with patch("httpx.AsyncClient") as async_client:
+        client = GalileoLunaClient()
+        await client._get_client()
+
+    assert async_client.call_args.kwargs["verify"] == "/etc/galileo/runners-api-ca.crt"
+
+
+@pytest.mark.asyncio
+async def test_get_client_falls_back_to_agent_control_auth_upstream_ca_file(monkeypatch):
+    """Galileo in-cluster Agent Control pods already mount the internal CA for auth upstream."""
+    for key, value in RUNNERS_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("GALILEO_RUNNERS_API_CA_FILE", raising=False)
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE", "/etc/agent-control/auth-upstream-ca/ca.crt")
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    with patch("httpx.AsyncClient") as async_client:
+        client = GalileoLunaClient()
+        await client._get_client()
+
+    assert async_client.call_args.kwargs["verify"] == "/etc/agent-control/auth-upstream-ca/ca.crt"
+
+
+@pytest.mark.asyncio
 async def test_invoke_raises_when_response_is_not_a_json_object(monkeypatch):
     """A non-object JSON body must surface as a clear RuntimeError."""
     for key, value in RUNNERS_ENV.items():

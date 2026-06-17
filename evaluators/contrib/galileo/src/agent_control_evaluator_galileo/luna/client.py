@@ -20,6 +20,8 @@ DEFAULT_TIMEOUT_SECS = 10.0
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 RUNNERS_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
 RUNNERS_API_URL_ENV = "GALILEO_RUNNERS_API_URL"
+RUNNERS_API_CA_FILE_ENV = "GALILEO_RUNNERS_API_CA_FILE"
+AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
 # Headers that must never be forwarded to runners-api (checked case-insensitively).
 _BLOCKED_REQUEST_HEADERS = frozenset({"galileo-api-key"})
@@ -156,6 +158,7 @@ class GalileoLunaClient:
         self,
         api_secret: str | None = None,
         runners_api_url: str | None = None,
+        runners_api_ca_file: str | None = None,
     ) -> None:
         """Initialize the Galileo Luna client.
 
@@ -164,6 +167,10 @@ class GalileoLunaClient:
                 GALILEO_API_SECRET_KEY or GALILEO_API_SECRET.
             runners_api_url: runners-api base URL. If not provided, reads from
                 GALILEO_RUNNERS_API_URL.
+            runners_api_ca_file: Optional CA bundle used to verify runners-api
+                TLS. If not provided, reads from GALILEO_RUNNERS_API_CA_FILE,
+                then AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE for Galileo in-cluster
+                deployments that already mount the internal CA.
 
         Raises:
             ValueError: If the API secret or runners-api URL is not configured.
@@ -187,14 +194,22 @@ class GalileoLunaClient:
 
         self.api_secret = resolved_api_secret
         self.runners_api_base = resolved_runners_url.rstrip("/")
+        self.runners_api_ca_file = (
+            runners_api_ca_file
+            or os.getenv(RUNNERS_API_CA_FILE_ENV)
+            or os.getenv(AUTH_UPSTREAM_CA_FILE_ENV)
+            or None
+        )
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""
         if self._client is None or self._client.is_closed:
+            verify: str | bool = self.runners_api_ca_file or True
             self._client = httpx.AsyncClient(
                 headers={"Content-Type": "application/json"},
                 timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECS),
+                verify=verify,
             )
         return self._client
 

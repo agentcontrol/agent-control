@@ -360,6 +360,39 @@ class TestLunaEvaluator:
 
     @patch.dict(os.environ, RUNNERS_ENV)
     @pytest.mark.asyncio
+    async def test_evaluator_does_not_forward_configured_scorer_version_id(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
+        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+        evaluator = LunaEvaluator.from_dict(
+            {
+                "scorer_id": "scorer-123",
+                "scorer_version_id": "version-456",
+                "threshold": 0.5,
+                "operator": "gte",
+            }
+        )
+
+        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = ScorerInvokeResponse(
+                score=0.82,
+                status="success",
+            )
+
+            result = await evaluator.evaluate("hello")
+
+        assert result.matched is True
+        assert result.metadata["scorer_version_id"] == "version-456"
+        mock_invoke.assert_awaited_once_with(
+            scorer_id="scorer-123",
+            input="hello",
+            output=None,
+            config=None,
+            timeout=10.0,
+        )
+
+    @patch.dict(os.environ, RUNNERS_ENV)
+    @pytest.mark.asyncio
     async def test_evaluator_returns_non_match_below_threshold(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
