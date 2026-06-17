@@ -28,6 +28,10 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Configure uv environment variables
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
@@ -75,6 +79,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Set default environment variables
 ENV AGENT_CONTROL_HOST=0.0.0.0
 ENV AGENT_CONTROL_PORT=8000
+ENV PSYCOPG_IMPL=python
 
 # Expose the port
 EXPOSE 8000
