@@ -86,7 +86,7 @@ def _env_auth_mode() -> AuthMode | None:
 
 def _load_float_env(env_name: str, default: float) -> float:
     raw = os.getenv(env_name)
-    if raw is None:
+    if raw is None or raw.strip() == "":
         return default
     try:
         return float(raw)
@@ -96,7 +96,7 @@ def _load_float_env(env_name: str, default: float) -> float:
 
 def _load_int_env(env_name: str, default: int) -> int:
     raw = os.getenv(env_name)
-    if raw is None:
+    if raw is None or raw.strip() == "":
         return default
     try:
         return int(raw)
@@ -413,36 +413,26 @@ class GalileoLunaClient:
         )
 
     def _select_pooled_client(self) -> httpx.AsyncClient:
-        """Select the next pooled client without awaiting on the hot path."""
+        """Select the next pooled client while holding the client state lock."""
         client = self._clients[self._next_client_index % len(self._clients)]
         self._next_client_index = (self._next_client_index + 1) % len(self._clients)
         return client
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the next HTTP client."""
-        if self._client is not None and not self._client.is_closed:
-            return self._client
-        if self._client is not None and self._client.is_closed:
-            self._client = None
-
-        if (
-            self.client_pool_size > 1
-            and len(self._clients) == self.client_pool_size
-            and all(not client.is_closed for client in self._clients)
-        ):
-            return self._select_pooled_client()
-
         async with self._client_lock:
-            if self._client is not None and not self._client.is_closed:
-                return self._client
-
             self._clients = [client for client in self._clients if not client.is_closed]
-            while len(self._clients) < self.client_pool_size:
-                self._clients.append(self._create_client())
 
             if self.client_pool_size == 1:
-                self._client = self._clients[0]
+                if self._client is not None and not self._client.is_closed:
+                    return self._client
+                self._client = self._clients[0] if self._clients else self._create_client()
+                self._clients = [self._client]
                 return self._client
+
+            self._client = None
+            while len(self._clients) < self.client_pool_size:
+                self._clients.append(self._create_client())
 
             return self._select_pooled_client()
 
@@ -540,14 +530,23 @@ class GalileoLunaClient:
 
     async def close(self) -> None:
         """Close the HTTP client and release resources."""
-        if self._client is not None:
-            await self._client.aclose()
+        async with self._client_lock:
+            clients: list[httpx.AsyncClient] = []
+            seen_client_ids: set[int] = set()
+            if self._client is not None:
+                clients.append(self._client)
+                seen_client_ids.add(id(self._client))
             self._client = None
-        for client in self._clients:
-            if not client.is_closed:
-                await client.aclose()
-        self._clients = []
-        self._next_client_index = 0
+            for client in self._clients:
+                if id(client) not in seen_client_ids:
+                    clients.append(client)
+                    seen_client_ids.add(id(client))
+            self._clients = []
+            self._next_client_index = 0
+
+            for client in clients:
+                if not client.is_closed:
+                    await client.aclose()
 
     async def __aenter__(self) -> GalileoLunaClient:
         """Async context manager entry."""
