@@ -5,16 +5,17 @@ from unittest.mock import AsyncMock, MagicMock
 from agent_control_models import (
     ControlMatch,
     EvaluationRequest,
+    EvaluationResponse,
     EvaluatorResult,
     Step,
 )
-from fastapi.testclient import TestClient
-
+from agent_control_server.db import async_engine
 from agent_control_server.endpoints.evaluation import (
     SAFE_EVALUATOR_ERROR,
     SAFE_EVALUATOR_TIMEOUT_ERROR,
     _sanitize_control_match,
 )
+from fastapi.testclient import TestClient
 
 from .utils import create_and_assign_policy
 
@@ -326,6 +327,31 @@ def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypat
     assert "bad config" not in body["detail"]
     assert body["errors"][0]["message"] == "Invalid evaluation request or control configuration."
 
+
+def test_evaluation_releases_db_connection_before_engine_processing(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    """Evaluation should not hold a DB connection while evaluator work runs."""
+    agent_name, _ = create_and_assign_policy(client)
+    checked_out_counts: list[int] = []
+
+    import agent_control_engine.core as core_module
+
+    async def process_with_pool_assertion(*_args, **_kwargs):
+        pool = async_engine.sync_engine.pool
+        checked_out = pool.checkedout() if hasattr(pool, "checkedout") else 0
+        checked_out_counts.append(checked_out)
+        return EvaluationResponse(is_safe=True, confidence=1.0)
+
+    monkeypatch.setattr(core_module.ControlEngine, "process", process_with_pool_assertion)
+
+    payload = Step(type="llm", name="test-step", input="test content", output=None)
+    req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
+    resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
+
+    assert resp.status_code == 200
+    assert checked_out_counts == [0]
 
 
 def test_evaluation_ignores_merge_headers_and_remains_pure(client: TestClient) -> None:

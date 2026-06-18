@@ -42,6 +42,16 @@ agent-control-migrate current
 agent-control-migrate upgrade head
 ```
 
+## PostgreSQL driver runtime
+
+`agent-control-server` depends on plain `psycopg`. The published Docker image
+installs Debian `libpq5` and sets `PSYCOPG_IMPL=python` so the server uses
+psycopg's Python implementation with the OS libpq library.
+
+For wheel-based deployments outside Docker, either install the OS libpq runtime
+package for your platform, or install `agent-control-server[binary]` if you want
+psycopg's bundled binary package.
+
 ## Configuration
 
 Server configuration is driven by environment variables (database, auth, observability, evaluators). For the full list and examples, see the docs.

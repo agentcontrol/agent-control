@@ -42,6 +42,11 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
 
+      - name: Install libpq runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpq5
+
       - name: Show versions
         run: |
           uv --version

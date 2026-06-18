@@ -54,8 +54,17 @@ jobs:
           context: .
           file: server/Dockerfile
           platforms: linux/amd64
+          load: ${{ github.event_name == 'pull_request' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke test psycopg runtime
+        if: github.event_name == 'pull_request'
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          image="$(printf '%s\n' "$IMAGE_TAGS" | head -n 1)"
+          docker run --rm --entrypoint python "$image" -c 'import os; import psycopg; from psycopg import pq; assert os.environ["PSYCOPG_IMPL"] == "python"; assert pq.version() > 0; print(f"psycopg {psycopg.__version__}, libpq {pq.version()}")'

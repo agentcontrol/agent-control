@@ -508,11 +508,16 @@ async def test_get_client_uses_configured_runners_api_ca_file(monkeypatch):
     monkeypatch.setenv("GALILEO_RUNNERS_API_CA_FILE", "/etc/galileo/runners-api-ca.crt")
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with patch("httpx.AsyncClient") as async_client:
+    ssl_context = object()
+    with (
+        patch.object(GalileoLunaClient, "_load_ssl_context", return_value=ssl_context),
+        patch("httpx.AsyncClient") as async_client,
+    ):
         client = GalileoLunaClient()
         await client._get_client()
 
-    assert async_client.call_args.kwargs["verify"] == "/etc/galileo/runners-api-ca.crt"
+    assert client.runners_api_ca_file == "/etc/galileo/runners-api-ca.crt"
+    assert async_client.call_args.kwargs["verify"] is ssl_context
 
 
 @pytest.mark.asyncio
@@ -521,14 +526,21 @@ async def test_get_client_falls_back_to_agent_control_auth_upstream_ca_file(monk
     for key, value in RUNNERS_ENV.items():
         monkeypatch.setenv(key, value)
     monkeypatch.delenv("GALILEO_RUNNERS_API_CA_FILE", raising=False)
-    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE", "/etc/agent-control/auth-upstream-ca/ca.crt")
+    monkeypatch.setenv(
+        "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE", "/etc/agent-control/auth-upstream-ca/ca.crt"
+    )
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with patch("httpx.AsyncClient") as async_client:
+    ssl_context = object()
+    with (
+        patch.object(GalileoLunaClient, "_load_ssl_context", return_value=ssl_context),
+        patch("httpx.AsyncClient") as async_client,
+    ):
         client = GalileoLunaClient()
         await client._get_client()
 
-    assert async_client.call_args.kwargs["verify"] == "/etc/agent-control/auth-upstream-ca/ca.crt"
+    assert client.runners_api_ca_file == "/etc/agent-control/auth-upstream-ca/ca.crt"
+    assert async_client.call_args.kwargs["verify"] is ssl_context
 
 
 @pytest.mark.asyncio

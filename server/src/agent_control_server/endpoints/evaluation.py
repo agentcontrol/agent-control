@@ -13,10 +13,9 @@ from agent_control_models import (
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, require_operation
-from ..db import get_async_db
+from ..db import AsyncSessionLocal
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
@@ -136,6 +135,41 @@ async def _evaluation_context(request: Request) -> dict[str, object]:
     return {"target_type": target_type, "target_id": target_id}
 
 
+async def _load_engine_controls(
+    request: EvaluationRequest,
+    principal: Principal,
+) -> list[ControlAdapter]:
+    """Load and materialize controls before evaluator execution starts."""
+    namespace_key = principal.namespace_key
+
+    async with AsyncSessionLocal() as db:
+        agent_result = await db.execute(
+            select(Agent).where(
+                Agent.name == request.agent_name,
+                Agent.namespace_key == namespace_key,
+            )
+        )
+        agent = agent_result.scalar_one_or_none()
+        if agent is None:
+            raise NotFoundError(
+                error_code=ErrorCode.AGENT_NOT_FOUND,
+                detail=f"Agent '{request.agent_name}' not found",
+                resource="Agent",
+                resource_id=request.agent_name,
+                hint="Register the agent via initAgent before evaluating.",
+            )
+
+        runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
+            request.agent_name,
+            namespace_key=namespace_key,
+            target_type=request.target_type,
+            target_id=request.target_id,
+            allow_invalid_step_name_regex=True,
+        )
+
+    return [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
+
+
 @router.post(
     "",
     response_model=EvaluationResponse,
@@ -144,7 +178,6 @@ async def _evaluation_context(request: Request) -> dict[str, object]:
 )
 async def evaluate(
     request: EvaluationRequest,
-    db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(
         require_operation(Operation.RUNTIME_USE, context_builder=_evaluation_context)
     ),
@@ -163,34 +196,7 @@ async def evaluate(
     on the server; SDKs reconstruct and emit those events separately through
     the observability ingestion endpoint.
     """
-    namespace_key = principal.namespace_key
-
-    agent_result = await db.execute(
-        select(Agent).where(
-            Agent.name == request.agent_name,
-            Agent.namespace_key == namespace_key,
-        )
-    )
-    agent = agent_result.scalar_one_or_none()
-    if agent is None:
-        raise NotFoundError(
-            error_code=ErrorCode.AGENT_NOT_FOUND,
-            detail=f"Agent '{request.agent_name}' not found",
-            resource="Agent",
-            resource_id=request.agent_name,
-            hint="Register the agent via initAgent before evaluating.",
-        )
-
-    runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
-        request.agent_name,
-        namespace_key=namespace_key,
-        target_type=request.target_type,
-        target_id=request.target_id,
-        allow_invalid_step_name_regex=True,
-    )
-
-    engine_controls = [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
-
+    engine_controls = await _load_engine_controls(request, principal)
     engine = ControlEngine(engine_controls)
     try:
         raw_response = await engine.process(request)

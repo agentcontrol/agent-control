@@ -1,3 +1,15 @@
+## [3.1.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.0.0...ts-sdk-v3.1.0) (2026-06-17)
+
+### Features
+
+* **engine:** add evaluation runtime tuning ([#239](https://github.com/agentcontrol/agent-control/issues/239)) ([2f1e5fe](https://github.com/agentcontrol/agent-control/commit/2f1e5fe28bd0bde7bb7b6f32aa6d1dc196eeb89e))
+* **server:** bound database connection pool ([#236](https://github.com/agentcontrol/agent-control/issues/236)) ([80aea8f](https://github.com/agentcontrol/agent-control/commit/80aea8f4675b3d0677bbcbbfe3c657640a40a761))
+
+### Bug Fixes
+
+* **evaluators:** configure Luna scorer API URL ([#237](https://github.com/agentcontrol/agent-control/issues/237)) ([fc516f0](https://github.com/agentcontrol/agent-control/commit/fc516f05dc8fbb71a35db2831e617e0a222e5f87))
+* **server:** use plain psycopg with OS libpq ([#241](https://github.com/agentcontrol/agent-control/issues/241)) ([45a33a5](https://github.com/agentcontrol/agent-control/commit/45a33a5528cdf480bb0510488fd9312f38760d5e))
+
 ## [3.0.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.6.0...ts-sdk-v3.0.0) (2026-06-05)
 
 ### ⚠ BREAKING CHANGES

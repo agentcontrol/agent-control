@@ -27,11 +27,33 @@ from .selectors import select_data
 
 logger = logging.getLogger(__name__)
 
+
+def _env_positive_int(*names: str, default: int) -> int:
+    """Read a positive integer from the first configured environment variable."""
+    for name in names:
+        value = os.environ.get(name)
+        if value is None or value.strip() == "":
+            continue
+        try:
+            parsed = int(value)
+        except ValueError as exc:
+            raise RuntimeError(f"{name}={value!r} must be an integer.") from exc
+        if parsed < 1:
+            raise RuntimeError(f"{name}={value!r} must be greater than or equal to 1.")
+        return parsed
+    return default
+
+
 # Default timeout for evaluator execution (seconds)
 DEFAULT_EVALUATOR_TIMEOUT = float(os.environ.get("EVALUATOR_TIMEOUT_SECONDS", "30"))
 
-# Max concurrent evaluations (limits task spawning overhead for large policies)
-MAX_CONCURRENT_EVALUATIONS = int(os.environ.get("MAX_CONCURRENT_EVALUATIONS", "3"))
+# Max concurrent evaluations (limits task spawning overhead for large policies).
+# Prefer the namespaced env var; MAX_CONCURRENT_EVALUATIONS is kept for compatibility.
+MAX_CONCURRENT_EVALUATIONS = _env_positive_int(
+    "AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS",
+    "MAX_CONCURRENT_EVALUATIONS",
+    default=3,
+)
 
 SELECTED_DATA_PREVIEW_MAX_CHARS = int(
     os.environ.get("AGENT_CONTROL_SELECTED_DATA_PREVIEW_MAX_CHARS", "500")
