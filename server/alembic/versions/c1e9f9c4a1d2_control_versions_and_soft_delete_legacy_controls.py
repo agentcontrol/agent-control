@@ -31,6 +31,57 @@ _logger = logging.getLogger("alembic.runtime.migration")
 _BACKFILL_NOTE = "Backfilled from existing control"
 
 
+def _condition_with_current_leaf_key(value: Any) -> Any:
+    """Return a validation-only copy with historical evaluator leaves as rules."""
+    if not isinstance(value, dict):
+        return value
+
+    result = dict(value)
+    if "evaluator" in result and "rule" not in result:
+        result["rule"] = result.pop("evaluator")
+
+    if isinstance(result.get("and"), list):
+        result["and"] = [_condition_with_current_leaf_key(child) for child in result["and"]]
+    if isinstance(result.get("or"), list):
+        result["or"] = [_condition_with_current_leaf_key(child) for child in result["or"]]
+    if isinstance(result.get("not"), dict):
+        result["not"] = _condition_with_current_leaf_key(result["not"])
+
+    return result
+
+
+def _control_with_current_leaf_key(data: Any) -> Any:
+    """Return a validation-only copy compatible with the current control model."""
+    if not isinstance(data, dict):
+        return data
+
+    result = dict(data)
+
+    if "evaluator" in result and "rule" not in result:
+        result["rule"] = result.pop("evaluator")
+
+    if isinstance(result.get("condition"), dict):
+        result["condition"] = _condition_with_current_leaf_key(result["condition"])
+
+    return result
+
+
+def _is_control_payload_usable(data: Any) -> bool:
+    try:
+        UnrenderedTemplateControl.model_validate(data)
+    except ValidationError:
+        pass
+    else:
+        return True
+
+    try:
+        ControlDefinition.model_validate(data)
+    except ValidationError:
+        return False
+
+    return True
+
+
 def _classify_control_payload(data: Any) -> tuple[bool, str | None]:
     """Return whether a legacy control payload is still usable."""
     if data == {}:
@@ -38,19 +89,15 @@ def _classify_control_payload(data: Any) -> tuple[bool, str | None]:
     if not isinstance(data, dict):
         return False, "invalid control payload"
 
-    try:
-        UnrenderedTemplateControl.model_validate(data)
-    except ValidationError:
-        pass
-    else:
+    if _is_control_payload_usable(data):
         return True, None
 
-    try:
-        ControlDefinition.model_validate(data)
-    except ValidationError:
-        return False, "invalid control payload"
+    # This migration runs before the later evaluator->rule payload rename.
+    # Keep classification stable after the model rename without writing rows here.
+    if _is_control_payload_usable(_control_with_current_leaf_key(data)):
+        return True, None
 
-    return True, None
+    return False, "invalid control payload"
 
 
 def _snapshot_payload(

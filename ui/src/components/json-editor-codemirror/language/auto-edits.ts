@@ -5,8 +5,8 @@ import {
 } from 'jsonc-parser';
 
 import type {
-  JsonEditorRuleOption,
   JsonEditorMode,
+  JsonEditorRuleOption,
 } from '@/core/page-components/agent-detail/modals/edit-control/types';
 
 import {

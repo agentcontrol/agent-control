@@ -26,8 +26,8 @@ import type { ProblemDetail, StepSchema } from '@/core/api/types';
 import { LabelWithTooltip } from '@/core/components/label-with-tooltip';
 import { ApiErrorAlert } from '@/core/page-components/agent-detail/modals/edit-control/api-error-alert';
 import type {
-  JsonEditorRuleOption,
   JsonEditorMode,
+  JsonEditorRuleOption,
   JsonSchema,
 } from '@/core/page-components/agent-detail/modals/edit-control/types';
 

@@ -8,9 +8,9 @@ import { Auth } from "./auth.js";
 import { ControlBindings } from "./control-bindings.js";
 import { Controls } from "./controls.js";
 import { Evaluation } from "./evaluation.js";
-import { Rules } from "./rules.js";
 import { Observability } from "./observability.js";
 import { Policies } from "./policies.js";
+import { Rules } from "./rules.js";
 import { System } from "./system.js";
 
 export class AgentControlSDK extends ClientSDK {
@@ -44,11 +44,6 @@ export class AgentControlSDK extends ClientSDK {
     return (this._evaluation ??= new Evaluation(this._options));
   }
 
-  private _rules?: Rules;
-  get rules(): Rules {
-    return (this._rules ??= new Rules(this._options));
-  }
-
   private _observability?: Observability;
   get observability(): Observability {
     return (this._observability ??= new Observability(this._options));
@@ -57,5 +52,10 @@ export class AgentControlSDK extends ClientSDK {
   private _policies?: Policies;
   get policies(): Policies {
     return (this._policies ??= new Policies(this._options));
+  }
+
+  private _rules?: Rules;
+  get rules(): Rules {
+    return (this._rules ??= new Rules(this._options));
   }
 }

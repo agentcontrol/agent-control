@@ -10,8 +10,8 @@ import {
 import type { StepSchema } from '@/core/api/types';
 
 import type {
-  JsonEditorRuleOption,
   JsonEditorMode,
+  JsonEditorRuleOption,
   JsonSchema,
 } from './types';
 

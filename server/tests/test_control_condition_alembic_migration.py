@@ -38,16 +38,17 @@ pytestmark = pytest.mark.skipif(
 def _legacy_control_payload() -> dict[str, Any]:
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
     payload["selector"] = payload["condition"]["selector"]
-    payload["rule"] = payload["condition"]["rule"]
+    payload["evaluator"] = payload["condition"]["rule"]
     payload.pop("condition")
     return payload
 
 
 def _composite_control_payload() -> dict[str, Any]:
     first_leaf = deepcopy(VALID_CONTROL_PAYLOAD["condition"])
+    first_leaf["evaluator"] = first_leaf.pop("rule")
     second_leaf = {
         "selector": {"path": "output"},
-        "rule": {"name": "regex", "config": {"pattern": "blocked"}},
+        "evaluator": {"name": "regex", "config": {"pattern": "blocked"}},
     }
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
     payload["condition"] = {"and": [first_leaf, second_leaf]}
@@ -174,9 +175,9 @@ def test_upgrade_rewrites_valid_legacy_rows(
 
     migrated = _fetch_control_data(temp_engine, control_id)
     assert "selector" not in migrated
-    assert "rule" not in migrated
+    assert "evaluator" not in migrated
     assert migrated["condition"]["selector"] == legacy_payload["selector"]
-    assert migrated["condition"]["rule"] == legacy_payload["rule"]
+    assert migrated["condition"]["evaluator"] == legacy_payload["evaluator"]
     for field in ("description", "enabled", "execution", "scope", "action"):
         assert migrated[field] == legacy_payload[field]
 
@@ -204,9 +205,9 @@ def test_upgrade_rewrites_multiple_valid_legacy_rows(
         (second_migrated, second_legacy),
     ):
         assert "selector" not in migrated
-        assert "rule" not in migrated
+        assert "evaluator" not in migrated
         assert migrated["condition"]["selector"] == original["selector"]
-        assert migrated["condition"]["rule"] == original["rule"]
+        assert migrated["condition"]["evaluator"] == original["evaluator"]
         for field in ("description", "enabled", "execution", "scope", "action"):
             assert migrated[field] == original[field]
 
@@ -258,7 +259,7 @@ def test_upgrade_fails_on_partial_legacy_rows(
 ) -> None:
     upgrade_to(PRE_MIGRATION_REVISION)
     partial_payload = _legacy_control_payload()
-    partial_payload.pop("rule")
+    partial_payload.pop("evaluator")
     control_id = _insert_control(temp_engine, name="partial", data=partial_payload)
 
     with pytest.raises(RuntimeError, match="partial_invalid=1"):
@@ -292,7 +293,7 @@ def test_upgrade_is_atomic_when_valid_and_invalid_rows_are_mixed(
     valid_legacy = _legacy_control_payload()
     valid_id = _insert_control(temp_engine, name="legacy", data=valid_legacy)
     invalid_partial = _legacy_control_payload()
-    invalid_partial.pop("rule")
+    invalid_partial.pop("evaluator")
     _insert_control(temp_engine, name="invalid", data=invalid_partial)
 
     with pytest.raises(RuntimeError, match="partial_invalid=1"):
@@ -313,7 +314,7 @@ def test_upgrade_error_message_includes_invalid_counts_and_sample_ids(
         data={**deepcopy(VALID_CONTROL_PAYLOAD), "selector": {"path": "output"}},
     )
     partial_payload = _legacy_control_payload()
-    partial_payload.pop("rule")
+    partial_payload.pop("evaluator")
     partial_id = _insert_control(temp_engine, name="partial", data=partial_payload)
     missing_id = _insert_control(
         temp_engine,
@@ -377,7 +378,7 @@ def test_post_migration_api_returns_canonical_shape_for_rewritten_rows(
         assert response.status_code == 200
         data = response.json()["data"]
         assert "selector" not in data
-        assert "rule" not in data
+        assert "evaluator" not in data
         assert data["condition"]["selector"]["path"] == "input"
         assert data["condition"]["rule"]["name"] == "regex"
     finally:

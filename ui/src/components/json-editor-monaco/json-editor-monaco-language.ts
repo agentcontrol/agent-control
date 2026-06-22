@@ -10,8 +10,8 @@ import {
 import { removeTrailingCommasOutsideStrings } from '@/components/json-editor-shared/fix-json-commas';
 import type { StepSchema } from '@/core/api/types';
 import type {
-  JsonEditorRuleOption,
   JsonEditorMode,
+  JsonEditorRuleOption,
   JsonSchema,
 } from '@/core/page-components/agent-detail/modals/edit-control/types';
 

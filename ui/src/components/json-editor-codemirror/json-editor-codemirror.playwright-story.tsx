@@ -2,8 +2,8 @@ import { Box, Button, Group } from '@mantine/core';
 import { useCallback, useEffect, useState } from 'react';
 
 import type {
-  JsonEditorRuleOption,
   JsonEditorMode,
+  JsonEditorRuleOption,
 } from '@/core/page-components/agent-detail/modals/edit-control/types';
 
 import { HARNESS_CONTROL_SCHEMA } from './harness-schema';
