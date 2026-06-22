@@ -1271,6 +1271,96 @@ class TestTimeoutEnforcement:
         # Confidence is 0.5 (1 success, 1 error out of 2)
         assert result.confidence == 0.5
 
+    @pytest.mark.asyncio
+    async def test_non_positive_rule_timeout_uses_default_rule_timeout(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Rules reporting non-positive timeouts fall back to DEFAULT_RULE_TIMEOUT."""
+        import time
+
+        import agent_control_engine.core as core_module
+
+        monkeypatch.setattr(core_module, "DEFAULT_RULE_TIMEOUT", 0.01)
+        controls = [
+            MockControlWithIdentity(
+                id=1,
+                name="fallback_timeout",
+                control=ControlDefinition(
+                    description="Test fallback timeout",
+                    enabled=True,
+                    execution="server",
+                    scope={"step_types": ["llm"], "stages": ["pre"]},
+                    condition={
+                        "selector": {"path": "input"},
+                        "rule": RuleSpec(
+                            name="test-timeout",
+                            config={"value": "fallback", "timeout_ms": 0},
+                        ),
+                    },
+                    action={"decision": "deny"},
+                ),
+            )
+        ]
+        engine = ControlEngine(controls)
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+
+        start = time.monotonic()
+        result = await engine.process(request)
+        elapsed = time.monotonic() - start
+
+        assert elapsed < 1.0
+        assert result.errors is not None
+        assert "TimeoutError: Rule exceeded 0.01s timeout" in result.errors[0].result.error
+
+
+class _IncompleteLeafNode:
+    """Runtime-only stub for defensive incomplete-leaf branches."""
+
+    def is_leaf(self) -> bool:
+        return True
+
+    def leaf_parts(self) -> None:
+        return None
+
+    def kind(self) -> str:
+        return "leaf"
+
+    def children_in_order(self) -> list[object]:
+        return []
+
+
+class TestDefensiveConditionBranches:
+    """Cover defensive branches unreachable through validated Pydantic models."""
+
+    def test_skipped_trace_rejects_incomplete_leaf(self):
+        engine = ControlEngine([])
+
+        with pytest.raises(ValueError, match="Leaf condition must contain selector and rule"):
+            engine._skipped_trace(_IncompleteLeafNode(), "short-circuit")  # type: ignore[arg-type]
+
+    @pytest.mark.asyncio
+    async def test_evaluate_leaf_rejects_incomplete_leaf(self):
+        engine = ControlEngine([])
+        item = make_control(1, "incomplete", "test-allow")
+        request = EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="test", output=None),
+            stage="pre",
+        )
+
+        with pytest.raises(ValueError, match="Leaf condition must contain selector and rule"):
+            await engine._evaluate_leaf(  # type: ignore[arg-type]
+                item,
+                _IncompleteLeafNode(),
+                request,
+                asyncio.Semaphore(1),
+            )
+
 
 # =============================================================================
 # Test: Concurrency Limit

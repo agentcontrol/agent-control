@@ -39,8 +39,7 @@ export function getAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequestToJSON(
     GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
 ): string {
   return JSON.stringify(
-    GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest$outboundSchema.parse(
-      getAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
-    ),
+    GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest$outboundSchema
+      .parse(getAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest),
   );
 }

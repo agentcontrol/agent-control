@@ -12,6 +12,7 @@ import builtins
 import importlib
 import importlib.util
 import sys
+import types
 
 import pytest
 
@@ -87,6 +88,38 @@ def test_module_loads_when_galileo_package_is_unavailable():
         "LUNA_AVAILABLE",
     ):
         assert absent not in reloaded.__all__
+
+
+def test_module_exports_galileo_optional_imports_when_module_is_available(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A synthetic luna module exercises the optional import success branch."""
+    fake_package = types.ModuleType("agent_control_rule_galileo")
+    fake_package.__path__ = []  # type: ignore[attr-defined]
+    fake_luna = types.ModuleType("agent_control_rule_galileo.luna")
+
+    for name in (
+        "GalileoLunaClient",
+        "LunaOperator",
+        "LunaRule",
+        "LunaRuleConfig",
+        "ScorerInvokeInputs",
+        "ScorerInvokeRequest",
+        "ScorerInvokeResponse",
+    ):
+        setattr(fake_luna, name, type(name, (), {}))
+    fake_luna.LUNA_AVAILABLE = True
+
+    monkeypatch.setitem(sys.modules, "agent_control_rule_galileo", fake_package)
+    monkeypatch.setitem(sys.modules, "agent_control_rule_galileo.luna", fake_luna)
+    sys.modules.pop("agent_control.rules", None)
+
+    import agent_control.rules as reloaded
+
+    reloaded = importlib.reload(reloaded)
+
+    assert "LunaRule" in reloaded.__all__
+    assert "ScorerInvokeInputs" in reloaded.__all__
 
 
 @pytest.mark.skipif(

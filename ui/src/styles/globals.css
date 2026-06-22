@@ -29,6 +29,7 @@ a {
 [data-mantine-color-scheme='light'] .confirm-modal-confirm-btn {
   color: var(--mantine-color-white);
 }
+
 [data-mantine-color-scheme='dark'] .confirm-modal-confirm-btn {
   color: var(--mantine-color-black);
 }

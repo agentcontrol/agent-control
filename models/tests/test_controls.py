@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import builtins
+
 import pytest
 from agent_control_models import (
     ControlDefinition,
     ControlDefinitionRuntime,
+    RuleSpec,
 )
 from agent_control_models.controls import ControlDefinitionBase
 from pydantic import ValidationError
@@ -63,6 +66,26 @@ def test_condition_node_requires_exactly_one_shape() -> None:
             }
         )
     # Then: validation rejects the ambiguous node shape
+
+
+def test_rule_spec_skips_config_validation_when_rules_package_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: shared models imported in an environment without agent_control_rules
+    original_import = builtins.__import__
+
+    def _raise_for_rules(name: str, *args: object, **kwargs: object) -> object:
+        if name == "agent_control_rules" or name.startswith("agent_control_rules."):
+            raise ImportError("rules package unavailable")
+        return original_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", _raise_for_rules)
+
+    # When: validating a known builtin rule with config that would normally be invalid
+    spec = RuleSpec.model_validate({"name": "regex", "config": {}})
+
+    # Then: model validation does not require the optional rules package
+    assert spec.name == "regex"
 
 
 def test_legacy_leaf_payload_is_canonicalized() -> None:

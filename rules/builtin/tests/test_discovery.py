@@ -144,6 +144,30 @@ def test_discover_rules_handles_entry_points_failure(isolated_discovery):
     assert count == 0
 
 
+def test_discover_rules_falls_back_to_builtin_source_imports(isolated_discovery):
+    """Source-tree runs without entry point metadata still load builtin rules."""
+    with patch.object(discovery_module, "entry_points", return_value=[]):
+        count = discover_rules()
+
+    assert count == 4
+    assert set(get_all_rules()) == {"json", "list", "regex", "sql"}
+
+
+def test_builtin_source_discovery_skips_broken_imports(
+    isolated_discovery,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A broken builtin source import is logged and skipped."""
+    monkeypatch.setattr(
+        discovery_module,
+        "_BUILTIN_RULES",
+        (("broken", "agent_control_rules.does_not_exist", "MissingRule"),),
+    )
+
+    assert discovery_module._discover_builtin_rules_from_source() == 0
+    assert get_all_rules() == {}
+
+
 def test_reset_rule_discovery_allows_rerun(isolated_discovery):
     """reset_rule_discovery clears the completed flag so discover runs again."""
     cls = _make_class(name="disc-reset")

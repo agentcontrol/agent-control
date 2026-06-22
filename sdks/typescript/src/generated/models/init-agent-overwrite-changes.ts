@@ -59,9 +59,7 @@ export const InitAgentOverwriteChanges$inboundSchema: z.ZodMiniType<
 > = z.pipe(
   z.object({
     metadata_changed: z._default(types.boolean(), false),
-    rule_removals: types.optional(
-      z.array(InitAgentRuleRemoval$inboundSchema),
-    ),
+    rule_removals: types.optional(z.array(InitAgentRuleRemoval$inboundSchema)),
     rules_added: types.optional(z.array(types.string())),
     rules_removed: types.optional(z.array(types.string())),
     rules_updated: types.optional(z.array(types.string())),
