@@ -23,6 +23,7 @@ def test_package_version_falls_back_when_distribution_metadata_is_absent(
         / "agent_control_rule_galileo"
         / "__init__.py"
     )
+    monkeypatch.syspath_prepend(str(init_path.parents[1]))
     spec = importlib.util.spec_from_file_location(
         "_agent_control_rule_galileo_version_probe",
         init_path,
