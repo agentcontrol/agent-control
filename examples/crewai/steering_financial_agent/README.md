@@ -24,12 +24,12 @@ The key difference: **DENY** raises `ControlViolationError` (permanent), **STEER
 
 ## Controls Created
 
-- `deny-sanctioned-countries` — LIST evaluator, blocks OFAC countries
-- `deny-high-fraud-score` — JSON evaluator, blocks fraud_score > 0.8
-- `steer-require-2fa` — JSON evaluator with oneOf schema, steers for 2FA
-- `steer-require-manager-approval` — JSON evaluator, steers for approval
-- `observe-new-recipient` — LIST evaluator, records unknown recipients
-- `observe-pii-in-confirmation` — REGEX evaluator, records PII in output
+- `deny-sanctioned-countries` — LIST rule, blocks OFAC countries
+- `deny-high-fraud-score` — JSON rule, blocks fraud_score > 0.8
+- `steer-require-2fa` — JSON rule with oneOf schema, steers for 2FA
+- `steer-require-manager-approval` — JSON rule, steers for approval
+- `observe-new-recipient` — LIST rule, records unknown recipients
+- `observe-pii-in-confirmation` — REGEX rule, records PII in output
 
 ## Prerequisites
 
@@ -48,11 +48,11 @@ cd examples/crewai/steering_financial_agent
 
 # Install example dependencies
 # Note: agent-control-sdk and crewai have an incompatible transitive dependency on pydantic
-# (crewai caps at <2.12, the SDK evaluators require >=2.12.4). Install in two steps:
+# (crewai caps at <2.12, the SDK rules require >=2.12.4). Install in two steps:
 uv pip install -e .
 
-# Install agent-control-sdk separately, skipping the conflicting evaluators dep
-# (this example uses server-mode execution and does not need evaluators locally)
+# Install agent-control-sdk separately, skipping the conflicting rules dep
+# (this example uses server-mode execution and does not need rules locally)
 uv pip install agent-control-sdk==7.5.0 --no-deps
 uv pip install httpx pydantic-settings docstring-parser google-re2 jsonschema
 

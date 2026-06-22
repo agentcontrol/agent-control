@@ -78,7 +78,7 @@ async def setup_sql_controls():
                 "selector": {
                     "path": "input.query"
                 },
-                "evaluator": {
+                "rule": {
                     "name": "sql",
                     "config": {
                         "blocked_operations": ["DROP", "DELETE", "TRUNCATE", "ALTER", "GRANT"],

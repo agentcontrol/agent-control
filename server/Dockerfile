@@ -47,7 +47,7 @@ COPY server/alembic/ alembic/
 COPY models/ models/
 COPY engine/ engine/
 COPY telemetry/ telemetry/
-COPY evaluators/ evaluators/
+COPY rules/ rules/
 
 # Copy server application
 COPY server/ server/
@@ -55,19 +55,19 @@ COPY server/ server/
 # Copy the exported UI bundle that FastAPI serves for hosted deployments
 COPY --from=ui-builder /ui/out ./server/ui-dist
 
-# Install server + bundled runtime packages (engine/evaluators/models/telemetry)
+# Install server + bundled runtime packages (engine/rules/models/telemetry)
 # We ignore the lockfile if it's missing or out of sync to ensure build succeeds during dev
 RUN uv sync \
     --package agent-control-server \
     --package agent-control-engine \
-    --package agent-control-evaluators \
+    --package agent-control-rules \
     --package agent-control-models \
     --package agent-control-telemetry \
     --no-dev \
   || uv sync \
     --package agent-control-server \
     --package agent-control-engine \
-    --package agent-control-evaluators \
+    --package agent-control-rules \
     --package agent-control-models \
     --package agent-control-telemetry \
     --no-dev \

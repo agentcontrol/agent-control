@@ -14,7 +14,7 @@
 
 ### Bug Fixes
 
-- **evaluators**: Use SQLGlot native extra without direct sqlglotc pin
+- **rules**: Use SQLGlot native extra without direct sqlglotc pin
   ([#243](https://github.com/agentcontrol/agent-control/pull/243),
   [`6884ce9`](https://github.com/agentcontrol/agent-control/commit/6884ce9c16f85763f029ffba99867993548fc2ae))
 
@@ -28,7 +28,7 @@
 
 ### Bug Fixes
 
-- **evaluators**: Configure Luna scorer API URL
+- **rules**: Configure Luna scorer API URL
   ([#237](https://github.com/agentcontrol/agent-control/pull/237),
   [`fc516f0`](https://github.com/agentcontrol/agent-control/commit/fc516f05dc8fbb71a35db2831e617e0a222e5f87))
 
@@ -56,7 +56,7 @@
 
 ### Bug Fixes
 
-- **evaluators**: Remove Luna2 evaluator
+- **rules**: Remove Luna2 rule
   ([#234](https://github.com/agentcontrol/agent-control/pull/234),
   [`ccc4fc6`](https://github.com/agentcontrol/agent-control/commit/ccc4fc6d4dc3228169d9db0178d14596349739f1))
 
@@ -84,7 +84,7 @@
 
 ### Features
 
-- **evaluators**: Add new lluna client
+- **rules**: Add new lluna client
   ([#213](https://github.com/agentcontrol/agent-control/pull/213),
   [`f65beb9`](https://github.com/agentcontrol/agent-control/commit/f65beb9d14dca8248c35a620d47af3298f1fe5e7))
 
@@ -249,7 +249,7 @@
 
 ### Features
 
-- **evaluators**: Add built-in budget evaluator for per-agent cost tracking
+- **rules**: Add built-in budget rule for per-agent cost tracking
   ([#144](https://github.com/agentcontrol/agent-control/pull/144),
   [`d4ce113`](https://github.com/agentcontrol/agent-control/commit/d4ce113488c42e47cbba9364f47a2905e4cc5b35))
 
@@ -343,13 +343,13 @@
   ([#150](https://github.com/agentcontrol/agent-control/pull/150),
   [`90265ba`](https://github.com/agentcontrol/agent-control/commit/90265ba79132d8a8669f92948cf73568eb38fd5a))
 
-- **server**: Remove unused evaluator config store
+- **server**: Remove unused rule config store
   ([#152](https://github.com/agentcontrol/agent-control/pull/152),
   [`dea2873`](https://github.com/agentcontrol/agent-control/commit/dea2873241004c9398909609d4b665808270290e))
 
 ### Features
 
-- **evaluators**: Add starts_with/ends_with mode to list evaluator
+- **rules**: Add starts_with/ends_with mode to list rule
   ([#154](https://github.com/agentcontrol/agent-control/pull/154),
   [`bf1f7d7`](https://github.com/agentcontrol/agent-control/commit/bf1f7d7cf271a231a165699d44f726467b49bd50))
 
@@ -427,7 +427,7 @@
 
 ### Bug Fixes
 
-- **server**: Reject empty string list evaluator values
+- **server**: Reject empty string list rule values
   ([#121](https://github.com/agentcontrol/agent-control/pull/121),
   [`2c55d27`](https://github.com/agentcontrol/agent-control/commit/2c55d27fc4e1b2b3235a2b672226e77f3365c1bf))
 
@@ -448,7 +448,7 @@
 
 ### Chores
 
-- **evaluators**: Pin sqlglotc ([#131](https://github.com/agentcontrol/agent-control/pull/131),
+- **rules**: Pin sqlglotc ([#131](https://github.com/agentcontrol/agent-control/pull/131),
   [`1d3ebcc`](https://github.com/agentcontrol/agent-control/commit/1d3ebcceff832dc7595329c2a36861260b2e9dda))
 
 ### Refactoring
@@ -470,7 +470,7 @@
   ([#99](https://github.com/agentcontrol/agent-control/pull/99),
   [`f038aa4`](https://github.com/agentcontrol/agent-control/commit/f038aa4cc048e331f59fa4bcc6df0c266f14953e))
 
-- **evaluators**: Address Cisco AI Defense review issues
+- **rules**: Address Cisco AI Defense review issues
   ([#103](https://github.com/agentcontrol/agent-control/pull/103),
   [`81da81b`](https://github.com/agentcontrol/agent-control/commit/81da81bdab5b1a8d3ca4904b8cd9e4ed4843a5ba))
 
@@ -512,7 +512,7 @@
 
 ### Bug Fixes
 
-- **server**: Escape ILIKE pattern in evaluator-configs list endpoint
+- **server**: Escape ILIKE pattern in rule-configs list endpoint
   ([#108](https://github.com/agentcontrol/agent-control/pull/108),
   [`cb6e89f`](https://github.com/agentcontrol/agent-control/commit/cb6e89f134bd8cea944bbb99419b3d4a26f98d50))
 
@@ -558,7 +558,7 @@
   ([#105](https://github.com/agentcontrol/agent-control/pull/105),
   [`84dfa57`](https://github.com/agentcontrol/agent-control/commit/84dfa57edd0020da147942e06bff065384bdcead))
 
-- **evaluators**: Add Cisco AI Defense evaluator and examples
+- **rules**: Add Cisco AI Defense rule and examples
   ([#60](https://github.com/agentcontrol/agent-control/pull/60),
   [`52e2416`](https://github.com/agentcontrol/agent-control/commit/52e241657103f90ba4a6a54fefd68836db36fd16))
 
@@ -571,7 +571,7 @@
 
 ### Bug Fixes
 
-- **sdk): Revert "fix(sdk**: Bundle evaluators in sdk wheel"
+- **sdk): Revert "fix(sdk**: Bundle rules in sdk wheel"
   ([#90](https://github.com/agentcontrol/agent-control/pull/90),
   [`b516ea6`](https://github.com/agentcontrol/agent-control/commit/b516ea6375257b2116dc68f5974ffd833fd0f783))
 
@@ -580,7 +580,7 @@
 
 ### Bug Fixes
 
-- **sdk**: Bundle evaluators in sdk wheel
+- **sdk**: Bundle rules in sdk wheel
   ([#89](https://github.com/agentcontrol/agent-control/pull/89),
   [`ea5889a`](https://github.com/agentcontrol/agent-control/commit/ea5889a1de5cd79b7b4fd59b2a914ffb7294c158))
 
@@ -589,7 +589,7 @@
 
 ### Bug Fixes
 
-- **evaluators**: Migrate sqlglot rs extra to sqlglot c
+- **rules**: Migrate sqlglot rs extra to sqlglot c
   ([#86](https://github.com/agentcontrol/agent-control/pull/86),
   [`5e3e48c`](https://github.com/agentcontrol/agent-control/commit/5e3e48cb67b80e6035c074fba6e42cc652194813))
 
@@ -830,7 +830,7 @@
 
 ### Features
 
-- **evaluators**: Add required_column_values for multi-tenant SQL validation
+- **rules**: Add required_column_values for multi-tenant SQL validation
   ([#30](https://github.com/agentcontrol/agent-control/pull/30),
   [`532386c`](https://github.com/agentcontrol/agent-control/commit/532386cb933e5d3f07c0939f41701500ef4f4007))
 
@@ -843,13 +843,13 @@
 
 ### Documentation
 
-- **examples**: Update examples and docs for evaluators reorganization
+- **examples**: Update examples and docs for rules reorganization
   ([#19](https://github.com/agentcontrol/agent-control/pull/19),
   [`9cb1851`](https://github.com/agentcontrol/agent-control/commit/9cb1851c442536aeb344bdbd889629167984e7da))
 
 ### Features
 
-- **sdk**: Export ControlScope, ControlMatch, and EvaluatorResult models
+- **sdk**: Export ControlScope, ControlMatch, and RuleResult models
   ([#18](https://github.com/agentcontrol/agent-control/pull/18),
   [`0d49cad`](https://github.com/agentcontrol/agent-control/commit/0d49cad9da5c9e76c32d652fadbc69cec698a611))
 
@@ -858,14 +858,14 @@
 
 ### Bug Fixes
 
-- **docs**: Add Example for Evaluator Extension
+- **docs**: Add Example for Rule Extension
   ([#3](https://github.com/agentcontrol/agent-control/pull/3),
   [`c2a70b3`](https://github.com/agentcontrol/agent-control/commit/c2a70b335fb55481ad63b367ca87ba46de085343))
 
 - **docs**: Update README ([#2](https://github.com/agentcontrol/agent-control/pull/2),
   [`379bb15`](https://github.com/agentcontrol/agent-control/commit/379bb158700b93aa549ef00eda57ccc2f88cb71f))
 
-- **infra**: Install engine/evaluators in server image
+- **infra**: Install engine/rules in server image
   ([#14](https://github.com/agentcontrol/agent-control/pull/14),
   [`d5ae157`](https://github.com/agentcontrol/agent-control/commit/d5ae1571071afd34a00b376e650d9e1ce02f0b2d))
 
@@ -885,13 +885,13 @@
 
 ### Refactoring
 
-- **evaluators**: Split into builtin + extra packages for PyPI
+- **rules**: Split into builtin + extra packages for PyPI
   ([#5](https://github.com/agentcontrol/agent-control/pull/5),
   [`0e0a78a`](https://github.com/agentcontrol/agent-control/commit/0e0a78a9fa9c39a5709299c2e3d77c0609110280))
 
 ### Breaking Changes
 
-- **evaluators**: Evaluator reorganization with new package structure
+- **rules**: Rule reorganization with new package structure
 
 
 ## v4.0.0 (2026-02-03)
@@ -957,7 +957,7 @@
 
 ### Features
 
-- Basic setup for evaluator store flow ([#4](https://github.com/agentcontrol/agent-control/pull/4),
+- Basic setup for rule store flow ([#4](https://github.com/agentcontrol/agent-control/pull/4),
   [`dda9f70`](https://github.com/agentcontrol/agent-control/commit/dda9f70eb7b6e2bfa991ed71b270251ab51d3c9d))
 
 - Inital set of ui fixes ([#7](https://github.com/agentcontrol/agent-control/pull/7),
@@ -1002,14 +1002,14 @@
 - Tighten evaluation error handling and preserve control data
   ([`52a1ef8`](https://github.com/agentcontrol/agent-control/commit/52a1ef8127aca382e373ee6b6433a2d527e6e5e2))
 
-- **examples**: Update crew ai example to use evaluator
+- **examples**: Update crew ai example to use rule
   ([#93](https://github.com/agentcontrol/agent-control/pull/93),
   [`1c65084`](https://github.com/agentcontrol/agent-control/commit/1c6508434860ed5bb56c622a721197c5a8f7ad4e))
 
 - **sdk**: Fix logging ([#77](https://github.com/agentcontrol/agent-control/pull/77),
   [`b1f078c`](https://github.com/agentcontrol/agent-control/commit/b1f078c52c29ac048a9bcbea09252786e842acbd))
 
-- **sdk**: Plugin to evaluator.. agent_protect to agent_control
+- **sdk**: Plugin to rule.. agent_protect to agent_control
   ([#88](https://github.com/agentcontrol/agent-control/pull/88),
   [`fc9b088`](https://github.com/agentcontrol/agent-control/commit/fc9b088fcd091132a1e38deae372b73fc2834beb))
 
@@ -1033,7 +1033,7 @@
 
 ### Refactoring
 
-- **evaluators**: Rename plugin to evaluator throughout
+- **rules**: Rename plugin to rule throughout
   ([#81](https://github.com/agentcontrol/agent-control/pull/81),
   [`0134682`](https://github.com/agentcontrol/agent-control/commit/0134682c1d0f167528d7267507dbcf3a1e7b3192))
 
@@ -1052,7 +1052,7 @@
 
 ### Features
 
-- **server**: Add evaluator config store
+- **server**: Add rule config store
   ([#78](https://github.com/agentcontrol/agent-control/pull/78),
   [`cc14aa6`](https://github.com/agentcontrol/agent-control/commit/cc14aa68391fd7fd4a187364a0a9a9fe712129fe))
 

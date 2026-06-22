@@ -53,7 +53,7 @@ async def setup_banking_controls():
                 "selector": {
                     "path": "input.destination_country"
                 },
-                "evaluator": {
+                "rule": {
                     "name": "list",
                     "config": {
                         "values": ["north korea", "iran", "syria", "cuba", "crimea"],
@@ -82,7 +82,7 @@ async def setup_banking_controls():
                 "selector": {
                     "path": "input"
                 },
-                "evaluator": {
+                "rule": {
                     "name": "json",
                     "config": {
                         "field_constraints": {
@@ -117,7 +117,7 @@ async def setup_banking_controls():
                 "selector": {
                     "path": "input.recipient"
                 },
-                "evaluator": {
+                "rule": {
                     "name": "list",
                     "config": {
                         "values": ["John Smith", "Acme Corp", "Global Suppliers Inc"],
@@ -151,7 +151,7 @@ async def setup_banking_controls():
                 "selector": {
                     "path": "input"
                 },
-                "evaluator": {
+                "rule": {
                     "name": "json",
                     "config": {
                         "json_schema": {
@@ -186,7 +186,7 @@ async def setup_banking_controls():
                 "selector": {
                     "path": "input"
                 },
-                "evaluator": {
+                "rule": {
                     "name": "json",
                     "config": {
                         "json_schema": {

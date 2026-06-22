@@ -59,14 +59,14 @@ def test_create_control_with_data_stores_configured_payload(client: TestClient) 
     data = data_resp.json()["data"]
     assert data["description"] == VALID_CONTROL_DATA["description"]
     assert data["execution"] == VALID_CONTROL_DATA["execution"]
-    assert data["condition"]["evaluator"] == VALID_CONTROL_DATA["condition"]["evaluator"]
+    assert data["condition"]["rule"] == VALID_CONTROL_DATA["condition"]["rule"]
 
 
 def test_create_control_invalid_data_returns_422_without_persisting(client: TestClient) -> None:
-    # Given: a create request whose control data fails evaluator validation
+    # Given: a create request whose control data fails rule validation
     name = f"control-{uuid.uuid4()}"
     invalid_data = deepcopy(VALID_CONTROL_DATA)
-    invalid_data["condition"]["evaluator"] = {
+    invalid_data["condition"]["rule"] = {
         "name": "list",
         "config": {
             "values": ["a", "b"],
@@ -127,7 +127,7 @@ VALID_CONTROL_DATA = {
     "scope": {"step_types": ["llm"], "stages": ["pre"]},
     "condition": {
         "selector": {"path": "input"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": "test", "flags": []}
         },
@@ -156,17 +156,17 @@ def test_set_control_data_replaces_existing(client: TestClient) -> None:
     assert data["enabled"] == payload["enabled"]
     assert data["execution"] == payload["execution"]
     assert data["scope"] == payload["scope"]
-    assert data["condition"]["evaluator"] == payload["condition"]["evaluator"]
+    assert data["condition"]["rule"] == payload["condition"]["rule"]
     assert data["action"] == payload["action"]
     assert data["condition"]["selector"]["path"] == payload["condition"]["selector"]["path"]
 
 
 def test_set_control_data_accepts_legacy_leaf_payload(client: TestClient) -> None:
-    # Given: a legacy flat selector/evaluator payload
+    # Given: a legacy flat selector/rule payload
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_DATA)
     payload["selector"] = payload["condition"]["selector"]
-    payload["evaluator"] = payload["condition"]["evaluator"]
+    payload["rule"] = payload["condition"]["rule"]
     payload.pop("condition")
 
     # When: saving and reading back the control data
@@ -178,9 +178,9 @@ def test_set_control_data_accepts_legacy_leaf_payload(client: TestClient) -> Non
     assert resp_get.status_code == 200
     data = resp_get.json()["data"]
     assert "selector" not in data
-    assert "evaluator" not in data
+    assert "rule" not in data
     assert data["condition"]["selector"]["path"] == "input"
-    assert data["condition"]["evaluator"]["name"] == "regex"
+    assert data["condition"]["rule"]["name"] == "regex"
 
 
 def test_set_control_data_with_empty_dict_fails(client: TestClient) -> None:

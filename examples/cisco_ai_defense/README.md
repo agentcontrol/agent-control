@@ -60,14 +60,14 @@ uv run chat_inspect_demo.py --debug  # also prints raw responses for allowed and
 
 1) Ensure the server is running and you have an API key (X-API-Key)
 
-   - Preferred: install the evaluator into the workspace venv, then run the server normally:
+   - Preferred: install the rule into the workspace venv, then run the server normally:
 
      ```bash
-     uv pip install -e evaluators/contrib/cisco
+     uv pip install -e rules/contrib/cisco
      make server-run
      ```
 
-2) Install the Cisco AI Defense evaluator (this repo package) into the server environment, or run `make sync` at the repo root if developing locally. Provide `AI_DEFENSE_API_KEY` in the server environment.
+2) Install the Cisco AI Defense rule (this repo package) into the server environment, or run `make sync` at the repo root if developing locally. Provide `AI_DEFENSE_API_KEY` in the server environment.
 
 3) Seed controls and attach them to your agent by name:
 
@@ -102,8 +102,8 @@ make -C examples/cisco_ai_defense decorator-all-run
 
 ### Troubleshooting
 
-- Evaluator not found: ensure the server has the evaluator package installed and entry points discovered (`/api/v1/evaluators` lists `cisco.ai_defense`).
-- Missing keys: set both `AGENT_CONTROL_API_KEY` (server) and `AI_DEFENSE_API_KEY` (server env for evaluator calls).
+- Rule not found: ensure the server has the rule package installed and entry points discovered (`/api/v1/rules` lists `cisco.ai_defense`).
+- Missing keys: set both `AGENT_CONTROL_API_KEY` (server) and `AI_DEFENSE_API_KEY` (server env for rule calls).
  - If controls with the same names already exist for another agent, this demo uses unique control names derived from your `AGENT_NAME`, so reruns are safe.
 
  

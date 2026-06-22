@@ -34,7 +34,7 @@ import { Result } from "../types/fp.js";
  * List all registered agents with cursor-based pagination.
  *
  * Returns a summary of each agent including identifier, policy associations,
- * and counts of registered steps and evaluators. Results are scoped to
+ * and counts of registered steps and rules. Results are scoped to
  * the request's namespace; agents in other namespaces are not visible.
  *
  * Args:

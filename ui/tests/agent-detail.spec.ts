@@ -577,20 +577,20 @@ test.describe('Agent Detail Page', () => {
     await expect(executionLabel).toBeVisible();
   });
 
-  test('leaf controls with unknown evaluators still expose JSON editing', async ({
+  test('leaf controls with unknown rules still expose JSON editing', async ({
     mockedPage,
   }) => {
-    const unknownEvaluatorControl: Control = {
+    const unknownRuleControl: Control = {
       id: 42,
       name: 'External Guard',
       control: {
-        description: 'Uses an external evaluator without a custom form',
+        description: 'Uses an external rule without a custom form',
         enabled: true,
         execution: 'server',
         scope: { step_types: ['llm'], stages: ['post'] },
         condition: {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'vendor.external',
             config: { threshold: 0.7, mode: 'strict' },
           },
@@ -600,7 +600,7 @@ test.describe('Agent Detail Page', () => {
       },
     };
     const unknownControls: AgentControlsResponse = {
-      controls: [unknownEvaluatorControl],
+      controls: [unknownRuleControl],
     };
 
     await mockRoutes.agent(mockedPage, {
@@ -610,7 +610,7 @@ test.describe('Agent Detail Page', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ data: unknownEvaluatorControl.control }),
+        body: JSON.stringify({ data: unknownRuleControl.control }),
       });
     });
 
@@ -622,7 +622,7 @@ test.describe('Agent Detail Page', () => {
     await expect(modal).toBeVisible();
     await expect(
       modal.getByText(
-        'No form available for this evaluator. Use JSON view to configure.'
+        'No form available for this rule. Use JSON view to configure.'
       )
     ).toBeVisible();
 
@@ -648,7 +648,7 @@ test.describe('Agent Detail Page', () => {
           and: [
             {
               selector: { path: 'context.risk_level' },
-              evaluator: {
+              rule: {
                 name: 'list',
                 config: {
                   values: ['high', 'critical'],
@@ -660,7 +660,7 @@ test.describe('Agent Detail Page', () => {
             {
               not: {
                 selector: { path: 'context.user_role' },
-                evaluator: {
+                rule: {
                   name: 'list',
                   config: {
                     values: ['admin'],
@@ -683,7 +683,7 @@ test.describe('Agent Detail Page', () => {
       or: [
         {
           selector: { path: 'context.risk_level' },
-          evaluator: {
+          rule: {
             name: 'list',
             config: {
               values: ['critical'],
@@ -694,7 +694,7 @@ test.describe('Agent Detail Page', () => {
         },
         {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: 'urgent' },
           },
@@ -795,7 +795,7 @@ test.describe('Agent Detail Page', () => {
           ...control.control,
           condition: {
             selector: { path: 'output' },
-            evaluator: {
+            rule: {
               name: 'regex',
               config: { pattern: 'a,}' },
             },
@@ -811,9 +811,9 @@ test.describe('Agent Detail Page', () => {
     const after = JSON.parse(
       await getJsonEditorValue(mockedPage, 'control-json-textarea')
     ) as {
-      condition: { evaluator: { config: { pattern: string } } };
+      condition: { rule: { config: { pattern: string } } };
     };
-    expect(after.condition.evaluator.config.pattern).toBe('a,}');
+    expect(after.condition.rule.config.pattern).toBe('a,}');
   });
 
   test('full JSON editor always uses Monaco', async ({ mockedPage }) => {
@@ -871,7 +871,7 @@ test.describe('Agent Detail Page', () => {
         scope: { step_types: ['llm'], stages: ['post'] },
         condition: {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: '.*' },
           },
@@ -927,7 +927,7 @@ test.describe('Agent Detail Page', () => {
     const labels = suggestions.map((item) => item.label);
 
     expect(labels).toEqual(
-      expect.arrayContaining(['selector', 'evaluator', 'and', 'or', 'not'])
+      expect.arrayContaining(['selector', 'rule', 'and', 'or', 'not'])
     );
   });
 
@@ -943,7 +943,7 @@ test.describe('Agent Detail Page', () => {
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: '.*' },
           },
@@ -999,7 +999,7 @@ test.describe('Agent Detail Page', () => {
     const labels = suggestions.map((item) => item.label);
 
     expect(labels).toEqual(
-      expect.arrayContaining(['selector', 'evaluator', 'and', 'or', 'not'])
+      expect.arrayContaining(['selector', 'rule', 'and', 'or', 'not'])
     );
   });
 
@@ -1015,7 +1015,7 @@ test.describe('Agent Detail Page', () => {
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: '.*' },
           },
@@ -1071,7 +1071,7 @@ test.describe('Agent Detail Page', () => {
     const labels = suggestions.map((item) => item.label);
 
     expect(labels).toEqual(
-      expect.arrayContaining(['selector', 'evaluator', 'and', 'or', 'not'])
+      expect.arrayContaining(['selector', 'rule', 'and', 'or', 'not'])
     );
   });
 
@@ -1087,7 +1087,7 @@ test.describe('Agent Detail Page', () => {
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: '.*' },
           },
@@ -1147,19 +1147,19 @@ test.describe('Agent Detail Page', () => {
     expect(labels).toContain('selector');
   });
 
-  test('full JSON editor suggests evaluator keys at property position', async ({
+  test('full JSON editor suggests rule keys at property position', async ({
     mockedPage,
   }) => {
     const compositeControl: Control = {
       id: 83,
-      name: 'Evaluator Suggestion Autocomplete',
+      name: 'Rule Suggestion Autocomplete',
       control: {
-        description: 'Insert evaluator objects from autocomplete',
+        description: 'Insert rule objects from autocomplete',
         enabled: true,
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: '.*' },
           },
@@ -1193,7 +1193,7 @@ test.describe('Agent Detail Page', () => {
       mockedPage,
       'control-json-textarea',
       `{
-  "description": "Insert evaluator objects from autocomplete",
+  "description": "Insert rule objects from autocomplete",
   "enabled": true,
   "execution": "server",
   "condition": {
@@ -1216,22 +1216,22 @@ test.describe('Agent Detail Page', () => {
     );
     const labels = suggestions.map((item) => item.label);
 
-    expect(labels).toContain('evaluator');
+    expect(labels).toContain('rule');
   });
 
-  test('full JSON editor suggests evaluator config keys from evaluator schema', async ({
+  test('full JSON editor suggests rule config keys from rule schema', async ({
     mockedPage,
   }) => {
     const compositeControl: Control = {
       id: 80,
       name: 'Config Schema Autocomplete',
       control: {
-        description: 'Autocomplete evaluator config keys',
+        description: 'Autocomplete rule config keys',
         enabled: true,
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'list',
             config: { values: ['high'] },
           },
@@ -1265,14 +1265,14 @@ test.describe('Agent Detail Page', () => {
       mockedPage,
       'control-json-textarea',
       `{
-  "description": "Autocomplete evaluator config keys",
+  "description": "Autocomplete rule config keys",
   "enabled": true,
   "execution": "server",
   "condition": {
     "selector": {
       "path": "output"
     },
-    "evaluator": {
+    "rule": {
       "name": "list",
       "config": {
         
@@ -1311,7 +1311,7 @@ test.describe('Agent Detail Page', () => {
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: { name: 'regex', config: { pattern: '.*' } },
+          rule: { name: 'regex', config: { pattern: '.*' } },
         },
         action: { decision: 'deny' },
         tags: [],
@@ -1357,19 +1357,19 @@ test.describe('Agent Detail Page', () => {
     expect(labels).not.toContain('action');
   });
 
-  test('full JSON editor suggests evaluator names inside evaluator name field', async ({
+  test('full JSON editor suggests rule names inside rule name field', async ({
     mockedPage,
   }) => {
     const compositeControl: Control = {
       id: 85,
-      name: 'Evaluator Name Suggestions',
+      name: 'Rule Name Suggestions',
       control: {
-        description: 'Test evaluator name suggestions',
+        description: 'Test rule name suggestions',
         enabled: true,
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: { name: 'regex', config: { pattern: '.*' } },
+          rule: { name: 'regex', config: { pattern: '.*' } },
         },
         action: { decision: 'deny' },
         tags: [],
@@ -1396,14 +1396,14 @@ test.describe('Agent Detail Page', () => {
     await expect(modal).toBeVisible();
     await modal.getByText('Full JSON', { exact: true }).click();
 
-    // Find the evaluator name line and get suggestions inside it
+    // Find the rule name line and get suggestions inside it
     await setJsonEditorValue(
       mockedPage,
       'control-json-textarea',
       `{
   "condition": {
     "selector": { "path": "output" },
-    "evaluator": {
+    "rule": {
       "name": "",
       "config": {}
     }
@@ -1422,7 +1422,7 @@ test.describe('Agent Detail Page', () => {
     );
     const labels = suggestions.map((item) => item.label);
 
-    // Should include available evaluator names
+    // Should include available rule names
     expect(labels).toContain('regex');
     expect(labels).toContain('list');
     expect(labels).toContain('json');
@@ -1441,7 +1441,7 @@ test.describe('Agent Detail Page', () => {
         execution: 'server',
         condition: {
           selector: { path: '' },
-          evaluator: { name: 'regex', config: { pattern: '.*' } },
+          rule: { name: 'regex', config: { pattern: '.*' } },
         },
         action: { decision: 'deny' },
         tags: [],
@@ -1474,7 +1474,7 @@ test.describe('Agent Detail Page', () => {
       `{
   "condition": {
     "selector": { "path": "" },
-    "evaluator": { "name": "regex", "config": {} }
+    "rule": { "name": "regex", "config": {} }
   },
   "action": { "decision": "deny" },
   "execution": "server",
@@ -1508,7 +1508,7 @@ test.describe('Agent Detail Page', () => {
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: { name: 'regex', config: { pattern: '.*' } },
+          rule: { name: 'regex', config: { pattern: '.*' } },
         },
         action: { decision: 'deny' },
         tags: [],

@@ -194,7 +194,7 @@ async def test_control(
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": "test", "flags": []},
                 },

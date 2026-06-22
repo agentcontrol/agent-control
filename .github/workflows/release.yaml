@@ -53,23 +53,23 @@ jobs:
         run: |
           rm -rf release-dists
           mkdir -p release-dists/models
-          mkdir -p release-dists/evaluators/builtin
-          mkdir -p release-dists/evaluators/contrib
-          mkdir -p release-dists/pypi/evaluators
+          mkdir -p release-dists/rules/builtin
+          mkdir -p release-dists/rules/contrib
+          mkdir -p release-dists/pypi/rules
           mkdir -p release-dists/sdks/python
           mkdir -p release-dists/server
 
           cp -R models/dist release-dists/models/
-          cp -R evaluators/builtin/dist release-dists/evaluators/builtin/
-          cp evaluators/builtin/dist/* release-dists/pypi/evaluators/
+          cp -R rules/builtin/dist release-dists/rules/builtin/
+          cp rules/builtin/dist/* release-dists/pypi/rules/
           cp -R sdks/python/dist release-dists/sdks/python/
           cp -R server/dist release-dists/server/
 
-          for contrib_dir in evaluators/contrib/*/dist; do
+          for contrib_dir in rules/contrib/*/dist; do
             contrib_name="$(basename "$(dirname "$contrib_dir")")"
-            mkdir -p "release-dists/evaluators/contrib/$contrib_name"
-            cp -R "$contrib_dir" "release-dists/evaluators/contrib/$contrib_name/"
-            cp "$contrib_dir"/* release-dists/pypi/evaluators/
+            mkdir -p "release-dists/rules/contrib/$contrib_name"
+            cp -R "$contrib_dir" "release-dists/rules/contrib/$contrib_name/"
+            cp "$contrib_dir"/* release-dists/pypi/rules/
           done
 
       - name: Upload built distributions
@@ -101,7 +101,7 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
-  publish-evaluators:
+  publish-rules:
     runs-on: ubuntu-latest
     needs: [release, publish-models]
     if: needs.release.outputs.released == 'true'
@@ -115,20 +115,20 @@ jobs:
           name: release-dists
           path: release-dists
 
-      - name: Publish evaluator distributions to PyPI
+      - name: Publish rule distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: release-dists/pypi/evaluators/
+          packages-dir: release-dists/pypi/rules/
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
 
   publish-server:
     runs-on: ubuntu-latest
-    needs: [release, publish-evaluators]
+    needs: [release, publish-rules]
     if: >-
       always() &&
       needs.release.outputs.released == 'true' &&
-      needs.publish-evaluators.result == 'success'
+      needs.publish-rules.result == 'success'
     permissions:
       id-token: write
 
@@ -148,11 +148,11 @@ jobs:
 
   publish-sdk:
     runs-on: ubuntu-latest
-    needs: [release, publish-evaluators]
+    needs: [release, publish-rules]
     if: >-
       always() &&
       needs.release.outputs.released == 'true' &&
-      needs.publish-evaluators.result == 'success'
+      needs.publish-rules.result == 'success'
     permissions:
       id-token: write
 
@@ -172,7 +172,7 @@ jobs:
 
   upload-release-assets:
     runs-on: ubuntu-latest
-    needs: [release, publish-models, publish-evaluators, publish-server, publish-sdk]
+    needs: [release, publish-models, publish-rules, publish-server, publish-sdk]
     if: >-
       always() &&
       needs.release.outputs.released == 'true'
@@ -194,10 +194,10 @@ jobs:
           shopt -s nullglob
           assets=(
             release-dists/models/dist/*
-            release-dists/evaluators/builtin/dist/*
+            release-dists/rules/builtin/dist/*
             release-dists/sdks/python/dist/*
             release-dists/server/dist/*
-            release-dists/evaluators/contrib/*/dist/*
+            release-dists/rules/contrib/*/dist/*
           )
 
           if [ ${#assets[@]} -eq 0 ]; then

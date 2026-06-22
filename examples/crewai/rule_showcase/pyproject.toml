@@ -1,0 +1,31 @@
+[project]
+name = "rule-showcase"
+version = "0.1.0"
+description = "CrewAI agent demonstrating all built-in rules: regex, list, json, and sql"
+requires-python = ">=3.12"
+dependencies = [
+    "crewai[tools]>=1.10.1",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "sqlglot[c]>=30.11.0,<30.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+rule_showcase = "rule_showcase.main:run"
+run_crew = "rule_showcase.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rule_showcase"]
+
+[tool.crewai]
+type = "crew"

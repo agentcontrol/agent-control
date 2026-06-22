@@ -13,8 +13,8 @@ tests/
 ├── control-store.spec.ts    # Control store modal tests
 ├── search-input.spec.ts    # SearchInput component tests
 ├── step-name-input.spec.ts  # Step name input tests
-└── evaluators/              # Evaluator form tests
-    ├── helpers.ts           # Shared helpers for evaluator tests
+└── rules/              # Rule form tests
+    ├── helpers.ts           # Shared helpers for rule tests
     ├── regex.spec.ts
     ├── list.spec.ts
     ├── json.spec.ts
@@ -71,7 +71,7 @@ pnpm test:integration:report
 
 1. **For new pages**: Create `tests/[page-name].spec.ts`
 2. **For new components**: Add tests to the relevant page spec or create component-specific tests
-3. **For new evaluators**: Add `tests/evaluators/[evaluator-name].spec.ts`
+3. **For new rules**: Add `tests/rules/[rule-name].spec.ts`
 
 ### Example Test
 

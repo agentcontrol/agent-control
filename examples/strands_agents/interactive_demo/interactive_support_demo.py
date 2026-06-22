@@ -494,12 +494,12 @@ def render_sidebar():
                             st.markdown(f"**ID:** `{control_id}`")
 
                             condition = data.get("condition", {})
-                            if "evaluator" in condition:
-                                evaluator = condition["evaluator"]
-                                st.markdown(f"**Evaluator:** `{evaluator.get('name', 'N/A')}`")
+                            if "rule" in condition:
+                                rule = condition["rule"]
+                                st.markdown(f"**Rule:** `{rule.get('name', 'N/A')}`")
 
-                                if "config" in evaluator:
-                                    config = evaluator["config"]
+                                if "config" in rule:
+                                    config = rule["config"]
                                     if "metric" in config:
                                         st.markdown(f"**Metric:** `{config['metric']}`")
                                     if "target_value" in config:

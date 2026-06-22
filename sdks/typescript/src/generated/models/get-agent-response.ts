@@ -9,9 +9,9 @@ import * as types from "../types/primitives.js";
 import { Agent, Agent$inboundSchema } from "./agent.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
-  EvaluatorSchema,
-  EvaluatorSchema$inboundSchema,
-} from "./evaluator-schema.js";
+  RuleSchema,
+  RuleSchema$inboundSchema,
+} from "./rule-schema.js";
 import { StepSchema, StepSchema$inboundSchema } from "./step-schema.js";
 
 /**
@@ -28,9 +28,9 @@ export type GetAgentResponse = {
    */
   agent: Agent;
   /**
-   * Custom evaluators registered with this agent
+   * Custom rules registered with this agent
    */
-  evaluators?: Array<EvaluatorSchema> | undefined;
+  rules?: Array<RuleSchema> | undefined;
   /**
    * Steps registered with this agent
    */
@@ -43,7 +43,7 @@ export const GetAgentResponse$inboundSchema: z.ZodMiniType<
   unknown
 > = z.object({
   agent: Agent$inboundSchema,
-  evaluators: types.optional(z.array(EvaluatorSchema$inboundSchema)),
+  rules: types.optional(z.array(RuleSchema$inboundSchema)),
   steps: z.array(StepSchema$inboundSchema),
 });
 

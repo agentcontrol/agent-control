@@ -46,7 +46,7 @@ PII_CONTROL: dict[str, Any] = {
     "scope": {"step_types": ["llm"], "stages": ["post"]},
     "condition": {
         "selector": {"path": "output"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b", "flags": []},
         },
@@ -62,7 +62,7 @@ PROD_CONTROL: dict[str, Any] = {
     "scope": {"step_types": ["llm"], "stages": ["pre"]},
     "condition": {
         "selector": {"path": "input"},
-        "evaluator": {
+        "rule": {
             "name": "list",
             "config": {
                 "values": ["DROP TABLE", "rm -rf", "sudo"],

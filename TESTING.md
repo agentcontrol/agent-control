@@ -117,19 +117,19 @@ Specific guidance:
 - **SDK**: use symbols exported from `sdks/python/src/agent_control/__init__.py`.
 - **Database seeding**: direct row insertion is acceptable for migration tests, otherwise prefer public setup flows.
 
-## Evaluator-specific expectations
+## Rule-specific expectations
 
-When adding or changing evaluators, tests should cover at least these three cases:
+When adding or changing rules, tests should cover at least these three cases:
 
 1. Null or empty input: returns `matched=False` and no error.
 2. Normal evaluation: returns the correct `matched` result for the configured threshold or predicate.
-3. Infrastructure failure: returns `matched=False` with `error` set, unless the evaluator intentionally uses a different documented error policy.
+3. Infrastructure failure: returns `matched=False` with `error` set, unless the rule intentionally uses a different documented error policy.
 
-Additional evaluator rules worth testing when relevant:
+Additional rule behavior worth testing when relevant:
 
 - `error` is for infrastructure failures, not normal evaluation outcomes.
-- Evaluators are reused across concurrent requests, so avoid request-scoped state on `self`.
-- Pre-compiled patterns, timeout handling, and async boundaries should be covered when they are part of the evaluator behavior.
+- Rules are reused across concurrent requests, so avoid request-scoped state on `self`.
+- Pre-compiled patterns, timeout handling, and async boundaries should be covered when they are part of the rule behavior.
 
 ## Running tests
 

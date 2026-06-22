@@ -1,4 +1,4 @@
-"""JSON Schema compatibility checking for evaluator schemas.
+"""JSON Schema compatibility checking for rule schemas.
 
 Determines if a new schema is backward-compatible with an existing schema.
 Used during initAgent to reject breaking changes.
@@ -116,11 +116,11 @@ def _get_type(prop_schema: dict[str, Any]) -> str:
     return "unknown"
 
 
-def format_compatibility_error(evaluator_name: str, errors: list[str]) -> str:
+def format_compatibility_error(rule_name: str, errors: list[str]) -> str:
     """Format a user-friendly error message for incompatible schema change.
 
     Args:
-        evaluator_name: Name of the evaluator with incompatible change
+        rule_name: Name of the rule with incompatible change
         errors: List of specific compatibility errors
 
     Returns:
@@ -128,7 +128,7 @@ def format_compatibility_error(evaluator_name: str, errors: list[str]) -> str:
     """
     error_list = "; ".join(errors)
     return (
-        f"Evaluator '{evaluator_name}' schema change is not backward compatible. "
+        f"Rule '{rule_name}' schema change is not backward compatible. "
         f"Changes detected: {error_list}. "
         "To make breaking changes, create a new agent with a different name."
     )

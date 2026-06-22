@@ -6,7 +6,7 @@ A complete CrewAI Flow example demonstrating routing (`@router`), embedded crews
 
 - **CrewAI Flows** with `@start`, `@listen`, and `@router` decorators
 - **Routing logic** that directs content through different pipelines based on type
-- **Agent Control integration** at every stage (JSON, LIST, REGEX evaluators + STEER actions)
+- **Agent Control integration** at every stage (JSON, LIST, REGEX rules + STEER actions)
 - **Pydantic state management** across flow stages
 - **Steering with retry** for corrective actions (e.g., adding missing Executive Summary)
 - **Human-in-the-loop** via STEER action for manager approval
@@ -15,11 +15,11 @@ A complete CrewAI Flow example demonstrating routing (`@router`), embedded crews
 
 ```
 @start: intake_request
-    |  JSON evaluator: require topic, audience, content_type
+    |  JSON rule: require topic, audience, content_type
     |
 @listen(intake_request): research
-    |  Researcher:   LIST evaluator (block banned sources)
-    |  Fact-Checker: REGEX evaluator (flag unverified claims)
+    |  Researcher:   LIST rule (block banned sources)
+    |  Fact-Checker: REGEX rule (flag unverified claims)
     |
 @listen(research): draft_content
     |  Writer: REGEX (block PII), LIST (block banned topics)
@@ -51,9 +51,9 @@ A complete CrewAI Flow example demonstrating routing (`@router`), embedded crews
 | 1 | Blog post | topic + audience + "blog_post" | low_risk | Intake -> Research -> Draft -> Auto-publish |
 | 2 | Press release | topic + audience + "press_release" | high_risk | Intake -> Research -> Draft -> Compliance review -> Publish |
 | 3 | Internal memo | topic + audience + "internal_memo" | escalation | Intake -> Research -> Draft -> Human review (STEER) |
-| 4 | Invalid request | missing fields | blocked | JSON evaluator blocks at intake |
-| 5 | Banned topic | draft contains "insider trading" | blocked | LIST evaluator blocks at draft |
-| 6 | PII in draft | draft contains email/phone/SSN | blocked | REGEX evaluator blocks at draft |
+| 4 | Invalid request | missing fields | blocked | JSON rule blocks at intake |
+| 5 | Banned topic | draft contains "insider trading" | blocked | LIST rule blocks at draft |
+| 6 | PII in draft | draft contains email/phone/SSN | blocked | REGEX rule blocks at draft |
 
 ## Prerequisites
 
@@ -80,7 +80,7 @@ curl http://localhost:8000/health
 
 ### 2. Install Dependencies
 
-`agent-control-sdk` and `crewai` have an incompatible transitive dependency on `pydantic` (crewai caps at `<2.12`, the SDK evaluators require `>=2.12.4`). Install in two steps to work around this:
+`agent-control-sdk` and `crewai` have an incompatible transitive dependency on `pydantic` (crewai caps at `<2.12`, the SDK rules require `>=2.12.4`). Install in two steps to work around this:
 
 ```bash
 cd examples/crewai/content_publishing_flow
@@ -88,8 +88,8 @@ cd examples/crewai/content_publishing_flow
 # Install crewai and all other deps via normal resolver
 uv pip install -e .
 
-# Install agent-control-sdk separately, skipping the conflicting evaluators dep
-# (this example uses server-mode execution and does not need evaluators locally)
+# Install agent-control-sdk separately, skipping the conflicting rules dep
+# (this example uses server-mode execution and does not need rules locally)
 uv pip install agent-control-sdk==7.5.0 --no-deps
 uv pip install httpx pydantic-settings docstring-parser google-re2 jsonschema
 ```
@@ -117,7 +117,7 @@ uv run --active python -m content_publishing_flow.main
 
 ## Controls Reference
 
-| Control Name | Evaluator | Stage | Step | Action |
+| Control Name | Rule | Stage | Step | Action |
 |---|---|---|---|---|
 | flow-intake-validation | JSON (required_fields) | pre | validate_request | deny |
 | flow-research-banned-sources | LIST (unreliable sources) | post | research_topic | deny |

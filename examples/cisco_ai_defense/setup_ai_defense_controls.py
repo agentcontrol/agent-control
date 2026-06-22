@@ -1,15 +1,15 @@
 """Setup Cisco AI Defense controls and attach to an agent.
 
 This script creates two controls (pre: input, post: output) that use the
-external evaluator `cisco.ai_defense`, then attaches them directly to the
+external rule `cisco.ai_defense`, then attaches them directly to the
 specified agent by name. The operations are idempotent and safe to rerun.
 
 Env:
   AGENT_CONTROL_URL      - server base URL (e.g., http://localhost:8000)
   AGENT_CONTROL_API_KEY  - server API key (sent as X-API-Key)
   AGENT_NAME             - agent name to attach controls to (default: ai-defense-demo)
-  AI_DEFENSE_API_URL     - optional override endpoint for evaluator config
-  AI_DEFENSE_TIMEOUT_S   - optional timeout for evaluator config (default 15)
+  AI_DEFENSE_API_URL     - optional override endpoint for rule config
+  AI_DEFENSE_TIMEOUT_S   - optional timeout for rule config (default 15)
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from typing import Any
 
 from agent_control import Agent, AgentControlClient, agents, controls
 
-EVALUATOR_NAME = "cisco.ai_defense"
+RULE_NAME = "cisco.ai_defense"
 
 
 def _headers() -> dict[str, str]:
@@ -82,22 +82,22 @@ async def main() -> int:
         except Exception as e:  # noqa: BLE001
             print(f"ℹ️  Agent may already exist: {e}")
 
-        # Verify evaluator is available
-        ev = await client.http_client.get("/api/v1/evaluators", headers=_headers())
+        # Verify rule is available
+        ev = await client.http_client.get("/api/v1/rules", headers=_headers())
         ev.raise_for_status()
         data = ev.json()
         if isinstance(data, dict):
-            names = set(map(str, (data.get("evaluators", {}) or data).keys()))
+            names = set(map(str, (data.get("rules", {}) or data).keys()))
         else:
             names = set()
-        if EVALUATOR_NAME not in names:
+        if RULE_NAME not in names:
             print(
-                f"Evaluator '{EVALUATOR_NAME}' not found on server. Ensure the server env has the "
-                "evaluator installed and entry points discovered."
+                f"Rule '{RULE_NAME}' not found on server. Ensure the server env has the "
+                "rule installed and entry points discovered."
             )
             return 2
 
-        # Build evaluator config shared parts
+        # Build rule config shared parts
         base_config: dict[str, Any] = {
             "api_key_env": "AI_DEFENSE_API_KEY",
             "timeout_ms": int(timeout_s * 1000),
@@ -115,8 +115,8 @@ async def main() -> int:
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
-                    "name": EVALUATOR_NAME,
+                "rule": {
+                    "name": RULE_NAME,
                     "config": {**base_config, "payload_field": "input"},
                 },
             },
@@ -131,8 +131,8 @@ async def main() -> int:
             "scope": {"step_types": ["llm"], "stages": ["post"]},
             "condition": {
                 "selector": {"path": "output"},
-                "evaluator": {
-                    "name": EVALUATOR_NAME,
+                "rule": {
+                    "name": RULE_NAME,
                     "config": {**base_config, "payload_field": "output"},
                 },
             },

@@ -44,17 +44,17 @@ def _write_fake_repo(
     """Create a minimal repo layout that exercises contrib package wiring."""
 
     version_entry = (
-        '"evaluators/contrib/example/pyproject.toml:project.version"'
+        '"rules/contrib/example/pyproject.toml:project.version"'
         if include_version_entry
         else ""
     )
     extra_entry = (
-        'example = ["agent-control-evaluator-example>=1.0.0"]'
+        'example = ["agent-control-rule-example>=1.0.0"]'
         if include_builtin_extra
         else ""
     )
     source_entry = (
-        'agent-control-evaluator-example = { path = "../contrib/example", editable = true }'
+        'agent-control-rule-example = { path = "../contrib/example", editable = true }'
         if include_builtin_source
         else ""
     )
@@ -74,10 +74,10 @@ def _write_fake_repo(
         """,
     )
     _write_text(
-        root / "evaluators" / "builtin" / "pyproject.toml",
+        root / "rules" / "builtin" / "pyproject.toml",
         f"""
         [project]
-        name = "agent-control-evaluators"
+        name = "agent-control-rules"
         version = "1.0.0"
 
         [project.optional-dependencies]
@@ -90,14 +90,14 @@ def _write_fake_repo(
         """,
     )
     _write_text(
-        root / "evaluators" / "contrib" / "example" / "pyproject.toml",
+        root / "rules" / "contrib" / "example" / "pyproject.toml",
         """
         [project]
-        name = "agent-control-evaluator-example"
+        name = "agent-control-rule-example"
         version = "1.0.0"
 
-        [project.entry-points."agent_control.evaluators"]
-        example = "agent_control_evaluator_example:ExampleEvaluator"
+        [project.entry-points."agent_control.rules"]
+        example = "agent_control_rule_example:ExampleRule"
         """,
     )
 
@@ -109,18 +109,18 @@ def test_discover_contrib_packages_skips_template_and_non_packages(
     module = _load_module()
     repo_root = tmp_path / "repo"
     _write_fake_repo(repo_root)
-    (repo_root / "evaluators" / "contrib" / "template").mkdir(parents=True)
-    (repo_root / "evaluators" / "contrib" / "notes").mkdir(parents=True)
+    (repo_root / "rules" / "contrib" / "template").mkdir(parents=True)
+    (repo_root / "rules" / "contrib" / "notes").mkdir(parents=True)
     monkeypatch.setattr(module, "REPO_ROOT", repo_root)
-    monkeypatch.setattr(module, "CONTRIB_ROOT", repo_root / "evaluators" / "contrib")
+    monkeypatch.setattr(module, "CONTRIB_ROOT", repo_root / "rules" / "contrib")
 
     # When: discovering contrib packages
     packages = module.discover_contrib_packages()
 
     # Then: only the real package is returned
     assert [package.name for package in packages] == ["example"]
-    assert packages[0].directory == "evaluators/contrib/example"
-    assert packages[0].package == "agent-control-evaluator-example"
+    assert packages[0].directory == "rules/contrib/example"
+    assert packages[0].package == "agent-control-rule-example"
 
 
 def test_verify_contrib_packages_reports_missing_root_and_builtin_wiring(
@@ -136,7 +136,7 @@ def test_verify_contrib_packages_reports_missing_root_and_builtin_wiring(
         include_builtin_source=False,
     )
     monkeypatch.setattr(module, "REPO_ROOT", repo_root)
-    monkeypatch.setattr(module, "CONTRIB_ROOT", repo_root / "evaluators" / "contrib")
+    monkeypatch.setattr(module, "CONTRIB_ROOT", repo_root / "rules" / "contrib")
 
     # When: verifying the contrib package wiring
     packages = module.discover_contrib_packages()
@@ -156,7 +156,7 @@ def test_verify_contrib_packages_accepts_complete_wiring(
     repo_root = tmp_path / "repo"
     _write_fake_repo(repo_root)
     monkeypatch.setattr(module, "REPO_ROOT", repo_root)
-    monkeypatch.setattr(module, "CONTRIB_ROOT", repo_root / "evaluators" / "contrib")
+    monkeypatch.setattr(module, "CONTRIB_ROOT", repo_root / "rules" / "contrib")
 
     # When: verifying the contrib package wiring
     packages = module.discover_contrib_packages()

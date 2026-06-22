@@ -6,7 +6,7 @@ packages (models, engine, telemetry) into the source directories before building
 then cleans up afterward. This allows the published wheels to be self-contained.
 
 Usage:
-    python scripts/build.py [models|evaluators|sdk|server|contrib|all|<contrib-name>]
+    python scripts/build.py [models|rules|sdk|server|contrib|all|<contrib-name>]
 """
 
 from __future__ import annotations
@@ -160,7 +160,7 @@ def build_sdk() -> None:
     set_package_version(sdk_pyproject, version)
     sync_dependency_floors(
         sdk_pyproject,
-        ["agent-control-evaluators", *discover_contrib_distribution_names()],
+        ["agent-control-rules", *discover_contrib_distribution_names()],
         version,
     )
 
@@ -177,7 +177,7 @@ def build_sdk() -> None:
 def build_server() -> None:
     """Build agent-control-server with vendored packages.
 
-    Note: evaluators are NOT vendored - server uses agent-control-evaluators as a
+    Note: rules are NOT vendored - server uses agent-control-rules as a
     runtime dependency to avoid duplicate module conflicts with contrib extras.
     """
     version = get_global_version()
@@ -226,7 +226,7 @@ def build_server() -> None:
     set_package_version(server_pyproject, version)
     sync_dependency_floors(
         server_pyproject,
-        ["agent-control-evaluators", *discover_contrib_distribution_names()],
+        ["agent-control-rules", *discover_contrib_distribution_names()],
         version,
     )
 
@@ -240,32 +240,32 @@ def build_server() -> None:
                 shutil.rmtree(target)
 
 
-def build_evaluators() -> None:
-    """Build agent-control-evaluators (standalone, no vendoring needed)."""
+def build_rules() -> None:
+    """Build agent-control-rules (standalone, no vendoring needed)."""
     build_python_package(
-        "agent-control-evaluators",
-        ROOT / "evaluators" / "builtin",
+        "agent-control-rules",
+        ROOT / "rules" / "builtin",
         get_global_version(),
         ["agent-control-models", *discover_contrib_distribution_names()],
     )
 
 
 def build_contrib_package(package: ContribPackage, version: str) -> None:
-    """Build a discovered contrib evaluator package."""
+    """Build a discovered contrib rule package."""
     build_python_package(
         package.package,
         ROOT / Path(package.directory),
         version,
-        ["agent-control-evaluators", "agent-control-models"],
+        ["agent-control-rules", "agent-control-models"],
     )
 
 
 def build_contrib() -> None:
-    """Build all discovered contrib evaluator packages."""
+    """Build all discovered contrib rule packages."""
     version = get_global_version()
     packages = discover_contrib_packages()
     if not packages:
-        print("No contrib evaluator packages discovered.")
+        print("No contrib rule packages discovered.")
         return
 
     package_names = ", ".join(package.name for package in packages)
@@ -275,7 +275,7 @@ def build_contrib() -> None:
 
 
 def build_named_contrib_package(target: str) -> None:
-    """Build one discovered contrib evaluator package by name."""
+    """Build one discovered contrib rule package by name."""
     packages = discover_contrib_by_name()
     package = packages.get(target)
     if package is None:
@@ -291,7 +291,7 @@ def build_all() -> None:
     """Build all packages."""
     print(f"Building all packages (version {get_global_version()})\n")
     build_models()
-    build_evaluators()
+    build_rules()
     build_contrib()
     build_sdk()
     build_server()
@@ -302,7 +302,7 @@ def usage() -> str:
     """Return the CLI usage string."""
     return (
         "Usage: python scripts/build.py "
-        "[models|evaluators|sdk|server|contrib|all|<contrib-name>]"
+        "[models|rules|sdk|server|contrib|all|<contrib-name>]"
     )
 
 
@@ -311,8 +311,8 @@ if __name__ == "__main__":
 
     if target == "models":
         build_models()
-    elif target == "evaluators":
-        build_evaluators()
+    elif target == "rules":
+        build_rules()
     elif target == "sdk":
         build_sdk()
     elif target == "server":

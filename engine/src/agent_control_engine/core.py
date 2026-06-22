@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 import re2
-from agent_control_evaluators import get_evaluator_instance
 from agent_control_models import (
     ConditionNode,
     ControlAction,
@@ -20,8 +19,9 @@ from agent_control_models import (
     ControlScope,
     EvaluationRequest,
     EvaluationResponse,
-    EvaluatorResult,
+    RuleResult,
 )
+from agent_control_rules import get_rule_instance
 
 from .selectors import select_data
 
@@ -44,8 +44,8 @@ def _env_positive_int(*names: str, default: int) -> int:
     return default
 
 
-# Default timeout for evaluator execution (seconds)
-DEFAULT_EVALUATOR_TIMEOUT = float(os.environ.get("EVALUATOR_TIMEOUT_SECONDS", "30"))
+# Default timeout for rule execution (seconds)
+DEFAULT_RULE_TIMEOUT = float(os.environ.get("RULE_TIMEOUT_SECONDS", "30"))
 
 # Max concurrent evaluations (limits task spawning overhead for large policies).
 # Prefer the namespaced env var; MAX_CONCURRENT_EVALUATIONS is kept for compatibility.
@@ -149,7 +149,7 @@ def _selected_data_preview_value(
 
 
 def _selected_data_preview(value: Any) -> dict[str, Any]:
-    """Return UI-safe selector output details for evaluator-level inspection."""
+    """Return UI-safe selector output details for rule-level inspection."""
     preview, truncated = _selected_data_preview_value(value)
     return {
         "type": type(value).__name__,
@@ -199,14 +199,14 @@ class _EvalTask:
 
     item: ControlWithIdentity
     task: asyncio.Task[None] | None = None
-    result: EvaluatorResult | None = None
+    result: RuleResult | None = None
 
 
 @dataclass
 class _ConditionEvaluation:
     """Internal result for recursive condition evaluation."""
 
-    result: EvaluatorResult
+    result: RuleResult
     trace: dict[str, Any]
 
 
@@ -239,7 +239,7 @@ class ControlEngine:
 
     @staticmethod
     def _truncated_message(message: str | None) -> str | None:
-        """Truncate long evaluator messages in condition traces."""
+        """Truncate long rule messages in condition traces."""
         if not message:
             return None
         if len(message) <= 200:
@@ -256,9 +256,9 @@ class ControlEngine:
         error: str,
         *,
         message_prefix: str = "Evaluation failed",
-    ) -> EvaluatorResult:
-        """Create a failed evaluator result from an internal error string."""
-        return EvaluatorResult(
+    ) -> RuleResult:
+        """Create a failed rule result from an internal error string."""
+        return RuleResult(
             matched=False,
             confidence=0.0,
             message=f"{message_prefix}: {error}",
@@ -276,10 +276,10 @@ class ControlEngine:
         if node.is_leaf():
             leaf_parts = node.leaf_parts()
             if leaf_parts is None:
-                raise ValueError("Leaf condition must contain selector and evaluator")
-            selector, evaluator = leaf_parts
+                raise ValueError("Leaf condition must contain selector and rule")
+            selector, rule = leaf_parts
             trace["selector_path"] = selector.path
-            trace["evaluator_name"] = evaluator.name
+            trace["rule_name"] = rule.name
             trace["confidence"] = None
             trace["error"] = None
             return trace
@@ -296,9 +296,9 @@ class ControlEngine:
         request: EvaluationRequest,
         semaphore: asyncio.Semaphore,
     ) -> _ConditionEvaluation:
-        """Evaluate a leaf selector/evaluator pair.
+        """Evaluate a leaf selector/rule pair.
 
-        The shared semaphore limits concurrent leaf evaluator executions across
+        The shared semaphore limits concurrent leaf rule executions across
         the entire engine run. Composite conditions evaluate serially, so a
         single control only holds one semaphore slot at a time, but multi-leaf
         controls may acquire and release that shared slot more than once while
@@ -306,29 +306,29 @@ class ControlEngine:
         """
         leaf_parts = node.leaf_parts()
         if leaf_parts is None:
-            raise ValueError("Leaf condition must contain selector and evaluator")
-        selector, evaluator_spec = leaf_parts
+            raise ValueError("Leaf condition must contain selector and rule")
+        selector, rule_spec = leaf_parts
 
         selector_path = selector.path or "*"
         data = select_data(request.step, selector_path)
 
         try:
             async with semaphore:
-                evaluator = get_evaluator_instance(evaluator_spec)
-                timeout = evaluator.get_timeout_seconds()
+                rule = get_rule_instance(rule_spec)
+                timeout = rule.get_timeout_seconds()
                 if timeout <= 0:
-                    timeout = DEFAULT_EVALUATOR_TIMEOUT
+                    timeout = DEFAULT_RULE_TIMEOUT
 
                 result = await asyncio.wait_for(
-                    evaluator.evaluate(data),
+                    rule.evaluate(data),
                     timeout=timeout,
                 )
         except TimeoutError:
-            error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
+            error_msg = f"TimeoutError: Rule exceeded {timeout}s timeout"
             logger.warning(
-                "Evaluator timeout for control '%s' (evaluator: %s): %s",
+                "Rule timeout for control '%s' (rule: %s): %s",
                 item.name,
-                evaluator_spec.name,
+                rule_spec.name,
                 error_msg,
                 exc_info=True,
             )
@@ -336,9 +336,9 @@ class ControlEngine:
         except Exception as e:
             error_msg = self._format_exception(e)
             logger.error(
-                "Evaluator error for control '%s' (evaluator: %s): %s",
+                "Rule error for control '%s' (rule: %s): %s",
                 item.name,
-                evaluator_spec.name,
+                rule_spec.name,
                 error_msg,
                 exc_info=True,
             )
@@ -349,7 +349,7 @@ class ControlEngine:
             "evaluated": True,
             "matched": result.matched,
             "selector_path": selector_path,
-            "evaluator_name": evaluator_spec.name,
+            "rule_name": rule_spec.name,
             "confidence": result.confidence,
             "error": result.error,
             "message": self._truncated_message(result.message),
@@ -372,17 +372,17 @@ class ControlEngine:
         trace: dict[str, Any],
         metadata: dict[str, Any] | None = None,
         error: str | None = None,
-    ) -> EvaluatorResult:
-        """Create a composite evaluator result with a condition trace."""
+    ) -> RuleResult:
+        """Create a composite rule result with a condition trace."""
         result_metadata = dict(metadata or {})
         result_metadata["condition_trace"] = trace
 
         if error is not None:
-            return EvaluatorResult(
+            return RuleResult(
                 matched=False,
                 confidence=0.0,
                 message=(
-                    "Condition evaluation aborted due to a child evaluator error: "
+                    "Condition evaluation aborted due to a child rule error: "
                     f"{error}"
                 ),
                 metadata=result_metadata,
@@ -390,7 +390,7 @@ class ControlEngine:
             )
 
         message = "Condition tree matched" if matched else "Condition tree did not match"
-        return EvaluatorResult(
+        return RuleResult(
             matched=matched,
             confidence=confidence,
             message=message,
@@ -406,7 +406,7 @@ class ControlEngine:
         """Select stable child metadata to preserve on composite results.
 
         The engine_selected_data_preview value in this metadata is not all
-        evaluator inputs. It is the bounded selected value preview from the leaf
+        rule inputs. It is the bounded selected value preview from the leaf
         metadata the engine preserves for the final composite result:
         - or where one child matches: engine_selected_data_preview comes from the
           matching child.
@@ -418,7 +418,7 @@ class ControlEngine:
           first evaluated child.
         - not: engine_selected_data_preview comes from its child.
         """
-        source_result: EvaluatorResult | None = None
+        source_result: RuleResult | None = None
         if matched:
             source_result = next(
                 (
@@ -604,7 +604,7 @@ class ControlEngine:
                                     control_id=item.id,
                                     control_name=item.name,
                                     action=control_def.action.decision,
-                                    result=EvaluatorResult(
+                                    result=RuleResult(
                                         matched=False,
                                         confidence=0.0,
                                         message=(
@@ -655,7 +655,7 @@ class ControlEngine:
         matches: list[ControlMatch] = []
         is_safe = True
         deny_found = asyncio.Event()
-        # The concurrency cap applies to visited leaf evaluator executions, not
+        # The concurrency cap applies to visited leaf rule executions, not
         # whole top-level controls. Composite trees are still walked serially.
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_EVALUATIONS)
 

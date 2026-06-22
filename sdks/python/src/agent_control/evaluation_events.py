@@ -51,12 +51,12 @@ def observability_metadata(
     identity = control_def.observability_identity()
     return (
         identity.selector_path,
-        identity.evaluator_name,
+        identity.rule_name,
         {
-            "primary_evaluator": identity.evaluator_name,
+            "primary_rule": identity.rule_name,
             "primary_selector_path": identity.selector_path,
             "leaf_count": identity.leaf_count,
-            "all_evaluators": identity.all_evaluators,
+            "all_rules": identity.all_rules,
             "all_selector_paths": identity.all_selector_paths,
         },
     )
@@ -110,10 +110,10 @@ def _build_events_for_matches(
         control_def = control_lookup.get(match.control_id)
         event_metadata = _safe_event_metadata(dict(match.result.metadata or {}))
         selector_path = None
-        evaluator_name = None
+        rule_name = None
 
         if control_def is not None:
-            selector_path, evaluator_name, identity_metadata = observability_metadata(control_def)
+            selector_path, rule_name, identity_metadata = observability_metadata(control_def)
             event_metadata.update(identity_metadata)
 
         events.append(
@@ -130,7 +130,7 @@ def _build_events_for_matches(
                 matched=matched,
                 confidence=match.result.confidence,
                 timestamp=now,
-                evaluator_name=evaluator_name,
+                rule_name=rule_name,
                 selector_path=selector_path,
                 error_message=match.result.error if include_error_message else None,
                 metadata=event_metadata,

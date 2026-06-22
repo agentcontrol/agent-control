@@ -1,14 +1,14 @@
-"""DeepEval GEval evaluator example.
+"""DeepEval GEval rule example.
 
-This module demonstrates how to extend the base Evaluator class to create
-custom evaluators using external libraries like DeepEval.
+This module demonstrates how to extend the base Rule class to create
+custom rules using external libraries like DeepEval.
 """
 
-from config import DeepEvalEvaluatorConfig, DeepEvalTestCaseParam
-from evaluator import DeepEvalEvaluator
+from config import DeepEvalRuleConfig, DeepEvalTestCaseParam
+from rule import DeepEvalRule
 
 __all__ = [
-    "DeepEvalEvaluator",
-    "DeepEvalEvaluatorConfig",
+    "DeepEvalRule",
+    "DeepEvalRuleConfig",
     "DeepEvalTestCaseParam",
 ]

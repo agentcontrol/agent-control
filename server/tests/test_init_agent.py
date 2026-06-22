@@ -141,12 +141,12 @@ def test_agent_endpoints_normalize_mixed_case_agent_name(client: TestClient) -> 
     controls_resp = client.get(f"/api/v1/agents/{mixed_case_name}/controls")
     assert controls_resp.status_code == 200
 
-    evaluators_resp = client.get(f"/api/v1/agents/{mixed_case_name}/evaluators")
-    assert evaluators_resp.status_code == 200
+    rules_resp = client.get(f"/api/v1/agents/{mixed_case_name}/rules")
+    assert rules_resp.status_code == 200
 
     patch_resp = client.patch(
         f"/api/v1/agents/{mixed_case_name}",
-        json={"remove_steps": [], "remove_evaluators": []},
+        json={"remove_steps": [], "remove_rules": []},
     )
     assert patch_resp.status_code == 200
 
@@ -276,12 +276,12 @@ def test_init_agent_overwrites_step_on_signature_change(client: TestClient) -> N
     assert "schema conflict" in body["detail"].lower()
 
 
-def test_get_agent_returns_evaluators(client: TestClient) -> None:
-    """Test that GET /agents/{id} returns evaluators."""
-    # Given: an agent with evaluators
+def test_get_agent_returns_rules(client: TestClient) -> None:
+    """Test that GET /agents/{id} returns rules."""
+    # Given: an agent with rules
     agent_name = str(uuid.uuid4())
     payload = make_agent_payload(agent_name=agent_name)
-    payload["evaluators"] = [
+    payload["rules"] = [
         {"name": "eval-a", "description": "First", "config_schema": {}},
         {"name": "eval-b", "description": "Second", "config_schema": {"type": "object"}},
     ]
@@ -290,12 +290,12 @@ def test_get_agent_returns_evaluators(client: TestClient) -> None:
 
     # When: fetching the agent
     get_resp = client.get(f"/api/v1/agents/{agent_name}")
-    # Then: evaluators are included in the response
+    # Then: rules are included in the response
     assert get_resp.status_code == 200
     data = get_resp.json()
-    assert "evaluators" in data
-    assert len(data["evaluators"]) == 2
-    names = {e["name"] for e in data["evaluators"]}
+    assert "rules" in data
+    assert len(data["rules"]) == 2
+    names = {e["name"] for e in data["rules"]}
     assert names == {"eval-a", "eval-b"}
 
 
@@ -537,9 +537,9 @@ def test_list_agents_empty(client: TestClient) -> None:
 
 def test_list_agents_returns_created_agents(client: TestClient) -> None:
     """Test listing agents returns created agents with correct summaries."""
-    # Given: two agents with different steps/evaluators
+    # Given: two agents with different steps/rules
     payload1 = make_agent_payload(name="agent-one-01")
-    payload1["evaluators"] = [
+    payload1["rules"] = [
         {"name": "eval-1", "description": "Test", "config_schema": {}},
     ]
     r1 = client.post("/api/v1/agents/initAgent", json=payload1)
@@ -568,14 +568,14 @@ def test_list_agents_returns_created_agents(client: TestClient) -> None:
     agent1 = agent_map["agent-one-01"]
     assert agent1["agent_name"] == "agent-one-01"
     assert agent1["step_count"] == 1  # from make_agent_payload
-    assert agent1["evaluator_count"] == 1
+    assert agent1["rule_count"] == 1
     assert agent1["policy_ids"] == []
 
     assert "agent-two-02" in agent_map
     agent2 = agent_map["agent-two-02"]
     assert agent2["agent_name"] == "agent-two-02"
     assert agent2["step_count"] == 2
-    assert agent2["evaluator_count"] == 0
+    assert agent2["rule_count"] == 0
     assert agent2["policy_ids"] == []
 
 

@@ -12,7 +12,7 @@ This directory contains runnable examples for Agent Control. Each example has it
 | Google ADK Callbacks | Lower-level ADK lifecycle hook integration for manual model and tool guardrails. | https://docs.agentcontrol.dev/examples/google-adk-callbacks |
 | Google ADK Decorator | Tool-only `@control()` pattern for explicit ADK tool protection. | https://docs.agentcontrol.dev/examples/google-adk-decorator |
 | Customer Support Agent | Enterprise scenario with PII protection, prompt-injection defense, and multiple tools. | https://docs.agentcontrol.dev/examples/customer-support |
-| DeepEval | Build a custom evaluator using DeepEval GEval metrics. | https://docs.agentcontrol.dev/examples/deepeval |
+| DeepEval | Build a custom rule using DeepEval GEval metrics. | https://docs.agentcontrol.dev/examples/deepeval |
 | Galileo Luna Direct | Direct `/scorers/invoke` Luna evaluation with a composite Agent Control condition. | `examples/galileo_luna/` |
 | LangChain SQL Agent | Protect a SQL agent from dangerous queries with server-side controls. | https://docs.agentcontrol.dev/examples/langchain-sql |
 | Steer Action Demo | Banking transfer agent showcasing observe, deny, and steer actions. | https://docs.agentcontrol.dev/examples/steer-action-demo |

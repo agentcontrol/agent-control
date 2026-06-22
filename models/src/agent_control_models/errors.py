@@ -63,17 +63,17 @@ class ErrorCode(StrEnum):
     CONTROL_NOT_FOUND = "CONTROL_NOT_FOUND"
     CONTROL_VERSION_NOT_FOUND = "CONTROL_VERSION_NOT_FOUND"
     CONTROL_BINDING_NOT_FOUND = "CONTROL_BINDING_NOT_FOUND"
-    EVALUATOR_NOT_FOUND = "EVALUATOR_NOT_FOUND"
+    RULE_NOT_FOUND = "RULE_NOT_FOUND"
 
     # Conflict Errors (3xx pattern)
     AGENT_NAME_CONFLICT = "AGENT_NAME_CONFLICT"
     POLICY_NAME_CONFLICT = "POLICY_NAME_CONFLICT"
     CONTROL_NAME_CONFLICT = "CONTROL_NAME_CONFLICT"
     CONTROL_BINDING_CONFLICT = "CONTROL_BINDING_CONFLICT"
-    EVALUATOR_NAME_CONFLICT = "EVALUATOR_NAME_CONFLICT"
+    RULE_NAME_CONFLICT = "RULE_NAME_CONFLICT"
     CONTROL_IN_USE = "CONTROL_IN_USE"
     CONTROL_TEMPLATE_CONFLICT = "CONTROL_TEMPLATE_CONFLICT"
-    EVALUATOR_IN_USE = "EVALUATOR_IN_USE"
+    RULE_IN_USE = "RULE_IN_USE"
     SCHEMA_INCOMPATIBLE = "SCHEMA_INCOMPATIBLE"
 
     # Validation Errors (4xx pattern)
@@ -327,19 +327,19 @@ class ProblemDetail(BaseModel):
                     "errors": [
                         {
                             "resource": "Control",
-                            "field": "data.evaluator.config.threshold",
+                            "field": "data.rule.config.threshold",
                             "code": "type_error",
                             "message": "Expected number, got string",
                             "value": "high",
                         },
                         {
                             "resource": "Control",
-                            "field": "data.evaluator.name",
+                            "field": "data.rule.name",
                             "code": "not_found",
-                            "message": "Evaluator 'nonexistent' not registered",
+                            "message": "Rule 'nonexistent' not registered",
                         },
                     ],
-                    "hint": "Check the evaluator configuration against the schema.",
+                    "hint": "Check the rule configuration against the schema.",
                 },
             ]
         }
@@ -372,16 +372,16 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.CONTROL_NOT_FOUND: "Control Not Found",
     ErrorCode.CONTROL_VERSION_NOT_FOUND: "Control Version Not Found",
     ErrorCode.CONTROL_BINDING_NOT_FOUND: "Control Binding Not Found",
-    ErrorCode.EVALUATOR_NOT_FOUND: "Evaluator Not Found",
+    ErrorCode.RULE_NOT_FOUND: "Rule Not Found",
     # Conflict errors
     ErrorCode.AGENT_NAME_CONFLICT: "Agent Name Already Exists",
     ErrorCode.POLICY_NAME_CONFLICT: "Policy Name Already Exists",
     ErrorCode.CONTROL_NAME_CONFLICT: "Control Name Already Exists",
     ErrorCode.CONTROL_BINDING_CONFLICT: "Control Binding Already Exists",
-    ErrorCode.EVALUATOR_NAME_CONFLICT: "Evaluator Name Conflict",
+    ErrorCode.RULE_NAME_CONFLICT: "Rule Name Conflict",
     ErrorCode.CONTROL_IN_USE: "Control In Use",
     ErrorCode.CONTROL_TEMPLATE_CONFLICT: "Control Template Conflict",
-    ErrorCode.EVALUATOR_IN_USE: "Evaluator In Use",
+    ErrorCode.RULE_IN_USE: "Rule In Use",
     ErrorCode.SCHEMA_INCOMPATIBLE: "Schema Incompatible",
     # Validation errors
     ErrorCode.VALIDATION_ERROR: "Validation Error",

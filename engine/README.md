@@ -1,21 +1,21 @@
 # Agent Control Engine
 
-The engine is the runtime that evaluates controls, resolves selectors, and runs evaluators. It is used by the server and SDK to apply control logic consistently.
+The engine is the runtime that evaluates controls, resolves selectors, and runs rules. It is used by the server and SDK to apply control logic consistently.
 
 ## What this package provides
 
-- Evaluator discovery via Python entry points
+- Rule discovery via Python entry points
 - Selector evaluation and payload extraction
-- Evaluator execution and result aggregation
-- Cached evaluator instances for performance
+- Rule execution and result aggregation
+- Cached rule instances for performance
 
-## Evaluator discovery
+## Rule discovery
 
 ```python
-from agent_control_engine import discover_evaluators, list_evaluators
+from agent_control_engine import discover_rules, list_rules
 
-discover_evaluators()
-print(list_evaluators())
+discover_rules()
+print(list_rules())
 ```
 
 Full guide: https://docs.agentcontrol.dev/components/engine

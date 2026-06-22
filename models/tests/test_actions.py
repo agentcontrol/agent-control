@@ -8,7 +8,7 @@ from agent_control_models import (
     ControlExecutionEvent,
     ControlMatch,
     EventQueryRequest,
-    EvaluatorResult,
+    RuleResult,
     expand_action_filter,
 )
 from agent_control_models.actions import normalize_action, validate_action
@@ -171,7 +171,7 @@ class TestReadPathNormalization:
             control_id=1,
             control_name="test",
             action=legacy,
-            result=EvaluatorResult(matched=True, confidence=0.9),
+            result=RuleResult(matched=True, confidence=0.9),
         )
 
         # Then: the action is normalized to the canonical value
@@ -214,7 +214,7 @@ class TestReadPathNormalization:
                 control_id=1,
                 control_name="test",
                 action="block",
-                result=EvaluatorResult(matched=True, confidence=0.9),
+                result=RuleResult(matched=True, confidence=0.9),
             )
 
 

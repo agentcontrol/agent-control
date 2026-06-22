@@ -52,7 +52,7 @@ export type CheckStage = OpenEnum<typeof CheckStage>;
  * - Context: agent, control, check stage, applies to
  * - Result: action taken, whether matched, confidence score
  * - Timing: when it happened, how long it took
- * - Optional details: evaluator name, selector path, errors, metadata
+ * - Optional details: rule name, selector path, errors, metadata
  *
  * Attributes:
  *     control_execution_id: Unique ID for this specific control execution
@@ -64,11 +64,11 @@ export type CheckStage = OpenEnum<typeof CheckStage>;
  *     check_stage: "pre" (before execution) or "post" (after execution)
  *     applies_to: "llm_call" or "tool_call"
  *     action: The action taken (deny, steer, observe)
- *     matched: Whether the control evaluator matched
- *     confidence: Confidence score from the evaluator (0.0-1.0)
+ *     matched: Whether the control rule matched
+ *     confidence: Confidence score from the rule (0.0-1.0)
  *     timestamp: When the control was executed (UTC)
  *     execution_duration_ms: How long the control evaluation took
- *     evaluator_name: Name of the evaluator used
+ *     rule_name: Name of the rule used
  *     selector_path: The selector path used to extract data
  *     error_message: Error message if evaluation failed
  *     metadata: Additional metadata for extensibility
@@ -108,15 +108,15 @@ export type ControlExecutionEvent = {
    */
   errorMessage?: string | null | undefined;
   /**
-   * Name of the evaluator used
+   * Name of the rule used
    */
-  evaluatorName?: string | null | undefined;
+  ruleName?: string | null | undefined;
   /**
    * Execution duration in milliseconds
    */
   executionDurationMs?: number | null | undefined;
   /**
-   * Whether the evaluator matched (True) or not (False)
+   * Whether the rule matched (True) or not (False)
    */
   matched: boolean;
   /**
@@ -174,7 +174,7 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
     control_id: types.number(),
     control_name: types.string(),
     error_message: z.optional(z.nullable(types.string())),
-    evaluator_name: z.optional(z.nullable(types.string())),
+    rule_name: z.optional(z.nullable(types.string())),
     execution_duration_ms: z.optional(z.nullable(types.number())),
     matched: types.boolean(),
     metadata: types.optional(z.record(z.string(), z.any())),
@@ -192,7 +192,7 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
       "control_id": "controlId",
       "control_name": "controlName",
       "error_message": "errorMessage",
-      "evaluator_name": "evaluatorName",
+      "rule_name": "ruleName",
       "execution_duration_ms": "executionDurationMs",
       "selector_path": "selectorPath",
       "span_id": "spanId",
@@ -211,7 +211,7 @@ export type ControlExecutionEvent$Outbound = {
   control_id: number;
   control_name: string;
   error_message?: string | null | undefined;
-  evaluator_name?: string | null | undefined;
+  rule_name?: string | null | undefined;
   execution_duration_ms?: number | null | undefined;
   matched: boolean;
   metadata?: { [k: string]: any } | undefined;
@@ -236,7 +236,7 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
     controlId: z.int(),
     controlName: z.string(),
     errorMessage: z.optional(z.nullable(z.string())),
-    evaluatorName: z.optional(z.nullable(z.string())),
+    ruleName: z.optional(z.nullable(z.string())),
     executionDurationMs: z.optional(z.nullable(z.number())),
     matched: z.boolean(),
     metadata: z.optional(z.record(z.string(), z.any())),
@@ -254,7 +254,7 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
       controlId: "control_id",
       controlName: "control_name",
       errorMessage: "error_message",
-      evaluatorName: "evaluator_name",
+      ruleName: "rule_name",
       executionDurationMs: "execution_duration_ms",
       selectorPath: "selector_path",
       spanId: "span_id",

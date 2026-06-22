@@ -2,7 +2,7 @@ import { Box, Button, Group } from '@mantine/core';
 import { useCallback, useEffect, useState } from 'react';
 
 import type {
-  JsonEditorEvaluatorOption,
+  JsonEditorRuleOption,
   JsonEditorMode,
 } from '@/core/page-components/agent-detail/modals/edit-control/types';
 
@@ -15,7 +15,7 @@ export const CT_JSON_EDITOR_TEST_ID = 'codemirror-json-editor-ct';
 const DEFAULT_CONTROL_JSON =
   '{"execution":"server","condition":{},"action":{"decision":"allow"}}';
 
-const CT_EVALUATORS: JsonEditorEvaluatorOption[] = [
+const CT_RULES: JsonEditorRuleOption[] = [
   {
     id: 'regex',
     label: 'Regex',
@@ -96,7 +96,7 @@ export function JsonEditorCodeMirrorCtHost({ mode }: { mode: JsonEditorMode }) {
         setJsonError={setJsonError}
         editorMode={mode}
         schema={mode === 'control' ? HARNESS_CONTROL_SCHEMA : null}
-        evaluators={mode === 'control' ? CT_EVALUATORS : undefined}
+        rules={mode === 'control' ? CT_RULES : undefined}
         testId={CT_JSON_EDITOR_TEST_ID}
         label="JSON editor (component test)"
         helperText="Playwright CT mounts this host without a Next.js page."

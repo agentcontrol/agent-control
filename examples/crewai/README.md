@@ -93,11 +93,11 @@ uv run --active python setup_controls.py
 uv run --active python -m steering_financial_agent.main
 ```
 
-### 2. [Evaluator Showcase](./evaluator_showcase/) -- All 4 Built-in Evaluators
+### 2. [Rule Showcase](./rule_showcase/) -- All 4 Built-in Rules
 
-Demonstrates every built-in evaluator in a data-analyst scenario:
+Demonstrates every built-in rule in a data-analyst scenario:
 
-| Evaluator | Stage | Purpose |
+| Rule | Stage | Purpose |
 |-----------|-------|---------|
 | **SQL** | PRE | Block DROP/DELETE, enforce LIMIT, prevent injection |
 | **LIST** | PRE | Restrict access to sensitive tables |
@@ -105,9 +105,9 @@ Demonstrates every built-in evaluator in a data-analyst scenario:
 | **JSON** | PRE | Validate required fields, enforce constraints, steer for missing data |
 
 ```bash
-cd examples/crewai/evaluator_showcase
+cd examples/crewai/rule_showcase
 uv run --active python setup_controls.py
-uv run --active python -m evaluator_showcase.main
+uv run --active python -m rule_showcase.main
 ```
 
 ### 3. [Secure Research Crew](./secure_research_crew/) -- Multi-Agent Crew with Per-Role Policies
@@ -129,7 +129,7 @@ A production-quality **3-agent sequential crew** (Researcher, Analyst, Writer) w
 
 **5 scenarios** -- all run without LLM calls (direct tool testing):
 
-| # | Scenario | Agent | Evaluator | Action | Result |
+| # | Scenario | Agent | Rule | Action | Result |
 |---|----------|-------|-----------|--------|--------|
 | 1 | Happy path | All 3 | All | observe | Report generated with sources |
 | 2 | SQL injection | Researcher | SQL | deny | "Multiple SQL statements not allowed" |
@@ -168,9 +168,9 @@ A complete **CrewAI Flow** using `@start`, `@listen`, and `@router` decorators w
 | 1 | Blog post | low_risk -> auto-publish | Published |
 | 2 | Press release | high_risk -> compliance review | Steered (exec summary), then published |
 | 3 | Internal memo | escalation -> human review | Steered: pending manager approval |
-| 4 | Invalid request | intake blocked | JSON evaluator: missing fields |
-| 5 | Banned topic | draft blocked | LIST evaluator: "insider trading" detected |
-| 6 | PII in draft | draft blocked | REGEX evaluator: email/SSN/phone detected |
+| 4 | Invalid request | intake blocked | JSON rule: missing fields |
+| 5 | Banned topic | draft blocked | LIST rule: "insider trading" detected |
+| 6 | PII in draft | draft blocked | REGEX rule: email/SSN/phone detected |
 
 ```bash
 cd examples/crewai/content_publishing_flow
@@ -190,10 +190,10 @@ uv run --active python -m content_publishing_flow.main
 | **deny** action | Yes | Yes | Yes | Yes |
 | **steer** action | Yes | Yes | Yes | Yes |
 | **observe** action | Yes | | | |
-| Regex evaluator | | Yes | Yes | Yes |
-| List evaluator | Yes | Yes | Yes | Yes |
-| JSON evaluator | Yes | Yes | Yes | Yes |
-| SQL evaluator | | Yes | Yes | |
+| Regex rule | | Yes | Yes | Yes |
+| List rule | Yes | Yes | Yes | Yes |
+| JSON rule | Yes | Yes | Yes | Yes |
+| SQL rule | | Yes | Yes | |
 | Steering context + retry loop | Yes | Yes | Yes | Yes |
 | ControlViolationError handling | Yes | Yes | Yes | Yes |
 | ControlSteerError handling | Yes | Yes | Yes | Yes |

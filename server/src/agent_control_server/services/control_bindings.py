@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import BadRequestError, ConflictError, NotFoundError
 from ..models import Control, ControlBinding
-from .evaluator_utils import parse_evaluator_ref_full
+from .rule_utils import parse_rule_ref_full
 
 
 @dataclass(frozen=True)
@@ -345,9 +345,9 @@ class ControlBindingsService:
 
         Bindings attach a control to a target ``(target_type, target_id)``,
         so the control must be runnable against any agent that later
-        evaluates against that target. Agent-scoped evaluators
-        (``agent_name:evaluator_name``) are tied to a specific agent's
-        registered evaluator set, so a control referencing one cannot be
+        evaluates against that target. Agent-scoped rules
+        (``agent_name:rule_name``) are tied to a specific agent's
+        registered rule set, so a control referencing one cannot be
         validated at binding time without choosing an agent. Reject those
         controls here so the misuse surfaces as a clear 400 instead of a
         runtime evaluation failure.
@@ -372,25 +372,25 @@ class ControlBindingsService:
             )
 
         _, control_name, control_data = row
-        agent_scoped_refs = _agent_scoped_evaluators(control_data)
+        agent_scoped_refs = _agent_scoped_rules(control_data)
         if agent_scoped_refs:
             raise BadRequestError(
                 error_code=ErrorCode.CONTROL_BINDING_INCOMPATIBLE,
                 detail=(
                     f"Control '{control_name}' references agent-scoped "
-                    f"evaluator(s) {sorted(agent_scoped_refs)!r} and cannot "
+                    f"rule(s) {sorted(agent_scoped_refs)!r} and cannot "
                     f"be attached to a target binding."
                 ),
                 hint=(
-                    "Use a control whose evaluators are all global (built-in "
+                    "Use a control whose rules are all global (built-in "
                     "or external), or attach this control directly to the "
-                    "specific agent that registered the evaluator."
+                    "specific agent that registered the rule."
                 ),
             )
 
 
-def _agent_scoped_evaluators(control_data: object) -> set[str]:
-    """Return the set of agent-scoped evaluator references in a control.
+def _agent_scoped_rules(control_data: object) -> set[str]:
+    """Return the set of agent-scoped rule references in a control.
 
     Returns an empty set for unrendered template controls (no condition
     tree yet) and for any control whose stored data fails to parse —
@@ -406,7 +406,7 @@ def _agent_scoped_evaluators(control_data: object) -> set[str]:
     except ValidationError:
         return set()
     refs: set[str] = set()
-    for _, evaluator_cfg in definition.iter_condition_leaf_parts():
-        if parse_evaluator_ref_full(evaluator_cfg.name).type == "agent":
-            refs.add(evaluator_cfg.name)
+    for _, rule_cfg in definition.iter_condition_leaf_parts():
+        if parse_rule_ref_full(rule_cfg.name).type == "agent":
+            refs.add(rule_cfg.name)
     return refs

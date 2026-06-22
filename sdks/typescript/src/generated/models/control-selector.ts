@@ -13,7 +13,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  *
  * @remarks
  *
- * - path: which slice of the Step to feed into the evaluator. Optional, defaults to "*"
+ * - path: which slice of the Step to feed into the rule. Optional, defaults to "*"
  *   meaning the entire Step object.
  */
 export type ControlSelector = {

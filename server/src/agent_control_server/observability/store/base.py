@@ -43,8 +43,8 @@ class StatsResult(BaseModel):
     Attributes:
         stats: List of per-control statistics
         total_executions: Total executions across all controls
-        total_matches: Total matches across all controls (evaluator matched)
-        total_non_matches: Total non-matches across all controls (evaluator didn't match)
+        total_matches: Total matches across all controls (rule matched)
+        total_non_matches: Total non-matches across all controls (rule didn't match)
         total_errors: Total errors across all controls (evaluation failed)
         action_counts: Breakdown of actions for matched executions
         timeseries: Optional time-series data points

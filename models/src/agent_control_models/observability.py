@@ -36,7 +36,7 @@ class ControlExecutionEvent(BaseModel):
     - Context: agent, control, check stage, applies to
     - Result: action taken, whether matched, confidence score
     - Timing: when it happened, how long it took
-    - Optional details: evaluator name, selector path, errors, metadata
+    - Optional details: rule name, selector path, errors, metadata
 
     Attributes:
         control_execution_id: Unique ID for this specific control execution
@@ -48,11 +48,11 @@ class ControlExecutionEvent(BaseModel):
         check_stage: "pre" (before execution) or "post" (after execution)
         applies_to: "llm_call" or "tool_call"
         action: The action taken (deny, steer, observe)
-        matched: Whether the control evaluator matched
-        confidence: Confidence score from the evaluator (0.0-1.0)
+        matched: Whether the control rule matched
+        confidence: Confidence score from the rule (0.0-1.0)
         timestamp: When the control was executed (UTC)
         execution_duration_ms: How long the control evaluation took
-        evaluator_name: Name of the evaluator used
+        rule_name: Name of the rule used
         selector_path: The selector path used to extract data
         error_message: Error message if evaluation failed
         metadata: Additional metadata for extensibility
@@ -99,7 +99,7 @@ class ControlExecutionEvent(BaseModel):
         ..., description="Action taken by the control"
     )
     matched: bool = Field(
-        ..., description="Whether the evaluator matched (True) or not (False)"
+        ..., description="Whether the rule matched (True) or not (False)"
     )
     confidence: float = Field(
         ..., ge=0.0, le=1.0, description="Confidence score (0.0 to 1.0)"
@@ -115,8 +115,8 @@ class ControlExecutionEvent(BaseModel):
     )
 
     # Optional details
-    evaluator_name: str | None = Field(
-        default=None, description="Name of the evaluator used"
+    rule_name: str | None = Field(
+        default=None, description="Name of the rule used"
     )
     selector_path: str | None = Field(
         default=None, description="Selector path used to extract data"
@@ -187,7 +187,7 @@ class ControlExecutionEvent(BaseModel):
                     "confidence": 0.95,
                     "timestamp": "2025-01-09T10:30:00Z",
                     "execution_duration_ms": 15.3,
-                    "evaluator_name": "regex",
+                    "rule_name": "regex",
                     "selector_path": "input",
                 }
             ]
@@ -499,8 +499,8 @@ class StatsTotals(BaseModel):
 
     Attributes:
         execution_count: Total executions across all controls
-        match_count: Total matches across all controls (evaluator matched)
-        non_match_count: Total non-matches across all controls (evaluator didn't match)
+        match_count: Total matches across all controls (rule matched)
+        non_match_count: Total non-matches across all controls (rule didn't match)
         error_count: Total errors across all controls (evaluation failed)
         action_counts: Breakdown of actions for matched executions
         timeseries: Time-series data points (only when include_timeseries=true)

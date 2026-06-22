@@ -16,7 +16,7 @@ export const HARNESS_CONTROL_SCHEMA: JsonSchema = {
         },
       },
     },
-    EvaluatorSpec: {
+    RuleSpec: {
       type: 'object',
       required: ['name', 'config'],
       properties: {
@@ -36,8 +36,8 @@ export const HARNESS_CONTROL_SCHEMA: JsonSchema = {
         selector: {
           anyOf: [{ $ref: '#/$defs/ControlSelector' }, { type: 'null' }],
         },
-        evaluator: {
-          anyOf: [{ $ref: '#/$defs/EvaluatorSpec' }, { type: 'null' }],
+        rule: {
+          anyOf: [{ $ref: '#/$defs/RuleSpec' }, { type: 'null' }],
         },
         and: {
           anyOf: [

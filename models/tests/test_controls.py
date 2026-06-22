@@ -13,23 +13,23 @@ from pydantic import ValidationError
 
 def _leaf(
     path: str,
-    evaluator_name: str = "regex",
+    rule_name: str = "regex",
     config: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "selector": {"path": path},
-        "evaluator": {
-            "name": evaluator_name,
+        "rule": {
+            "name": rule_name,
             "config": config or {"pattern": "ok"},
         },
     }
 
 
-def test_condition_leaf_requires_selector_and_evaluator() -> None:
+def test_condition_leaf_requires_selector_and_rule() -> None:
     # Given: a leaf condition with only a selector
     with pytest.raises(
         ValidationError,
-        match="Leaf condition requires both selector and evaluator",
+        match="Leaf condition requires both selector and rule",
     ):
         # When: validating the control definition
         ControlDefinition.model_validate(
@@ -56,7 +56,7 @@ def test_condition_node_requires_exactly_one_shape() -> None:
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+                    "rule": {"name": "regex", "config": {"pattern": "ok"}},
                     "and": [_leaf("output")],
                 },
                 "action": {"decision": "deny"},
@@ -66,12 +66,12 @@ def test_condition_node_requires_exactly_one_shape() -> None:
 
 
 def test_legacy_leaf_payload_is_canonicalized() -> None:
-    # Given: a legacy flat selector/evaluator payload
+    # Given: a legacy flat selector/rule payload
     legacy_payload = {
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+        "rule": {"name": "regex", "config": {"pattern": "ok"}},
         "action": {"decision": "deny"},
     }
 
@@ -81,18 +81,18 @@ def test_legacy_leaf_payload_is_canonicalized() -> None:
     # Then: the model dumps back out in canonical condition form
     dumped = control.model_dump(mode="json", exclude_none=True)
     assert "selector" not in dumped
-    assert "evaluator" not in dumped
+    assert "rule" not in dumped
     assert dumped["condition"]["selector"]["path"] == "input"
-    assert dumped["condition"]["evaluator"]["name"] == "regex"
+    assert dumped["condition"]["rule"]["name"] == "regex"
 
 
 def test_runtime_legacy_leaf_payload_is_canonicalized() -> None:
-    # Given: a legacy flat selector/evaluator payload loaded for runtime evaluation
+    # Given: a legacy flat selector/rule payload loaded for runtime evaluation
     legacy_payload = {
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+        "rule": {"name": "regex", "config": {"pattern": "ok"}},
         "action": {"decision": "deny"},
     }
 
@@ -102,9 +102,9 @@ def test_runtime_legacy_leaf_payload_is_canonicalized() -> None:
     # Then: runtime parsing uses the same canonical condition shape
     dumped = control.model_dump(mode="json", exclude_none=True)
     assert "selector" not in dumped
-    assert "evaluator" not in dumped
+    assert "rule" not in dumped
     assert dumped["condition"]["selector"]["path"] == "input"
-    assert dumped["condition"]["evaluator"]["name"] == "regex"
+    assert dumped["condition"]["rule"]["name"] == "regex"
 
 
 def test_mixed_legacy_and_condition_fields_are_rejected() -> None:
@@ -114,14 +114,14 @@ def test_mixed_legacy_and_condition_fields_are_rejected() -> None:
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "condition": _leaf("input"),
         "selector": {"path": "output"},
-        "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+        "rule": {"name": "regex", "config": {"pattern": "ok"}},
         "action": {"decision": "deny"},
     }
 
     with pytest.raises(
         ValidationError,
         match="Control definition mixes canonical condition fields "
-        "with legacy selector/evaluator fields",
+        "with legacy selector/rule fields",
     ):
         # When: validating the mixed payload
         ControlDefinition.model_validate(payload)
@@ -135,14 +135,14 @@ def test_runtime_mixed_legacy_and_condition_fields_are_rejected() -> None:
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "condition": _leaf("input"),
         "selector": {"path": "output"},
-        "evaluator": {"name": "regex", "config": {"pattern": "ok"}},
+        "rule": {"name": "regex", "config": {"pattern": "ok"}},
         "action": {"decision": "deny"},
     }
 
     with pytest.raises(
         ValidationError,
         match="Control definition mixes canonical condition fields "
-        "with legacy selector/evaluator fields",
+        "with legacy selector/rule fields",
     ):
         # When: validating the mixed payload through the runtime model
         ControlDefinitionRuntime.model_validate(payload)
@@ -179,7 +179,7 @@ def test_condition_iter_leaves_preserves_left_to_right_order() -> None:
                     {
                         "not": _leaf(
                             "input.role",
-                            evaluator_name="list",
+                            rule_name="list",
                             config={"values": ["admin"]},
                         )
                     },
@@ -329,28 +329,28 @@ def test_single_leaf_control_returns_primary_leaf() -> None:
     # When: asking for the primary leaf
     primary_leaf = control.primary_leaf()
 
-    # Then: the original selector/evaluator pair is returned intact
+    # Then: the original selector/rule pair is returned intact
     assert primary_leaf is not None
     leaf_parts = primary_leaf.leaf_parts()
     assert leaf_parts is not None
-    selector, evaluator = leaf_parts
+    selector, rule = leaf_parts
     assert selector.path == "input.value"
-    assert evaluator.name == "regex"
+    assert rule.name == "regex"
 
 
 def test_condition_observability_identity_uses_first_leaf_and_dedupes() -> None:
-    # Given: a composite condition tree with repeated selectors/evaluators
+    # Given: a composite condition tree with repeated selectors/rules
     control = ControlDefinition.model_validate(
         {
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "and": [
-                    _leaf("input.user", evaluator_name="regex"),
-                    _leaf("output.user", evaluator_name="regex"),
+                    _leaf("input.user", rule_name="regex"),
+                    _leaf("output.user", rule_name="regex"),
                     _leaf(
                         "output.user",
-                        evaluator_name="list",
+                        rule_name="list",
                         config={"values": ["blocked"]},
                     ),
                 ]
@@ -364,7 +364,7 @@ def test_condition_observability_identity_uses_first_leaf_and_dedupes() -> None:
 
     # Then: the first leaf becomes the representative identity and full context stays ordered
     assert identity.selector_path == "input.user"
-    assert identity.evaluator_name == "regex"
+    assert identity.rule_name == "regex"
     assert identity.leaf_count == 3
-    assert identity.all_evaluators == ["regex", "list"]
+    assert identity.all_rules == ["regex", "list"]
     assert identity.all_selector_paths == ["input.user", "output.user"]

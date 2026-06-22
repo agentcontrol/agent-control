@@ -28,17 +28,17 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Modify agent (remove steps/evaluators)
+ * Modify agent (remove steps/rules)
  *
  * @remarks
- * Remove steps and/or evaluators from an agent.
+ * Remove steps and/or rules from an agent.
  *
  * This is the complement to initAgent which only adds items.
  * Removals are idempotent - attempting to remove non-existent items is not an error.
  *
  * Args:
  *     agent_name: Agent identifier
- *     request: Lists of step/evaluator identifiers to remove
+ *     request: Lists of step/rule identifiers to remove
  *     db: Database session (injected)
  *     principal: Authorized request principal
  *

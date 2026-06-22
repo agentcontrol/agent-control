@@ -96,7 +96,7 @@ async def test_create_control_accepts_template_control_input() -> None:
                     "scope": {"step_types": ["llm"], "stages": ["pre"]},
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": {"$param": "pattern"}},
                         },
@@ -295,7 +295,7 @@ async def test_render_control_template_calls_preview_endpoint() -> None:
                 "scope": {},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+                    "rule": {"name": "regex", "config": {"pattern": "x"}},
                 },
                 "action": {"decision": "deny"},
             },
@@ -314,7 +314,7 @@ async def test_render_control_template_calls_preview_endpoint() -> None:
                     "scope": {},
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+                        "rule": {"name": "regex", "config": {"pattern": "x"}},
                     },
                     "action": {"decision": "deny"},
                 },
@@ -345,7 +345,7 @@ async def test_validate_control_data_accepts_template_control_input() -> None:
                     "scope": {"step_types": ["llm"], "stages": ["pre"]},
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": {"$param": "pattern"}},
                         },
@@ -393,7 +393,7 @@ async def test_set_control_data_accepts_template_control_input() -> None:
                     "scope": {"step_types": ["llm"], "stages": ["pre"]},
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": {"$param": "pattern"}},
                         },
@@ -422,7 +422,7 @@ def test_to_template_control_input_reshapes_stored_control_data() -> None:
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": "hello"},
                 },
@@ -440,7 +440,7 @@ def test_to_template_control_input_reshapes_stored_control_data() -> None:
                     "scope": {"step_types": ["llm"], "stages": ["pre"]},
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": {"$param": "pattern"}},
                         },
@@ -468,7 +468,7 @@ def test_to_template_control_input_rejects_raw_control_data() -> None:
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": "hello"},
                     },
@@ -494,7 +494,7 @@ def test_to_template_control_input_accepts_unrendered_template_data() -> None:
                     "execution": "server",
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": {"$param": "pattern"}},
                         },

@@ -7,7 +7,7 @@ Demonstrates three cases with server-managed Cisco AI Defense Chat Inspection:
 
 Prereqs:
   1) Run the server and assign API keys
-  2) Install the Cisco AI Defense evaluator (this repo package) into the server env
+  2) Install the Cisco AI Defense rule (this repo package) into the server env
   3) Seed controls and attach to the agent with examples/cisco_ai_defense/setup_ai_defense_controls.py
   4) Set env: AGENT_CONTROL_URL, AGENT_CONTROL_API_KEY
 

@@ -38,7 +38,7 @@ import { Result } from "../types/fp.js";
  *
  * conflict_mode controls registration conflict handling:
  * - strict (default): preserve compatibility checks and conflict errors
- * - overwrite: latest init payload replaces steps/evaluators and returns change summary
+ * - overwrite: latest init payload replaces steps/rules and returns change summary
  *
  * The returned ``controls`` list is the de-duplicated union of the agent's
  * direct controls, policy-derived controls, and (when ``target_type`` and

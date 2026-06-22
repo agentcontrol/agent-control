@@ -1,16 +1,16 @@
 [project]
 name = "agent-control-galileo-luna-example"
 version = "0.1.0"
-description = "Agent Control direct Galileo Luna evaluator example"
+description = "Agent Control direct Galileo Luna rule example"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "agent-control-engine",
-    "agent-control-evaluators",
+    "agent-control-rules",
     "agent-control-models",
     "agent-control-telemetry",
     "agent-control-sdk",
-    "agent-control-evaluator-galileo",
+    "agent-control-rule-galileo",
 ]
 
 [build-system]
@@ -22,8 +22,8 @@ packages = ["."]
 
 [tool.uv.sources]
 agent-control-sdk = { path = "../../sdks/python", editable = true }
-agent-control-evaluator-galileo = { path = "../../evaluators/contrib/galileo", editable = true }
+agent-control-rule-galileo = { path = "../../rules/contrib/galileo", editable = true }
 agent-control-engine = { path = "../../engine", editable = true }
-agent-control-evaluators = { path = "../../evaluators/builtin", editable = true }
+agent-control-rules = { path = "../../rules/builtin", editable = true }
 agent-control-models = { path = "../../models", editable = true }
 agent-control-telemetry = { path = "../../telemetry", editable = true }

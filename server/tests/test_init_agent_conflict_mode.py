@@ -38,7 +38,7 @@ def _init_payload(
     agent_description: str = "desc",
     agent_version: str = "1.0",
     steps: list[dict[str, Any]] | None = None,
-    evaluators: list[dict[str, Any]] | None = None,
+    rules: list[dict[str, Any]] | None = None,
     conflict_mode: str | None = None,
 ) -> dict[str, Any]:
     canonical_name = agent_name.lower()
@@ -49,23 +49,23 @@ def _init_payload(
             "agent_version": agent_version,
         },
         "steps": steps or [],
-        "evaluators": evaluators or [],
+        "rules": rules or [],
     }
     if conflict_mode is not None:
         payload["conflict_mode"] = conflict_mode
     return payload
 
 
-def _create_policy_with_agent_evaluator_control(
+def _create_policy_with_agent_rule_control(
     client: TestClient,
     *,
     agent_name: str,
-    evaluator_name: str,
+    rule_name: str,
 ) -> tuple[int, int, str]:
     control_data = deepcopy(VALID_CONTROL_PAYLOAD)
     control_name = f"control-{uuid.uuid4().hex[:8]}"
-    control_data["condition"]["evaluator"] = {
-        "name": f"{agent_name}:{evaluator_name}",
+    control_data["condition"]["rule"] = {
+        "name": f"{agent_name}:{rule_name}",
         "config": {},
     }
     create_control_resp = client.put(
@@ -85,8 +85,8 @@ def _create_policy_with_agent_evaluator_control(
     return policy_id, control_id, control_name
 
 
-def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) -> None:
-    # Given: an existing agent registration with baseline steps and evaluators.
+def test_init_agent_overwrite_replaces_steps_and_rules(client: TestClient) -> None:
+    # Given: an existing agent registration with baseline steps and rules.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
 
     create_payload = _init_payload(
@@ -106,7 +106,7 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
                 "output_schema": {"type": "boolean"},
             },
         ],
-        evaluators=[
+        rules=[
             {"name": "eval-a", "description": "v1", "config_schema": {"type": "object"}},
             {"name": "eval-b", "description": "v1", "config_schema": {"type": "object"}},
         ],
@@ -135,7 +135,7 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
                 "output_schema": {"type": "string"},
             },
         ],
-        evaluators=[
+        rules=[
             {"name": "eval-a", "description": "v2", "config_schema": {"type": "string"}},
             {"name": "eval-c", "description": "new", "config_schema": {"type": "object"}},
         ],
@@ -154,10 +154,10 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
     assert changes["steps_added"] == [{"type": "tool", "name": "tool-c"}]
     assert changes["steps_updated"] == [{"type": "tool", "name": "tool-a"}]
     assert changes["steps_removed"] == [{"type": "tool", "name": "tool-b"}]
-    assert changes["evaluators_added"] == ["eval-c"]
-    assert changes["evaluators_updated"] == ["eval-a"]
-    assert changes["evaluators_removed"] == ["eval-b"]
-    assert changes["evaluator_removals"] == [
+    assert changes["rules_added"] == ["eval-c"]
+    assert changes["rules_updated"] == ["eval-a"]
+    assert changes["rules_removed"] == ["eval-b"]
+    assert changes["rule_removals"] == [
         {
             "name": "eval-b",
             "referenced_by_active_controls": False,
@@ -171,7 +171,7 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
     get_data = get_resp.json()
     assert get_data["agent"]["agent_description"] == "updated desc"
     assert {step["name"] for step in get_data["steps"]} == {"tool-a", "tool-c"}
-    assert {evaluator["name"] for evaluator in get_data["evaluators"]} == {"eval-a", "eval-c"}
+    assert {rule["name"] for rule in get_data["rules"]} == {"eval-a", "eval-c"}
 
 
 def test_init_agent_overwrite_existing_agent_requires_update_auth(
@@ -241,74 +241,74 @@ def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
     assert strict_resp.status_code == 403
 
 
-def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
-    # Given: an agent whose assigned policy contains a control referencing an agent evaluator.
+def test_init_agent_overwrite_warns_on_removed_referenced_rule(client: TestClient) -> None:
+    # Given: an agent whose assigned policy contains a control referencing an agent rule.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    evaluator_name = "custom-eval"
+    rule_name = "custom-eval"
 
     init_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
             agent_name=agent_name,
-            evaluators=[{"name": evaluator_name, "config_schema": {"type": "object"}}],
+            rules=[{"name": rule_name, "config_schema": {"type": "object"}}],
         ),
     )
     assert init_resp.status_code == 200
 
-    policy_id, control_id, control_name = _create_policy_with_agent_evaluator_control(
-        client, agent_name=agent_name, evaluator_name=evaluator_name
+    policy_id, control_id, control_name = _create_policy_with_agent_rule_control(
+        client, agent_name=agent_name, rule_name=rule_name
     )
     assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
     assert assign_resp.status_code == 200
 
-    # When: overwrite mode removes the evaluator from the incoming registration payload.
+    # When: overwrite mode removes the rule from the incoming registration payload.
     overwrite_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
             agent_name=agent_name,
-            evaluators=[],
+            rules=[],
             conflict_mode="overwrite",
         ),
     )
     assert overwrite_resp.status_code == 200
     body = overwrite_resp.json()
 
-    # Then: the response includes active-control reference warnings and evaluator removal.
+    # Then: the response includes active-control reference warnings and rule removal.
     assert body["overwrite_applied"] is True
-    assert body["overwrite_changes"]["evaluators_removed"] == [evaluator_name]
-    assert body["overwrite_changes"]["evaluator_removals"] == [
+    assert body["overwrite_changes"]["rules_removed"] == [rule_name]
+    assert body["overwrite_changes"]["rule_removals"] == [
         {
-            "name": evaluator_name,
+            "name": rule_name,
             "referenced_by_active_controls": True,
             "control_ids": [control_id],
             "control_names": [control_name],
         }
     ]
 
-    get_resp = client.get(f"/api/v1/agents/{agent_name}/evaluators")
+    get_resp = client.get(f"/api/v1/agents/{agent_name}/rules")
     assert get_resp.status_code == 200
-    assert get_resp.json()["evaluators"] == []
+    assert get_resp.json()["rules"] == []
 
 
-def test_init_agent_overwrite_dedupes_composite_references_for_removed_evaluator(
+def test_init_agent_overwrite_dedupes_composite_references_for_removed_rule(
     client: TestClient,
 ) -> None:
     # Given: an agent whose assigned policy contains one composite control with
-    # multiple leaves referencing the same agent evaluator.
+    # multiple leaves referencing the same agent rule.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
-    evaluator_name = "custom-eval"
+    rule_name = "custom-eval"
 
     init_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
             agent_name=agent_name,
-            evaluators=[{"name": evaluator_name, "config_schema": {"type": "object"}}],
+            rules=[{"name": rule_name, "config_schema": {"type": "object"}}],
         ),
     )
     assert init_resp.status_code == 200
 
-    policy_id, control_id, control_name = _create_policy_with_agent_evaluator_control(
-        client, agent_name=agent_name, evaluator_name=evaluator_name
+    policy_id, control_id, control_name = _create_policy_with_agent_rule_control(
+        client, agent_name=agent_name, rule_name=rule_name
     )
 
     control_data = deepcopy(VALID_CONTROL_PAYLOAD)
@@ -316,11 +316,11 @@ def test_init_agent_overwrite_dedupes_composite_references_for_removed_evaluator
         "and": [
             {
                 "selector": {"path": "input"},
-                "evaluator": {"name": f"{agent_name}:{evaluator_name}", "config": {}},
+                "rule": {"name": f"{agent_name}:{rule_name}", "config": {}},
             },
             {
                 "selector": {"path": "output"},
-                "evaluator": {"name": f"{agent_name}:{evaluator_name}", "config": {}},
+                "rule": {"name": f"{agent_name}:{rule_name}", "config": {}},
             },
         ]
     }
@@ -333,12 +333,12 @@ def test_init_agent_overwrite_dedupes_composite_references_for_removed_evaluator
     assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
     assert assign_resp.status_code == 200
 
-    # When: overwrite mode removes the referenced evaluator.
+    # When: overwrite mode removes the referenced rule.
     overwrite_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
             agent_name=agent_name,
-            evaluators=[],
+            rules=[],
             conflict_mode="overwrite",
         ),
     )
@@ -347,9 +347,9 @@ def test_init_agent_overwrite_dedupes_composite_references_for_removed_evaluator
 
     # Then: the response dedupes the control reference even though two leaves match.
     assert body["overwrite_applied"] is True
-    assert body["overwrite_changes"]["evaluator_removals"] == [
+    assert body["overwrite_changes"]["rule_removals"] == [
         {
-            "name": evaluator_name,
+            "name": rule_name,
             "referenced_by_active_controls": True,
             "control_ids": [control_id],
             "control_names": [control_name],
@@ -363,7 +363,7 @@ def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> No
     payload = _init_payload(
         agent_name=agent_name,
         steps=[{"type": "tool", "name": "tool-a", "input_schema": {}, "output_schema": {}}],
-        evaluators=[{"name": "eval-a", "description": "x", "config_schema": {"type": "object"}}],
+        rules=[{"name": "eval-a", "description": "x", "config_schema": {"type": "object"}}],
     )
     first_resp = client.post("/api/v1/agents/initAgent", json=payload)
     assert first_resp.status_code == 200
@@ -382,8 +382,8 @@ def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> No
         "steps_added": [],
         "steps_updated": [],
         "steps_removed": [],
-        "evaluators_added": [],
-        "evaluators_updated": [],
-        "evaluators_removed": [],
-        "evaluator_removals": [],
+        "rules_added": [],
+        "rules_updated": [],
+        "rules_removed": [],
+        "rule_removals": [],
     }

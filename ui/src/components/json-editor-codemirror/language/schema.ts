@@ -210,7 +210,7 @@ function jsonStringifyForInsert(value: unknown): string {
 
 /**
  * JSON text inserted when completing a property key. Mirrors Monaco
- * `buildSchemaValueSnippet` so control scaffolding (selector, evaluator,
+ * `buildSchemaValueSnippet` so control scaffolding (selector, rule,
  * action, scope) matches the original editor.
  */
 export function getJsonInsertTextForSchemaPropertyValue(
@@ -241,7 +241,7 @@ export function getJsonInsertTextForSchemaPropertyValue(
   }
 
   if (
-    schemaTitle === 'EvaluatorSpec' ||
+    schemaTitle === 'RuleSpec' ||
     isSchemaWithProperties(normalized, ['name', 'config'])
   ) {
     return '{\n  "name": "",\n  "config": {}\n}';
@@ -265,7 +265,7 @@ export function getJsonInsertTextForSchemaPropertyValue(
     schemaTitle === 'ConditionNode' ||
     isSchemaWithProperties(normalized, [
       'selector',
-      'evaluator',
+      'rule',
       'and',
       'or',
       'not',

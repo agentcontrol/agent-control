@@ -26,7 +26,7 @@ import type { ProblemDetail, StepSchema } from '@/core/api/types';
 import { LabelWithTooltip } from '@/core/components/label-with-tooltip';
 import { ApiErrorAlert } from '@/core/page-components/agent-detail/modals/edit-control/api-error-alert';
 import type {
-  JsonEditorEvaluatorOption,
+  JsonEditorRuleOption,
   JsonEditorMode,
   JsonSchema,
 } from '@/core/page-components/agent-detail/modals/edit-control/types';
@@ -48,7 +48,7 @@ import {
   canRenderInlineServerValidationError,
   caretAfterPrettyJsonReplace,
   computeAutoEdit,
-  extractEvaluatorNames,
+  extractRuleNames,
   fixJsonCommas,
   getCodeMirrorCompletionItems,
   setInlineServerValidationErrorsEffect,
@@ -120,8 +120,8 @@ export type JsonEditorCodeMirrorProps = {
   testId?: string;
   editorMode?: JsonEditorMode;
   schema?: JsonSchema | null;
-  evaluators?: JsonEditorEvaluatorOption[];
-  activeEvaluatorId?: string | null;
+  rules?: JsonEditorRuleOption[];
+  activeRuleId?: string | null;
   steps?: StepSchema[];
   debugFlags?: {
     enableBasicSetupExtension?: boolean;
@@ -147,10 +147,10 @@ export function JsonEditorCodeMirror({
   tooltip = DEFAULT_TOOLTIP,
   helperText,
   testId = DEFAULT_TEST_ID,
-  editorMode = 'evaluator-config',
+  editorMode = 'rule-config',
   schema,
-  evaluators,
-  activeEvaluatorId,
+  rules,
+  activeRuleId,
   steps,
   debugFlags,
 }: JsonEditorCodeMirrorProps) {
@@ -167,7 +167,7 @@ export function JsonEditorCodeMirror({
   const editorRootRef = useRef<JsonEditorTestElement | null>(null);
   const internalChangeRef = useRef(false);
   const autoEditInProgressRef = useRef(false);
-  const previousEvaluatorNamesRef = useRef<Map<string, string>>(new Map());
+  const previousRuleNamesRef = useRef<Map<string, string>>(new Map());
   const previousDecisionRef = useRef<string | null>(null);
   const clipboard = useClipboard({ timeout: 1500 });
 
@@ -225,15 +225,15 @@ export function JsonEditorCodeMirror({
     return buildCodeMirrorJsonExtensions({
       mode: editorMode,
       schema,
-      evaluators,
-      activeEvaluatorId,
+      rules,
+      activeRuleId,
       steps,
     });
   }, [
-    activeEvaluatorId,
+    activeRuleId,
     editorMode,
     effectiveDebugFlags.useStandaloneCompletionSource,
-    evaluators,
+    rules,
     schema,
     steps,
   ]);
@@ -246,7 +246,7 @@ export function JsonEditorCodeMirror({
   }, []);
 
   useEffect(() => {
-    previousEvaluatorNamesRef.current = extractEvaluatorNames(jsonText);
+    previousRuleNamesRef.current = extractRuleNames(jsonText);
     previousDecisionRef.current = parseDecision(jsonText);
   }, [jsonText, parseDecision]);
 
@@ -260,15 +260,15 @@ export function JsonEditorCodeMirror({
 
       const view = update.view;
       const text = view.state.doc.toString();
-      const { edit, nextEvaluatorNames, nextDecision } = computeAutoEdit(
+      const { edit, nextRuleNames, nextDecision } = computeAutoEdit(
         text,
-        previousEvaluatorNamesRef.current,
+        previousRuleNamesRef.current,
         previousDecisionRef.current,
         editorMode,
-        evaluators
+        rules
       );
 
-      previousEvaluatorNamesRef.current = nextEvaluatorNames;
+      previousRuleNamesRef.current = nextRuleNames;
       previousDecisionRef.current = nextDecision;
 
       if (!edit) return;
@@ -309,7 +309,7 @@ export function JsonEditorCodeMirror({
           nextText = view.state.doc.toString();
         }
 
-        previousEvaluatorNamesRef.current = extractEvaluatorNames(nextText);
+        previousRuleNamesRef.current = extractRuleNames(nextText);
         previousDecisionRef.current = parseDecision(nextText);
         internalChangeRef.current = true;
         handleJsonChange(nextText);
@@ -319,7 +319,7 @@ export function JsonEditorCodeMirror({
     },
     [
       editorMode,
-      evaluators,
+      rules,
       handleJsonChange,
       parseDecision,
       effectiveDebugFlags.enableAutoEdits,
@@ -355,11 +355,11 @@ export function JsonEditorCodeMirror({
     () => ({
       mode: editorMode,
       schema,
-      evaluators,
-      activeEvaluatorId,
+      rules,
+      activeRuleId,
       steps,
     }),
-    [activeEvaluatorId, editorMode, evaluators, schema, steps]
+    [activeRuleId, editorMode, rules, schema, steps]
   );
 
   useEffect(() => {

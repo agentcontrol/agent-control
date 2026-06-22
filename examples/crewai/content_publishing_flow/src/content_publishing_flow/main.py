@@ -7,7 +7,7 @@ integrated with Agent Control at every pipeline stage.
 Flow Architecture:
     @start: intake_request
         -> Validates and classifies the content request
-        -> Control: JSON evaluator (require topic, audience, content_type)
+        -> Control: JSON rule (require topic, audience, content_type)
 
     @listen(intake_request): research
         -> 2-agent crew: Researcher + Fact-Checker
@@ -636,7 +636,7 @@ def main():
     # ==================================================================
     # SCENARIO 4: Invalid Request - Missing Required Fields
     # ==================================================================
-    # Use direct tool call to demonstrate JSON evaluator blocking
+    # Use direct tool call to demonstrate JSON rule blocking
     run_direct_tool_scenario(
         title="SCENARIO 4: Invalid Request (missing fields -> JSON block)",
         tool_label="Intake Validation",
@@ -646,7 +646,7 @@ def main():
     )
 
     # ==================================================================
-    # SCENARIO 5: Banned Topic - LIST evaluator blocks draft
+    # SCENARIO 5: Banned Topic - LIST rule blocks draft
     # ==================================================================
     # Direct tool call with content that contains a banned topic
     async def _write_draft_banned(
@@ -677,7 +677,7 @@ def main():
     )
 
     # ==================================================================
-    # SCENARIO 6: PII in Draft - REGEX evaluator blocks
+    # SCENARIO 6: PII in Draft - REGEX rule blocks
     # ==================================================================
     async def _write_draft_pii(
         topic: str, audience: str, content_type: str, research: str
@@ -728,7 +728,7 @@ Flow Architecture:
         +-- "escalation" --> human_review
 
 Controls Applied:
-    Intake:     JSON evaluator (required fields)
+    Intake:     JSON rule (required fields)
     Research:   LIST (banned sources), REGEX (unverified claims)
     Draft:      REGEX (PII), LIST (banned topics)
     Compliance: JSON (legal fields), REGEX (PII), STEER (exec summary)
@@ -739,9 +739,9 @@ Scenarios Demonstrated:
     1. Blog post     -> low_risk    -> auto-publish (happy path)
     2. Press release -> high_risk   -> compliance review + steering
     3. Internal memo -> escalation  -> human review (STEER)
-    4. Missing fields              -> JSON evaluator blocks at intake
-    5. Banned topic                -> LIST evaluator blocks at draft
-    6. PII in draft                -> REGEX evaluator blocks at draft
+    4. Missing fields              -> JSON rule blocks at intake
+    5. Banned topic                -> LIST rule blocks at draft
+    6. PII in draft                -> REGEX rule blocks at draft
 """)
 
 

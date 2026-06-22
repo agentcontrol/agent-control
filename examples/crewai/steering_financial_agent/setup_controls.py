@@ -43,7 +43,7 @@ async def setup():
         control_defs = [
             # ┌─────────────────────────────────────────────────────────┐
             # │  DENY: Sanctioned Countries                            │
-            # │  Uses LIST evaluator with contains matching.           │
+            # │  Uses LIST rule with contains matching.           │
             # │  Blocks transfers to OFAC-sanctioned destinations.     │
             # └─────────────────────────────────────────────────────────┘
             (
@@ -59,7 +59,7 @@ async def setup():
                     },
                     "condition": {
                         "selector": {"path": "input.destination_country"},
-                        "evaluator": {
+                        "rule": {
                             "name": "list",
                             "config": {
                                 "values": [
@@ -80,7 +80,7 @@ async def setup():
             ),
             # ┌─────────────────────────────────────────────────────────┐
             # │  DENY: Fraud Score Too High                            │
-            # │  Uses JSON evaluator with field constraints.           │
+            # │  Uses JSON rule with field constraints.           │
             # │  Blocks when fraud_score exceeds 0.8 threshold.        │
             # └─────────────────────────────────────────────────────────┘
             (
@@ -96,7 +96,7 @@ async def setup():
                     },
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "json",
                             "config": {
                                 "field_constraints": {
@@ -110,7 +110,7 @@ async def setup():
             ),
             # ┌─────────────────────────────────────────────────────────┐
             # │  STEER: Large Transfer → Require 2FA                   │
-            # │  Uses JSON evaluator with oneOf schema.                │
+            # │  Uses JSON rule with oneOf schema.                │
             # │  Either amount < $10k OR amount >= $10k with 2FA.      │
             # │  Provides steering_context so agent knows what to do.  │
             # └─────────────────────────────────────────────────────────┘
@@ -127,7 +127,7 @@ async def setup():
                     },
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "json",
                             "config": {
                                 "json_schema": {
@@ -170,7 +170,7 @@ async def setup():
             ),
             # ┌─────────────────────────────────────────────────────────┐
             # │  STEER: Very Large Transfer → Manager Approval         │
-            # │  Uses JSON evaluator with oneOf schema.                │
+            # │  Uses JSON rule with oneOf schema.                │
             # │  Either amount < $50k OR amount >= $50k with approval. │
             # │  Multi-step: collect justification, then get approval. │
             # └─────────────────────────────────────────────────────────┘
@@ -187,7 +187,7 @@ async def setup():
                     },
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "json",
                             "config": {
                                 "json_schema": {
@@ -231,7 +231,7 @@ async def setup():
             ),
             # ┌─────────────────────────────────────────────────────────┐
             # │  OBSERVE: New Recipient                                 │
-            # │  Uses LIST evaluator with "not in" logic.              │
+            # │  Uses LIST rule with "not in" logic.              │
             # │  Records an advisory event when recipient is unknown   │
             # │  but does NOT block the transfer. Useful for audit.    │
             # └─────────────────────────────────────────────────────────┘
@@ -248,7 +248,7 @@ async def setup():
                     },
                     "condition": {
                         "selector": {"path": "input.recipient"},
-                        "evaluator": {
+                        "rule": {
                             "name": "list",
                             "config": {
                                 "values": [
@@ -266,7 +266,7 @@ async def setup():
             ),
             # ┌─────────────────────────────────────────────────────────┐
             # │  OBSERVE: PII in Output                                 │
-            # │  Uses REGEX evaluator to detect leaked PII in the      │
+            # │  Uses REGEX rule to detect leaked PII in the      │
             # │  transfer confirmation. Records for compliance review. │
             # └─────────────────────────────────────────────────────────┘
             (
@@ -282,7 +282,7 @@ async def setup():
                     },
                     "condition": {
                         "selector": {"path": "output"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {
                                 "pattern": r"(?:\b\d{3}-\d{2}-\d{4}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b)"
@@ -327,16 +327,16 @@ async def setup():
         print("Setup complete! Controls created:")
         print()
         print("  DENY  (hard block, no recovery):")
-        print("    - Sanctioned countries (list evaluator)")
-        print("    - Fraud score > 0.8 (json evaluator)")
+        print("    - Sanctioned countries (list rule)")
+        print("    - Fraud score > 0.8 (json rule)")
         print()
         print("  STEER (guide agent, retry after correction):")
-        print("    - 2FA required for >= $10k (json evaluator)")
-        print("    - Manager approval for >= $50k (json evaluator)")
+        print("    - 2FA required for >= $10k (json rule)")
+        print("    - Manager approval for >= $50k (json rule)")
         print()
         print("  OBSERVE (audit trail, no blocking):")
-        print("    - New/unknown recipient (list evaluator)")
-        print("    - PII in confirmation output (regex evaluator)")
+        print("    - New/unknown recipient (list rule)")
+        print("    - PII in confirmation output (regex rule)")
         print()
         print("Run the demo:  uv run --active python -m steering_financial_agent.main")
 

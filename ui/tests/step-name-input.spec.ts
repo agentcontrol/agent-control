@@ -3,12 +3,12 @@
  * The component is exercised within the Create Control modal.
  */
 
-import { openEvaluatorForm } from './evaluators/helpers';
+import { openRuleForm } from './rules/helpers';
 import { expect, mockData, mockRoutes, test } from './fixtures';
 
 test.describe('Step Name Input', () => {
   test('displays Step name label and Regex toggle', async ({ mockedPage }) => {
-    await openEvaluatorForm(mockedPage, 'Regex');
+    await openRuleForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
     await expect(modal.getByText('Step name')).toBeVisible();
@@ -16,7 +16,7 @@ test.describe('Step Name Input', () => {
   });
 
   test('defaults to names mode with step selector', async ({ mockedPage }) => {
-    await openEvaluatorForm(mockedPage, 'Regex');
+    await openRuleForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
     const namesInput = modal.getByPlaceholder('No steps registered via SDK');
@@ -27,7 +27,7 @@ test.describe('Step Name Input', () => {
   test('toggling Regex on shows regex input and hides names input', async ({
     mockedPage,
   }) => {
-    await openEvaluatorForm(mockedPage, 'Regex');
+    await openRuleForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
     await expect(
@@ -46,7 +46,7 @@ test.describe('Step Name Input', () => {
   test('can type in regex field and value persists when toggling', async ({
     mockedPage,
   }) => {
-    await openEvaluatorForm(mockedPage, 'Regex');
+    await openRuleForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
     await modal.getByText('Regex', { exact: true }).click();
@@ -68,7 +68,7 @@ test.describe('Step Name Input', () => {
   });
 
   test('does not render free-text step name input', async ({ mockedPage }) => {
-    await openEvaluatorForm(mockedPage, 'Regex');
+    await openRuleForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
     await expect(
@@ -82,7 +82,7 @@ test.describe('Step Name Input', () => {
   test('toggling Regex off shows names input and hides regex input', async ({
     mockedPage,
   }) => {
-    await openEvaluatorForm(mockedPage, 'Regex');
+    await openRuleForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
     await modal.getByText('Regex', { exact: true }).click();
@@ -105,7 +105,7 @@ test.describe('Step Name Input', () => {
       agent: { data: mockData.agentWithSteps },
     });
 
-    await openEvaluatorForm(mockedPage, 'Regex');
+    await openRuleForm(mockedPage, 'Regex');
 
     const modal = mockedPage.getByRole('dialog', { name: 'Create Control' });
     const stepSelect = modal.getByTestId('step-name-select');

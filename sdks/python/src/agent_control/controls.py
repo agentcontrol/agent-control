@@ -232,7 +232,7 @@ async def create_control(
                     "scope": {"step_types": ["llm"], "stages": ["post"]},
                     "condition": {
                         "selector": {"path": "output"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
                         }

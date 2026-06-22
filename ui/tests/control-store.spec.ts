@@ -30,7 +30,7 @@ async function openAddNewControlModal(page: Page) {
   await controlStoreModal.getByTestId('footer-new-control-button').click();
   const modal = page
     .getByRole('dialog')
-    .filter({ hasText: 'Select an evaluator to create a new control' });
+    .filter({ hasText: 'Select a rule to create a new control' });
   await expect(modal).toBeVisible();
   return modal;
 }
@@ -172,7 +172,7 @@ test.describe('Control Store Modal', () => {
     ).toBeVisible();
   });
 
-  test('Copy button pre-fills control name and evaluator config', async ({
+  test('Copy button pre-fills control name and rule config', async ({
     mockedPage,
   }) => {
     const modal = await openControlStoreModal(mockedPage);
@@ -189,7 +189,7 @@ test.describe('Control Store Modal', () => {
       createControlModal.getByPlaceholder('Enter control name');
     await expect(controlNameInput).toHaveValue('PII-Detection-copy');
 
-    // Check evaluator config is pre-filled (PII Detection uses regex with SSN pattern)
+    // Check rule config is pre-filled (PII Detection uses regex with SSN pattern)
     const patternInput = createControlModal.getByPlaceholder(
       'Enter regex pattern (e.g., ^.*$)'
     );
@@ -203,7 +203,7 @@ test.describe('Control Store Modal', () => {
     await modal.getByTestId('footer-new-control-button').click();
 
     await expect(
-      mockedPage.getByText('Select an evaluator to create a new control')
+      mockedPage.getByText('Select a rule to create a new control')
     ).toBeVisible();
   });
 });
@@ -215,11 +215,11 @@ test.describe('Add New Control Modal', () => {
       modal.getByRole('heading', { name: 'Create Control' })
     ).toBeVisible();
     await expect(
-      modal.getByText('Select an evaluator to create a new control')
+      modal.getByText('Select a rule to create a new control')
     ).toBeVisible();
   });
 
-  test('displays evaluators table with available evaluators', async ({
+  test('displays rules table with available rules', async ({
     mockedPage,
   }) => {
     const modal = await openAddNewControlModal(mockedPage);
@@ -230,17 +230,17 @@ test.describe('Add New Control Modal', () => {
       modal.getByRole('columnheader', { name: 'Description' })
     ).toBeVisible();
 
-    const evaluators = Object.values(mockData.evaluators);
-    for (const evaluator of evaluators) {
+    const rules = Object.values(mockData.rules);
+    for (const rule of rules) {
       await expect(
-        modal.getByText(evaluator.name, { exact: true }).first()
+        modal.getByText(rule.name, { exact: true }).first()
       ).toBeVisible();
     }
   });
 
-  test('can search for evaluators', async ({ mockedPage }) => {
+  test('can search for rules', async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
-    const searchInput = modal.getByPlaceholder('Search evaluators...');
+    const searchInput = modal.getByPlaceholder('Search rules...');
     await searchInput.fill('Regex');
 
     await expect(modal.getByRole('cell', { name: 'Regex' })).toBeVisible();
@@ -251,10 +251,10 @@ test.describe('Add New Control Modal', () => {
     mockedPage,
   }) => {
     const modal = await openAddNewControlModal(mockedPage);
-    const searchInput = modal.getByPlaceholder('Search evaluators...');
-    await searchInput.fill('NonexistentEvaluator');
+    const searchInput = modal.getByPlaceholder('Search rules...');
+    await searchInput.fill('NonexistentRule');
 
-    await expect(modal.getByText('No evaluators found')).toBeVisible();
+    await expect(modal.getByText('No rules found')).toBeVisible();
   });
 
   test('Use button opens create control modal', async ({ mockedPage }) => {
@@ -270,7 +270,7 @@ test.describe('Add New Control Modal', () => {
   test('displays docs link', async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
     await expect(
-      modal.getByText('Learn here on how to add new type of evaluator.')
+      modal.getByText('Learn here on how to add new type of rule.')
     ).toBeVisible();
     await expect(modal.getByText('Docs ↗')).toBeVisible();
   });
@@ -308,7 +308,7 @@ test.describe('Modal Routing', () => {
 
     const addNewModal = mockedPage
       .getByRole('dialog')
-      .filter({ hasText: 'Select an evaluator to create a new control' });
+      .filter({ hasText: 'Select a rule to create a new control' });
     await expect(addNewModal).toBeVisible();
 
     // URL should contain both parameters
@@ -324,7 +324,7 @@ test.describe('Modal Routing', () => {
       getAgentControlsUrl({
         modal: 'control-store',
         submodal: 'create',
-        evaluator: 'list',
+        rule: 'list',
       })
     );
 
@@ -336,7 +336,7 @@ test.describe('Modal Routing', () => {
 
     const addNewModal = mockedPage
       .getByRole('dialog')
-      .filter({ hasText: 'Select an evaluator to create a new control' });
+      .filter({ hasText: 'Select a rule to create a new control' });
     await expect(addNewModal).toBeVisible();
 
     // Create control modal should be visible
@@ -350,7 +350,7 @@ test.describe('Modal Routing', () => {
       getAgentControlsUrl({
         modal: 'control-store',
         submodal: 'create',
-        evaluator: 'list',
+        rule: 'list',
       })
     );
   });
@@ -388,7 +388,7 @@ test.describe('Modal Routing', () => {
       getAgentControlsUrl({
         modal: 'control-store',
         submodal: 'create',
-        evaluator: 'list',
+        rule: 'list',
       })
     );
 
@@ -407,7 +407,7 @@ test.describe('Modal Routing', () => {
     // Add-new modal should still be visible
     const addNewModal = mockedPage
       .getByRole('dialog')
-      .filter({ hasText: 'Select an evaluator to create a new control' });
+      .filter({ hasText: 'Select a rule to create a new control' });
     await expect(addNewModal).toBeVisible();
 
     // URL should be back to add-new
@@ -464,7 +464,7 @@ test.describe('Modal Routing', () => {
 
     const addNewModal = mockedPage
       .getByRole('dialog')
-      .filter({ hasText: 'Select an evaluator to create a new control' });
+      .filter({ hasText: 'Select a rule to create a new control' });
     await expect(addNewModal).toBeVisible();
 
     // Refresh the page
@@ -500,16 +500,16 @@ test.describe('Modal Routing', () => {
       getAgentControlsUrl({ modal: 'control-store', submodal: 'add-new' })
     );
 
-    // Click "Use" on an evaluator
+    // Click "Use" on a rule
     const addNewModal = mockedPage
       .getByRole('dialog')
-      .filter({ hasText: 'Select an evaluator to create a new control' });
+      .filter({ hasText: 'Select a rule to create a new control' });
     const tableRow = addNewModal.locator('tbody tr').first();
     await tableRow.getByRole('button', { name: 'Use' }).click();
 
-    // URL should update to include submodal=create and evaluator
+    // URL should update to include submodal=create and rule
     await expect(mockedPage).toHaveURL(
-      /\/agents\?id=agent-1&tab=controls&modal=control-store&submodal=create&evaluator=\w+/
+      /\/agents\?id=agent-1&tab=controls&modal=control-store&submodal=create&rule=\w+/
     );
 
     // Create modal should be visible
@@ -578,7 +578,7 @@ test.describe('Modal Routing', () => {
       scope: { step_types: ['tool'], stages: ['pre'] },
       condition: {
         selector: { path: 'input.query' },
-        evaluator: {
+        rule: {
           name: 'sql',
           config: { mode: 'strict' },
         },
@@ -623,7 +623,7 @@ test.describe('Modal Routing', () => {
       getAgentControlsUrl({
         modal: 'control-store',
         submodal: 'create',
-        evaluator: 'list',
+        rule: 'list',
       })
     );
 
@@ -635,7 +635,7 @@ test.describe('Modal Routing', () => {
 
     const addNewModal = mockedPage
       .getByRole('dialog')
-      .filter({ hasText: 'Select an evaluator to create a new control' });
+      .filter({ hasText: 'Select a rule to create a new control' });
     await expect(addNewModal).toBeVisible();
 
     const createModal = mockedPage.getByRole('dialog', {
@@ -690,7 +690,7 @@ test.describe('Modal Routing', () => {
     const controlNameInput = createModal.getByPlaceholder('Enter control name');
     await controlNameInput.fill('test-control');
 
-    // Fill in the required "Values" field for the list evaluator (at least one value required)
+    // Fill in the required "Values" field for the list rule (at least one value required)
     const valuesTextarea = createModal.getByPlaceholder(
       'Enter values (one per line)'
     );
@@ -832,7 +832,7 @@ test.describe('Modal Routing', () => {
       getAgentControlsUrl({
         modal: 'control-store',
         submodal: 'create',
-        evaluator: 'list',
+        rule: 'list',
       })
     );
 

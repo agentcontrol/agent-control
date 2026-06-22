@@ -352,7 +352,7 @@ test.describe('Control Templates', () => {
             scope: { stages: ['pre'] },
             condition: {
               selector: { path: 'input' },
-              evaluator: {
+              rule: {
                 name: 'regex',
                 config: { pattern: { $param: 'pattern' } },
               },

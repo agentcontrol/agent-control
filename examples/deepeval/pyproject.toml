@@ -1,7 +1,7 @@
 [project]
 name = "agent-control-deepeval-example"
 version = "0.1.0"
-description = "Agent Control DeepEval GEval Custom Evaluator Example"
+description = "Agent Control DeepEval GEval Custom Rule Example"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -10,7 +10,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "httpx>=0.24.0",
     "google-re2>=1.1",
-    "agent-control-evaluators>=6.3.0",
+    "agent-control-rules>=6.3.0",
     "agent-control-models>=6.3.0",
     "agent-control-sdk>=6.3.0",
 ]
@@ -18,8 +18,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = []
 
-[project.entry-points."agent_control.evaluators"]
-deepeval-geval = "evaluator:DeepEvalEvaluator"
+[project.entry-points."agent_control.rules"]
+deepeval-geval = "rule:DeepEvalRule"
 
 [build-system]
 requires = ["hatchling"]

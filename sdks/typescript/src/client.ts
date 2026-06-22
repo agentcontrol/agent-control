@@ -24,7 +24,7 @@ export type AuthApi = AgentControlSDK["auth"];
 export type ControlBindingsApi = AgentControlSDK["controlBindings"];
 export type ControlsApi = AgentControlSDK["controls"];
 export type EvaluationApi = AgentControlSDK["evaluation"];
-export type EvaluatorsApi = AgentControlSDK["evaluators"];
+export type RulesApi = AgentControlSDK["rules"];
 export type ObservabilityApi = AgentControlSDK["observability"];
 export type PoliciesApi = AgentControlSDK["policies"];
 export type SystemApi = AgentControlSDK["system"];
@@ -72,8 +72,8 @@ export class AgentControlClient {
     return this.requireSDK().evaluation;
   }
 
-  get evaluators(): EvaluatorsApi {
-    return this.requireSDK().evaluators;
+  get rules(): RulesApi {
+    return this.requireSDK().rules;
   }
 
   get observability(): ObservabilityApi {

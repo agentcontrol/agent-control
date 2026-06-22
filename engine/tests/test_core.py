@@ -11,15 +11,15 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-from agent_control_engine import clear_evaluator_cache
+from agent_control_engine import clear_rule_cache
 from agent_control_engine.core import ControlEngine, _compile_regex
-from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
+from agent_control_rules import Rule, RuleMetadata, register_rule
 from agent_control_models import (
     ControlAction,
     ControlDefinition,
     EvaluationRequest,
-    EvaluatorResult,
-    EvaluatorSpec,
+    RuleResult,
+    RuleSpec,
     SteeringContext,
     Step,
 )
@@ -31,12 +31,12 @@ from pydantic import BaseModel
 
 
 class SimpleConfig(BaseModel):
-    """Simple config for test evaluators."""
+    """Simple config for test rules."""
 
     value: str = "default"
 
 
-# Shared state for coordination between test evaluators
+# Shared state for coordination between test rules
 _execution_log: list[str] = []
 _blocker_event: asyncio.Event | None = None
 
@@ -48,19 +48,19 @@ def reset_test_state() -> None:
     _blocker_event = asyncio.Event()
 
 
-class AllowEvaluator(Evaluator[SimpleConfig]):
-    """Evaluator that always allows (matched=False)."""
+class AllowRule(Rule[SimpleConfig]):
+    """Rule that always allows (matched=False)."""
 
-    metadata = EvaluatorMetadata(
+    metadata = RuleMetadata(
         name="test-allow",
         version="1.0.0",
         description="Always allows",
     )
     config_model = SimpleConfig
 
-    async def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> RuleResult:
         _execution_log.append(f"allow:{self.config.value}:start")
-        result = EvaluatorResult(
+        result = RuleResult(
             matched=False,
             confidence=1.0,
             message="Allowed",
@@ -69,19 +69,19 @@ class AllowEvaluator(Evaluator[SimpleConfig]):
         return result
 
 
-class DenyEvaluator(Evaluator[SimpleConfig]):
-    """Evaluator that always denies (matched=True)."""
+class DenyRule(Rule[SimpleConfig]):
+    """Rule that always denies (matched=True)."""
 
-    metadata = EvaluatorMetadata(
+    metadata = RuleMetadata(
         name="test-deny",
         version="1.0.0",
         description="Always denies",
     )
     config_model = SimpleConfig
 
-    async def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> RuleResult:
         _execution_log.append(f"deny:{self.config.value}:start")
-        result = EvaluatorResult(
+        result = RuleResult(
             matched=True,
             confidence=1.0,
             message="Denied",
@@ -90,26 +90,26 @@ class DenyEvaluator(Evaluator[SimpleConfig]):
         return result
 
 
-class BlockerEvaluator(Evaluator[SimpleConfig]):
-    """Evaluator that blocks until cancelled or event is set.
+class BlockerRule(Rule[SimpleConfig]):
+    """Rule that blocks until cancelled or event is set.
 
     Used to test cancellation behavior.
     """
 
-    metadata = EvaluatorMetadata(
+    metadata = RuleMetadata(
         name="test-blocker",
         version="1.0.0",
         description="Blocks until cancelled",
     )
     config_model = SimpleConfig
 
-    async def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> RuleResult:
         _execution_log.append(f"blocker:{self.config.value}:start")
         try:
             # Wait indefinitely (should be cancelled)
             await _blocker_event.wait()  # type: ignore
             _execution_log.append(f"blocker:{self.config.value}:end")
-            return EvaluatorResult(
+            return RuleResult(
                 matched=False,
                 confidence=1.0,
                 message="Blocker completed (should not happen in cancel test)",
@@ -119,45 +119,45 @@ class BlockerEvaluator(Evaluator[SimpleConfig]):
             raise
 
 
-class SlowEvaluator(Evaluator[SimpleConfig]):
-    """Evaluator that sleeps briefly before returning."""
+class SlowRule(Rule[SimpleConfig]):
+    """Rule that sleeps briefly before returning."""
 
-    metadata = EvaluatorMetadata(
+    metadata = RuleMetadata(
         name="test-slow",
         version="1.0.0",
         description="Sleeps then allows",
     )
     config_model = SimpleConfig
 
-    async def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> RuleResult:
         _execution_log.append(f"slow:{self.config.value}:start")
         await asyncio.sleep(0.05)  # 50ms
         _execution_log.append(f"slow:{self.config.value}:end")
-        return EvaluatorResult(
+        return RuleResult(
             matched=False,
             confidence=1.0,
             message="Slow completed",
         )
 
 
-class MetadataEvaluator(Evaluator[SimpleConfig]):
-    """Evaluator that emits structured metadata for propagation tests."""
+class MetadataRule(Rule[SimpleConfig]):
+    """Rule that emits structured metadata for propagation tests."""
 
-    metadata = EvaluatorMetadata(
+    metadata = RuleMetadata(
         name="test-metadata",
         version="1.0.0",
         description="Returns metadata while matching by config prefix",
     )
     config_model = SimpleConfig
 
-    async def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> RuleResult:
         _execution_log.append(f"metadata:{self.config.value}:start")
         matched = self.config.value.startswith("match")
-        result = EvaluatorResult(
+        result = RuleResult(
             matched=matched,
             confidence=0.8 if matched else 0.4,
             message=f"Metadata {self.config.value}",
-            metadata={"source": self.config.value, "selected_data": f"evaluator:{data}"},
+            metadata={"source": self.config.value, "selected_data": f"rule:{data}"},
         )
         _execution_log.append(f"metadata:{self.config.value}:end")
         return result
@@ -173,34 +173,34 @@ class MockControlWithIdentity:
 
 
 @pytest.fixture(autouse=True)
-def setup_test_evaluators():
-    """Register test evaluators and reset state before each test."""
+def setup_test_rules():
+    """Register test rules and reset state before each test."""
     reset_test_state()
-    clear_evaluator_cache()
+    clear_rule_cache()
 
-    # Register evaluators (may already be registered)
-    for evaluator_cls in [
-        AllowEvaluator,
-        DenyEvaluator,
-        BlockerEvaluator,
-        SlowEvaluator,
-        MetadataEvaluator,
+    # Register rules (may already be registered)
+    for rule_cls in [
+        AllowRule,
+        DenyRule,
+        BlockerRule,
+        SlowRule,
+        MetadataRule,
     ]:
         try:
-            register_evaluator(evaluator_cls)
+            register_rule(rule_cls)
         except ValueError:
             pass  # Already registered
 
     yield
 
     reset_test_state()
-    clear_evaluator_cache()
+    clear_rule_cache()
 
 
 def make_control(
     control_id: int,
     name: str,
-    evaluator: str,
+    rule: str,
     action: str = "deny",
     config_value: str = "default",
     *,
@@ -239,8 +239,8 @@ def make_control(
             scope=scope,
             condition={
                 "selector": selector or {"path": "*"},
-                "evaluator": EvaluatorSpec(
-                    name=evaluator,
+                "rule": RuleSpec(
+                    name=rule,
                     config={"value": config_value},
                 ),
             },
@@ -501,32 +501,32 @@ class TestResultCollection:
 # =============================================================================
 
 
-class ErrorEvaluator(Evaluator[SimpleConfig]):
-    """Evaluator that always raises an exception."""
+class ErrorRule(Rule[SimpleConfig]):
+    """Rule that always raises an exception."""
 
-    metadata = EvaluatorMetadata(
+    metadata = RuleMetadata(
         name="test-error",
         version="1.0.0",
         description="Always raises an error",
     )
     config_model = SimpleConfig
 
-    async def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> RuleResult:
         _execution_log.append(f"error:{self.config.value}:start")
         raise RuntimeError(f"Intentional error from {self.config.value}")
 
 
 class TimeoutConfig(BaseModel):
-    """Config for timeout evaluator with custom timeout."""
+    """Config for timeout rule with custom timeout."""
 
     value: str = "default"
     timeout_ms: int = 100  # Very short timeout for testing
 
 
-class TimeoutEvaluator(Evaluator[TimeoutConfig]):
-    """Evaluator that sleeps longer than its timeout."""
+class TimeoutRule(Rule[TimeoutConfig]):
+    """Rule that sleeps longer than its timeout."""
 
-    metadata = EvaluatorMetadata(
+    metadata = RuleMetadata(
         name="test-timeout",
         version="1.0.0",
         description="Sleeps longer than timeout",
@@ -534,12 +534,12 @@ class TimeoutEvaluator(Evaluator[TimeoutConfig]):
     )
     config_model = TimeoutConfig
 
-    async def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> RuleResult:
         _execution_log.append(f"timeout:{self.config.value}:start")
         # Sleep for 5 seconds - way longer than the 100ms timeout
         await asyncio.sleep(5.0)
         _execution_log.append(f"timeout:{self.config.value}:end")
-        return EvaluatorResult(
+        return RuleResult(
             matched=False,
             confidence=1.0,
             message="Should never reach here",
@@ -550,22 +550,22 @@ class TestErrorHandling:
     """Tests for error handling - fail-closed for deny controls, error field."""
 
     @pytest.fixture(autouse=True)
-    def register_error_evaluator(self):
-        """Register ErrorEvaluator for these tests."""
+    def register_error_rule(self):
+        """Register ErrorRule for these tests."""
         try:
-            register_evaluator(ErrorEvaluator)
+            register_rule(ErrorRule)
         except ValueError:
             pass  # Already registered
 
     @pytest.mark.asyncio
-    async def test_evaluator_error_fails_closed_for_deny(self):
+    async def test_rule_error_fails_closed_for_deny(self):
         """Test that deny controls fail closed when they error.
 
-        Given: A deny control with an evaluator that throws an exception
+        Given: A deny control with a rule that throws an exception
         When: The engine processes the request
         Then: The request is marked unsafe (fail-closed) and confidence is 0
         """
-        # Given: A deny control with an error-throwing evaluator
+        # Given: A deny control with an error-throwing rule
         controls = [
             make_control(1, "error_control", "test-error", action="deny", config_value="err"),
         ]
@@ -588,7 +588,7 @@ class TestErrorHandling:
         # Error should be captured
         assert result.errors is not None
         assert len(result.errors) == 1
-        # The evaluator should have started
+        # The rule should have started
         assert "error:err:start" in _execution_log
 
     @pytest.mark.asyncio
@@ -697,17 +697,17 @@ class TestErrorHandling:
         assert "unexpected traversal bug" in result.errors[0].result.error
 
     @pytest.mark.asyncio
-    async def test_missing_evaluator_error_sets_error_field(self):
-        """Test that missing evaluator error sets error field in result.
+    async def test_missing_rule_error_sets_error_field(self):
+        """Test that missing rule error sets error field in result.
 
-        Given: A deny control with an evaluator that doesn't exist
+        Given: A deny control with a rule that doesn't exist
         When: The engine processes the request
         Then: The error field is set, is_safe=False (deny fails closed)
         """
-        # Given: A deny control with non-existent evaluator
+        # Given: A deny control with non-existent rule
         controls = [
             make_control(
-                1, "missing_evaluator", "nonexistent-evaluator", action="deny", config_value="m"
+                1, "missing_rule", "nonexistent-rule", action="deny", config_value="m"
             ),
         ]
         engine = ControlEngine(controls)
@@ -728,13 +728,13 @@ class TestErrorHandling:
         # Error should be captured
         assert result.errors is not None
         assert len(result.errors) == 1
-        assert result.errors[0].control_name == "missing_evaluator"
+        assert result.errors[0].control_name == "missing_rule"
         assert result.errors[0].result.error is not None
-        assert "nonexistent-evaluator" in result.errors[0].result.error.lower()
+        assert "nonexistent-rule" in result.errors[0].result.error.lower()
 
     @pytest.mark.asyncio
-    async def test_errors_array_exposes_evaluator_failures(self):
-        """Test that errors array exposes all evaluator failures.
+    async def test_errors_array_exposes_rule_failures(self):
+        """Test that errors array exposes all rule failures.
 
         Given: Multiple controls, some throw errors, some succeed
         When: The engine processes the request
@@ -964,17 +964,17 @@ class TestConfidenceCalculation:
 # =============================================================================
 
 
-class PayloadEchoEvaluator(Evaluator[SimpleConfig]):
-    """Evaluator that inspects full payload when path is omitted ("*")."""
+class PayloadEchoRule(Rule[SimpleConfig]):
+    """Rule that inspects full payload when path is omitted ("*")."""
 
-    metadata = EvaluatorMetadata(
+    metadata = RuleMetadata(
         name="test-payload-echo",
         version="1.0.0",
         description="Echo payload info",
     )
     config_model = SimpleConfig
 
-    async def evaluate(self, data: Any) -> EvaluatorResult:
+    async def evaluate(self, data: Any) -> RuleResult:
         # If we received the full payload as JSON, it has dict keys for type/name
         if isinstance(data, dict):
             step_type = data.get("type")
@@ -990,14 +990,14 @@ class PayloadEchoEvaluator(Evaluator[SimpleConfig]):
                 _execution_log.append(f"payload_step:{step_type}:{step_name}")
             else:
                 _execution_log.append("payload_step:<none>")
-        return EvaluatorResult(matched=False, confidence=1.0, message="ok")
+        return RuleResult(matched=False, confidence=1.0, message="ok")
 
 
 class TestSelectorStepScoping:
     @pytest.fixture(autouse=True)
-    def register_payload_evaluator(self):
+    def register_payload_rule(self):
         try:
-            register_evaluator(PayloadEchoEvaluator)
+            register_rule(PayloadEchoRule)
         except ValueError:
             pass
 
@@ -1103,7 +1103,7 @@ class TestSelectorStepScoping:
 
     @pytest.mark.asyncio
     async def test_path_optional_defaults_to_star(self):
-        # Given: path omitted; evaluator should receive full payload
+        # Given: path omitted; rule should receive full payload
         controls = [
             make_control(
                 1,
@@ -1135,34 +1135,34 @@ class TestSelectorStepScoping:
                 scope={"step_types": ["tool"], "stages": ["pre"], "step_name_regex": "("},
                 condition={
                     "selector": {"path": "input"},
-                    "evaluator": EvaluatorSpec(name="test-allow", config={"value": "x"}),
+                    "rule": RuleSpec(name="test-allow", config={"value": "x"}),
                 },
                 action={"decision": "observe"},
             )
 
 
 class TestTimeoutEnforcement:
-    """Tests for per-evaluator timeout enforcement."""
+    """Tests for per-rule timeout enforcement."""
 
     @pytest.fixture(autouse=True)
-    def register_timeout_evaluator(self):
-        """Register TimeoutEvaluator for these tests."""
+    def register_timeout_rule(self):
+        """Register TimeoutRule for these tests."""
         try:
-            register_evaluator(TimeoutEvaluator)
+            register_rule(TimeoutRule)
         except ValueError:
             pass  # Already registered
 
     @pytest.mark.asyncio
-    async def test_evaluator_timeout_is_enforced(self):
-        """Test that evaluators are killed after their timeout expires.
+    async def test_rule_timeout_is_enforced(self):
+        """Test that rules are killed after their timeout expires.
 
-        Given: A control with an evaluator that sleeps longer than its timeout
+        Given: A control with a rule that sleeps longer than its timeout
         When: The engine processes the request
         Then: The evaluation times out and error is captured
         """
         import time
 
-        # Given: A control with a timeout evaluator (100ms timeout, 5s sleep)
+        # Given: A control with a timeout rule (100ms timeout, 5s sleep)
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1174,7 +1174,7 @@ class TestTimeoutEnforcement:
                     scope={"step_types": ["llm"], "stages": ["pre"]},
                     condition={
                         "selector": {"path": "input"},
-                        "evaluator": EvaluatorSpec(
+                        "rule": RuleSpec(
                             name="test-timeout",
                             config={"value": "t1", "timeout_ms": 100},
                         ),
@@ -1198,7 +1198,7 @@ class TestTimeoutEnforcement:
         # Then: Should complete quickly (timeout, not full 5s sleep)
         assert elapsed < 1.0, f"Expected timeout ~0.1s but took {elapsed:.2f}s"
 
-        # And: Evaluator should have started
+        # And: Rule should have started
         assert "timeout:t1:start" in _execution_log
         # But not finished (was killed)
         assert "timeout:t1:end" not in _execution_log
@@ -1214,8 +1214,8 @@ class TestTimeoutEnforcement:
         assert result.confidence == 0.0
 
     @pytest.mark.asyncio
-    async def test_timeout_does_not_affect_fast_evaluators(self):
-        """Test that fast evaluators complete normally without timeout issues.
+    async def test_timeout_does_not_affect_fast_rules(self):
+        """Test that fast rules complete normally without timeout issues.
 
         Given: A mix of fast and slow (timing out) controls
         When: The engine processes the request
@@ -1234,7 +1234,7 @@ class TestTimeoutEnforcement:
                     scope={"step_types": ["llm"], "stages": ["pre"]},
                     condition={
                         "selector": {"path": "input"},
-                        "evaluator": EvaluatorSpec(
+                        "rule": RuleSpec(
                             name="test-timeout",
                             config={"value": "slow", "timeout_ms": 100},
                         ),
@@ -1253,11 +1253,11 @@ class TestTimeoutEnforcement:
         )
         result = await engine.process(request)
 
-        # Then: Fast evaluator should have completed normally
+        # Then: Fast rule should have completed normally
         assert "allow:f1:start" in _execution_log
         assert "allow:f1:end" in _execution_log
 
-        # And: Slow evaluator should have timed out
+        # And: Slow rule should have timed out
         assert "timeout:slow:start" in _execution_log
         assert "timeout:slow:end" not in _execution_log
 
@@ -1319,7 +1319,7 @@ class TestConcurrencyLimit:
     def test_max_concurrency_env_rejects_non_positive_values(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The concurrency cap must always allow at least one evaluator."""
+        """The concurrency cap must always allow at least one rule."""
         import agent_control_engine.core as core_module
 
         monkeypatch.setenv("AGENT_CONTROL_MAX_CONCURRENT_EVALUATIONS", "0")
@@ -1349,17 +1349,17 @@ class TestConcurrencyLimit:
         _max_concurrent = 0
         _lock = asyncio.Lock()
 
-        class ConcurrencyTracker(Evaluator[SimpleConfig]):
-            """Evaluator that tracks concurrent execution count."""
+        class ConcurrencyTracker(Rule[SimpleConfig]):
+            """Rule that tracks concurrent execution count."""
 
-            metadata = EvaluatorMetadata(
+            metadata = RuleMetadata(
                 name="test-concurrency",
                 version="1.0.0",
                 description="Tracks concurrency",
             )
             config_model = SimpleConfig
 
-            async def evaluate(self, data: Any) -> EvaluatorResult:
+            async def evaluate(self, data: Any) -> RuleResult:
                 nonlocal _concurrent_count, _max_concurrent
                 async with _lock:
                     _concurrent_count += 1
@@ -1367,10 +1367,10 @@ class TestConcurrencyLimit:
                 await asyncio.sleep(0.05)  # Small delay to overlap
                 async with _lock:
                     _concurrent_count -= 1
-                return EvaluatorResult(matched=False, confidence=1.0, message="ok")
+                return RuleResult(matched=False, confidence=1.0, message="ok")
 
         try:
-            register_evaluator(ConcurrencyTracker)
+            register_rule(ConcurrencyTracker)
         except ValueError:
             pass
 
@@ -1402,10 +1402,10 @@ class TestConditionTrees:
     """Tests for recursive condition evaluation and trace metadata."""
 
     @pytest.fixture(autouse=True)
-    def register_error_evaluator(self):
-        """Register ErrorEvaluator for these tests."""
+    def register_error_rule(self):
+        """Register ErrorRule for these tests."""
         try:
-            register_evaluator(ErrorEvaluator)
+            register_rule(ErrorRule)
         except ValueError:
             pass
 
@@ -1426,11 +1426,11 @@ class TestConditionTrees:
                         "or": [
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-deny", "config": {"value": "match"}},
+                                "rule": {"name": "test-deny", "config": {"value": "match"}},
                             },
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-slow", "config": {"value": "skip"}},
+                                "rule": {"name": "test-slow", "config": {"value": "skip"}},
                             },
                         ]
                     },
@@ -1478,7 +1478,7 @@ class TestConditionTrees:
                     scope={"step_types": ["tool"], "stages": ["pre"]},
                     condition={
                         "selector": {"path": "input.city"},
-                        "evaluator": {"name": "test-deny", "config": {"value": "match"}},
+                        "rule": {"name": "test-deny", "config": {"value": "match"}},
                     },
                     action={"decision": "observe"},
                 ),
@@ -1525,7 +1525,7 @@ class TestConditionTrees:
                     scope={"step_types": ["tool"], "stages": ["pre"]},
                     condition={
                         "selector": {"path": "input"},
-                        "evaluator": {"name": "test-deny", "config": {"value": "match"}},
+                        "rule": {"name": "test-deny", "config": {"value": "match"}},
                     },
                     action={"decision": "observe"},
                 ),
@@ -1561,9 +1561,9 @@ class TestConditionTrees:
         assert len(preview["value"]["prompt"]) == 500
 
     @pytest.mark.asyncio
-    async def test_engine_selected_data_does_not_overwrite_evaluator_metadata(self):
-        """Engine-owned selector data should not collide with evaluator-owned metadata."""
-        # Given: an evaluator that deliberately returns its own selected_data key
+    async def test_engine_selected_data_does_not_overwrite_rule_metadata(self):
+        """Engine-owned selector data should not collide with rule-owned metadata."""
+        # Given: a rule that deliberately returns its own selected_data key
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1575,7 +1575,7 @@ class TestConditionTrees:
                     scope={"step_types": ["llm"], "stages": ["pre"]},
                     condition={
                         "selector": {"path": "input"},
-                        "evaluator": {"name": "test-metadata", "config": {"value": "match"}},
+                        "rule": {"name": "test-metadata", "config": {"value": "match"}},
                     },
                     action={"decision": "observe"},
                 ),
@@ -1591,11 +1591,11 @@ class TestConditionTrees:
         # When: processing the request
         result = await engine.process(request)
 
-        # Then: evaluator-owned metadata remains intact and engine-owned data is namespaced.
+        # Then: rule-owned metadata remains intact and engine-owned data is namespaced.
         assert result.matches is not None
         metadata = result.matches[0].result.metadata
         assert metadata is not None
-        assert metadata["selected_data"] == "evaluator:raw input"
+        assert metadata["selected_data"] == "rule:raw input"
         assert metadata["engine_selected_data"] == "raw input"
         assert metadata["engine_selected_data_preview"] == {
             "type": "str",
@@ -1620,21 +1620,21 @@ class TestConditionTrees:
                         "or": [
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {
+                                "rule": {
                                     "name": "test-metadata",
                                     "config": {"value": "miss-left"},
                                 },
                             },
                             {
                                 "selector": {"path": "output"},
-                                "evaluator": {
+                                "rule": {
                                     "name": "test-metadata",
                                     "config": {"value": "match-right"},
                                 },
                             },
                             {
                                 "selector": {"path": "name"},
-                                "evaluator": {
+                                "rule": {
                                     "name": "test-slow",
                                     "config": {"value": "skip-tail"},
                                 },
@@ -1660,7 +1660,7 @@ class TestConditionTrees:
         metadata = result.matches[0].result.metadata
         assert metadata is not None
         assert metadata["source"] == "match-right"
-        assert metadata["selected_data"] == "evaluator:chosen"
+        assert metadata["selected_data"] == "rule:chosen"
         assert metadata["engine_selected_data_preview"] == {
             "type": "str",
             "value": "chosen",
@@ -1672,7 +1672,7 @@ class TestConditionTrees:
     @pytest.mark.asyncio
     async def test_and_condition_all_children_match_records_full_trace(self):
         """A fully-evaluated AND tree should record every child and produce a match."""
-        # Given: an AND tree where every leaf evaluator matches
+        # Given: an AND tree where every leaf rule matches
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1686,11 +1686,11 @@ class TestConditionTrees:
                         "and": [
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-deny", "config": {"value": "first"}},
+                                "rule": {"name": "test-deny", "config": {"value": "first"}},
                             },
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-deny", "config": {"value": "second"}},
+                                "rule": {"name": "test-deny", "config": {"value": "second"}},
                             },
                         ]
                     },
@@ -1736,7 +1736,7 @@ class TestConditionTrees:
                     condition={
                         "not": {
                             "selector": {"path": "input"},
-                            "evaluator": {"name": "test-allow", "config": {"value": "child"}},
+                            "rule": {"name": "test-allow", "config": {"value": "child"}},
                         }
                     },
                     action={"decision": "observe"},
@@ -1764,8 +1764,8 @@ class TestConditionTrees:
 
     @pytest.mark.asyncio
     async def test_not_condition_propagates_child_error_trace(self):
-        """NOT should surface child evaluator failures as composite errors."""
-        # Given: a NOT tree whose child evaluator raises an error
+        """NOT should surface child rule failures as composite errors."""
+        # Given: a NOT tree whose child rule raises an error
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1778,7 +1778,7 @@ class TestConditionTrees:
                     condition={
                         "not": {
                             "selector": {"path": "input"},
-                            "evaluator": {"name": "test-error", "config": {"value": "boom"}},
+                            "rule": {"name": "test-error", "config": {"value": "boom"}},
                         }
                     },
                     action={"decision": "observe"},
@@ -1808,7 +1808,7 @@ class TestConditionTrees:
     @pytest.mark.asyncio
     async def test_or_condition_all_children_non_match_records_full_trace(self):
         """A fully-evaluated OR tree should record every child and produce a non-match."""
-        # Given: an OR tree where every leaf evaluator returns non-match
+        # Given: an OR tree where every leaf rule returns non-match
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1822,11 +1822,11 @@ class TestConditionTrees:
                         "or": [
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-allow", "config": {"value": "first"}},
+                                "rule": {"name": "test-allow", "config": {"value": "first"}},
                             },
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-allow", "config": {"value": "second"}},
+                                "rule": {"name": "test-allow", "config": {"value": "second"}},
                             },
                         ]
                     },
@@ -1859,7 +1859,7 @@ class TestConditionTrees:
     @pytest.mark.asyncio
     async def test_and_error_records_skipped_children_in_trace(self):
         """Errors in composite conditions should preserve trace context for skipped branches."""
-        # Given: an AND tree whose first child evaluator errors
+        # Given: an AND tree whose first child rule errors
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1873,11 +1873,11 @@ class TestConditionTrees:
                         "and": [
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-error", "config": {"value": "boom"}},
+                                "rule": {"name": "test-error", "config": {"value": "boom"}},
                             },
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-slow", "config": {"value": "skip"}},
+                                "rule": {"name": "test-slow", "config": {"value": "skip"}},
                             },
                         ]
                     },
@@ -1905,7 +1905,7 @@ class TestConditionTrees:
         assert trace["matched"] is None
         assert trace["short_circuit_reason"] == "error"
         assert result.errors[0].result.message.startswith(
-            "Condition evaluation aborted due to a child evaluator error:"
+            "Condition evaluation aborted due to a child rule error:"
         )
         assert trace["children"][0]["evaluated"] is True
         assert "Intentional error from boom" in trace["children"][0]["error"]
@@ -1915,7 +1915,7 @@ class TestConditionTrees:
     @pytest.mark.asyncio
     async def test_or_error_records_skipped_children_in_trace(self):
         """OR error traces should be marked indeterminate, not as a definitive non-match."""
-        # Given: an OR tree whose first child evaluator errors
+        # Given: an OR tree whose first child rule errors
         controls = [
             MockControlWithIdentity(
                 id=1,
@@ -1929,11 +1929,11 @@ class TestConditionTrees:
                         "or": [
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-error", "config": {"value": "boom"}},
+                                "rule": {"name": "test-error", "config": {"value": "boom"}},
                             },
                             {
                                 "selector": {"path": "input"},
-                                "evaluator": {"name": "test-allow", "config": {"value": "skip"}},
+                                "rule": {"name": "test-allow", "config": {"value": "skip"}},
                             },
                         ]
                     },
@@ -1961,7 +1961,7 @@ class TestConditionTrees:
         assert trace["matched"] is None
         assert trace["short_circuit_reason"] == "error"
         assert result.errors[0].result.message.startswith(
-            "Condition evaluation aborted due to a child evaluator error:"
+            "Condition evaluation aborted due to a child rule error:"
         )
         assert trace["children"][0]["evaluated"] is True
         assert "Intentional error from boom" in trace["children"][0]["error"]
@@ -1977,7 +1977,7 @@ class TestConditionTrees:
 def make_control_with_execution(
     control_id: int,
     name: str,
-    evaluator: str,
+    rule: str,
     action: str = "deny",
     config_value: str = "default",
     *,
@@ -2009,8 +2009,8 @@ def make_control_with_execution(
             scope=scope,
             condition={
                 "selector": {"path": path},
-                "evaluator": EvaluatorSpec(
-                    name=evaluator,
+                "rule": RuleSpec(
+                    name=rule,
                     config={"value": config_value},
                 ),
             },
@@ -2336,20 +2336,20 @@ class TestSteerErrorHandling:
     async def test_steer_control_error_non_blocking(self):
         """Test that steer control errors don't block execution (unlike deny errors).
 
-        Given: A steer control with an evaluator that errors
+        Given: A steer control with a rule that errors
         When: Engine processes the request
         Then: Result is still safe (steer errors are non-blocking)
               Error is logged for observability
         Coverage: Lines 299 (steer_errored = True), 340-344 (logging)
         """
         reset_test_state()
-        register_evaluator(ErrorEvaluator)
+        register_rule(ErrorRule)
 
         controls = [
             make_control(
                 1,
                 "steer-with-error",
-                evaluator="test-error",
+                rule="test-error",
                 config_value="steer",
                 action="steer",
                 steering_context=SteeringContext(message="Steering guidance"),
@@ -2398,18 +2398,18 @@ class TestSteerErrorHandling:
     async def test_deny_control_error_blocks(self):
         """Test that deny control errors DO block execution (fail closed).
 
-        Given: A deny control with an evaluator that errors
+        Given: A deny control with a rule that errors
         When: Engine processes the request
         Then: Result is unsafe (deny errors fail closed)
         """
         reset_test_state()
-        register_evaluator(ErrorEvaluator)
+        register_rule(ErrorRule)
 
         controls = [
             make_control(
                 1,
                 "deny-with-error",
-                evaluator="test-error",
+                rule="test-error",
                 config_value="deny",
                 action="deny",
             ),
@@ -2444,20 +2444,20 @@ class TestSteerErrorHandling:
         Coverage: Lines 299, 340-344
         """
         reset_test_state()
-        register_evaluator(ErrorEvaluator)
+        register_rule(ErrorRule)
 
         controls = [
             make_control(
                 1,
                 "deny-error",
-                evaluator="test-error",
+                rule="test-error",
                 config_value="deny",
                 action="deny",
             ),
             make_control(
                 2,
                 "steer-error",
-                evaluator="test-error",
+                rule="test-error",
                 config_value="steer",
                 action="steer",
                 steering_context=SteeringContext(message="Steer guidance"),
@@ -2539,7 +2539,7 @@ class TestInvalidRegexHandling:
             },
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "test-allow",
                     "config": {"value": "test"},
                 },

@@ -9,9 +9,9 @@ import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
-  InitAgentEvaluatorRemoval,
-  InitAgentEvaluatorRemoval$inboundSchema,
-} from "./init-agent-evaluator-removal.js";
+  InitAgentRuleRemoval,
+  InitAgentRuleRemoval$inboundSchema,
+} from "./init-agent-rule-removal.js";
 import { StepKey, StepKey$inboundSchema } from "./step-key.js";
 
 /**
@@ -19,21 +19,21 @@ import { StepKey, StepKey$inboundSchema } from "./step-key.js";
  */
 export type InitAgentOverwriteChanges = {
   /**
-   * Per-evaluator removal details, including active control references
+   * Per-rule removal details, including active control references
    */
-  evaluatorRemovals?: Array<InitAgentEvaluatorRemoval> | undefined;
+  ruleRemovals?: Array<InitAgentRuleRemoval> | undefined;
   /**
-   * Evaluator names added by overwrite
+   * Rule names added by overwrite
    */
-  evaluatorsAdded?: Array<string> | undefined;
+  rulesAdded?: Array<string> | undefined;
   /**
-   * Evaluator names removed by overwrite
+   * Rule names removed by overwrite
    */
-  evaluatorsRemoved?: Array<string> | undefined;
+  rulesRemoved?: Array<string> | undefined;
   /**
-   * Existing evaluator names updated by overwrite
+   * Existing rule names updated by overwrite
    */
-  evaluatorsUpdated?: Array<string> | undefined;
+  rulesUpdated?: Array<string> | undefined;
   /**
    * Whether agent metadata changed
    */
@@ -58,12 +58,12 @@ export const InitAgentOverwriteChanges$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
-    evaluator_removals: types.optional(
-      z.array(InitAgentEvaluatorRemoval$inboundSchema),
+    rule_removals: types.optional(
+      z.array(InitAgentRuleRemoval$inboundSchema),
     ),
-    evaluators_added: types.optional(z.array(types.string())),
-    evaluators_removed: types.optional(z.array(types.string())),
-    evaluators_updated: types.optional(z.array(types.string())),
+    rules_added: types.optional(z.array(types.string())),
+    rules_removed: types.optional(z.array(types.string())),
+    rules_updated: types.optional(z.array(types.string())),
     metadata_changed: z._default(types.boolean(), false),
     steps_added: types.optional(z.array(StepKey$inboundSchema)),
     steps_removed: types.optional(z.array(StepKey$inboundSchema)),
@@ -71,10 +71,10 @@ export const InitAgentOverwriteChanges$inboundSchema: z.ZodMiniType<
   }),
   z.transform((v) => {
     return remap$(v, {
-      "evaluator_removals": "evaluatorRemovals",
-      "evaluators_added": "evaluatorsAdded",
-      "evaluators_removed": "evaluatorsRemoved",
-      "evaluators_updated": "evaluatorsUpdated",
+      "rule_removals": "ruleRemovals",
+      "rules_added": "rulesAdded",
+      "rules_removed": "rulesRemoved",
+      "rules_updated": "rulesUpdated",
       "metadata_changed": "metadataChanged",
       "steps_added": "stepsAdded",
       "steps_removed": "stepsRemoved",

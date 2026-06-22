@@ -16,13 +16,13 @@ def test_sync_dependency_floors_updates_internal_minimums(tmp_path: Path) -> Non
         """
 [project]
 dependencies = [
-    "agent-control-evaluators>=7.5.0",
+    "agent-control-rules>=7.5.0",
     "agent-control-models>=7.5.0,<8.0.0",
     "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]
-galileo = ["agent-control-evaluator-galileo>=7.5.0"]
+galileo = ["agent-control-rule-galileo>=7.5.0"]
 """.strip()
     )
 
@@ -30,9 +30,9 @@ galileo = ["agent-control-evaluator-galileo>=7.5.0"]
     build.sync_dependency_floors(
         pyproject_path,
         [
-            "agent-control-evaluators",
+            "agent-control-rules",
             "agent-control-models",
-            "agent-control-evaluator-galileo",
+            "agent-control-rule-galileo",
         ],
         "7.6.0",
     )
@@ -42,13 +42,13 @@ galileo = ["agent-control-evaluator-galileo>=7.5.0"]
         """
 [project]
 dependencies = [
-    "agent-control-evaluators>=7.6.0",
+    "agent-control-rules>=7.6.0",
     "agent-control-models>=7.6.0,<8.0.0",
     "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]
-galileo = ["agent-control-evaluator-galileo>=7.6.0"]
+galileo = ["agent-control-rule-galileo>=7.6.0"]
 """.strip()
     )
 
@@ -59,21 +59,21 @@ def test_sync_dependency_floors_tolerates_whitespace_around_lower_bounds(tmp_pat
         """
 [project]
 dependencies = [
-    "agent-control-evaluators >= 7.5.0",
+    "agent-control-rules >= 7.5.0",
     "agent-control-models >= 7.5.0,<8.0.0",
 ]
 
 [project.optional-dependencies]
-galileo = ["agent-control-evaluator-galileo >= 7.5.0"]
+galileo = ["agent-control-rule-galileo >= 7.5.0"]
 """.strip()
     )
 
     build.sync_dependency_floors(
         pyproject_path,
         [
-            "agent-control-evaluators",
+            "agent-control-rules",
             "agent-control-models",
-            "agent-control-evaluator-galileo",
+            "agent-control-rule-galileo",
         ],
         "7.6.0",
     )
@@ -82,18 +82,18 @@ galileo = ["agent-control-evaluator-galileo >= 7.5.0"]
         """
 [project]
 dependencies = [
-    "agent-control-evaluators >= 7.6.0",
+    "agent-control-rules >= 7.6.0",
     "agent-control-models >= 7.6.0,<8.0.0",
 ]
 
 [project.optional-dependencies]
-galileo = ["agent-control-evaluator-galileo >= 7.6.0"]
+galileo = ["agent-control-rule-galileo >= 7.6.0"]
 """.strip()
     )
 
 
-def test_builtin_evaluators_manifest_keeps_models_floor_rewritable() -> None:
-    builtin_pyproject = SCRIPTS_DIR.parent / "evaluators" / "builtin" / "pyproject.toml"
+def test_builtin_rules_manifest_keeps_models_floor_rewritable() -> None:
+    builtin_pyproject = SCRIPTS_DIR.parent / "rules" / "builtin" / "pyproject.toml"
     with builtin_pyproject.open("rb") as handle:
         manifest = tomllib.load(handle)
 

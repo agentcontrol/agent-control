@@ -129,8 +129,8 @@ def control_event_to_otel_span(event: ControlExecutionEvent) -> OTELControlEvent
 
     if event.execution_duration_ms is not None:
         attributes["agent_control.execution_duration_ms"] = event.execution_duration_ms
-    if event.evaluator_name is not None:
-        attributes["agent_control.evaluator_name"] = event.evaluator_name
+    if event.rule_name is not None:
+        attributes["agent_control.rule_name"] = event.rule_name
     if event.selector_path is not None:
         attributes["agent_control.selector_path"] = event.selector_path
     if event.error_message is not None:

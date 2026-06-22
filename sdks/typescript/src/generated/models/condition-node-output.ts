@@ -11,9 +11,9 @@ import {
 } from "./control-selector.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
-  EvaluatorSpec,
-  EvaluatorSpec$inboundSchema,
-} from "./evaluator-spec.js";
+  RuleSpec,
+  RuleSpec$inboundSchema,
+} from "./rule-spec.js";
 
 /**
  * Recursive boolean condition tree for control evaluation.
@@ -24,9 +24,9 @@ export type ConditionNodeOutput = {
    */
   and?: Array<ConditionNodeOutput> | null | undefined;
   /**
-   * Leaf evaluator. Must be provided together with selector.
+   * Leaf rule. Must be provided together with selector.
    */
-  evaluator?: EvaluatorSpec | null | undefined;
+  rule?: RuleSpec | null | undefined;
   /**
    * Logical NOT over a single child condition.
    */
@@ -36,7 +36,7 @@ export type ConditionNodeOutput = {
    */
   or?: Array<ConditionNodeOutput> | null | undefined;
   /**
-   * Leaf selector. Must be provided together with evaluator.
+   * Leaf selector. Must be provided together with rule.
    */
   selector?: ControlSelector | null | undefined;
 };
@@ -49,7 +49,7 @@ export const ConditionNodeOutput$inboundSchema: z.ZodMiniType<
   and: z.optional(
     z.nullable(z.array(z.lazy(() => ConditionNodeOutput$inboundSchema))),
   ),
-  evaluator: z.optional(z.nullable(EvaluatorSpec$inboundSchema)),
+  rule: z.optional(z.nullable(RuleSpec$inboundSchema)),
   not: z.optional(z.nullable(z.lazy(() => ConditionNodeOutput$inboundSchema))),
   or: z.optional(
     z.nullable(z.array(z.lazy(() => ConditionNodeOutput$inboundSchema))),

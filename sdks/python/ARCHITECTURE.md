@@ -14,14 +14,14 @@ sdks/python/src/agent_control/
 ├── policies.py               # Policy management operations
 ├── controls.py               # Control management operations
 ├── control_decorators.py     # @control() decorator implementation
-├── evaluation.py             # Evaluation and evaluator operations
+├── evaluation.py             # Evaluation and rule operations
 ├── observability.py          # Observability and telemetry
 ├── settings.py               # SDK configuration and settings
 ├── tracing.py                # Distributed tracing support
 ├── py.typed                  # PEP 561 type marker
-└── evaluators/               # Evaluator base classes and discovery system
-    ├── __init__.py           # Evaluator discovery, registration, and Luna integration
-    └── base.py               # Base Evaluator and EvaluatorMetadata classes
+└── rules/               # Rule base classes and discovery system
+    ├── __init__.py           # Rule discovery, registration, and Luna integration
+    └── base.py               # Base Rule and RuleMetadata classes
 ```
 
 ## Module Responsibilities
@@ -134,7 +134,7 @@ async with agent_control.AgentControlClient() as client:
             "scope": {"step_types": ["llm"], "stages": ["post"]},
             "condition": {
                 "selector": {"path": "output"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": "\\\\d{3}-\\\\d{2}-\\\\d{4}", "flags": []},
                 },
@@ -175,7 +175,7 @@ async def chat(message: str) -> str:
 **Purpose**: Client-side and server-side evaluation management.
 
 **Key Components**:
-- Evaluator registration and management
+- Rule registration and management
 - Evaluation execution
 - Integration with control evaluation pipeline
 
@@ -206,29 +206,29 @@ async def chat(message: str) -> str:
 - Span creation and management
 - Context propagation
 
-### `evaluators/` - Evaluator System
+### `rules/` - Rule System
 
-**Purpose**: Evaluator base classes, discovery, and registration system.
+**Purpose**: Rule base classes, discovery, and registration system.
 
 **Key Components**:
-- Base evaluator classes (`Evaluator`, `EvaluatorMetadata`)
-- Evaluator discovery via entry points
-- Third-party evaluator integration (e.g., Luna, Guardrails AI)
-- Registration functions for custom evaluators
+- Base rule classes (`Rule`, `RuleMetadata`)
+- Rule discovery via entry points
+- Third-party rule integration (e.g., Luna, Guardrails AI)
+- Registration functions for custom rules
 
 **Structure**:
-- `__init__.py` - Evaluator discovery (`discover_evaluators()`, `list_evaluators()`), registration (`register_evaluator()`), and optional Luna integration
-- `base.py` - Base `Evaluator` and `EvaluatorMetadata` classes (re-exported from `agent_control_models`)
+- `__init__.py` - Rule discovery (`discover_rules()`, `list_rules()`), registration (`register_rule()`), and optional Luna integration
+- `base.py` - Base `Rule` and `RuleMetadata` classes (re-exported from `agent_control_models`)
 
 **Usage**:
 ```python
-from agent_control.evaluators import Evaluator, EvaluatorMetadata, discover_evaluators
+from agent_control.rules import Rule, RuleMetadata, discover_rules
 
-# Discover all available evaluators (built-in and third-party)
-discover_evaluators()
+# Discover all available rules (built-in and third-party)
+discover_rules()
 
-# Create custom evaluator by extending base class
-class MyCustomEvaluator(Evaluator):
+# Create custom rule by extending base class
+class MyCustomRule(Rule):
     pass
 ```
 
@@ -373,5 +373,5 @@ The Agent Control SDK architecture provides:
 - ✅ **Testability** with independent modules
 - ✅ **Scalability** for future endpoint and feature additions
 - ✅ **Type safety** with full type annotations
-- ✅ **Extensibility** through evaluator system
+- ✅ **Extensibility** through rule system
 - ✅ **Observability** with built-in tracing and telemetry

@@ -44,7 +44,7 @@ DEMO_CONTROLS = [
             "scope": {"step_types": ["llm"], "stages": ["post"]},
             "condition": {
                 "selector": {"path": "output"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": r"\d{3}-\d{2}-\d{4}"},
                 },
@@ -62,7 +62,7 @@ DEMO_CONTROLS = [
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": r"(?i)(ignore.{0,20}(previous|prior|above).{0,20}instructions|you are now|system:|forget everything|disregard)"
@@ -82,7 +82,7 @@ DEMO_CONTROLS = [
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b"},
                 },
@@ -109,7 +109,7 @@ DEMO_CONTROLS = [
                 "selector": {
                     "path": "input.query",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": r"(?i)(select|insert|update|delete|drop|union|--|;)"
@@ -135,7 +135,7 @@ DEMO_CONTROLS = [
                 "selector": {
                     "path": "*",  # Observe entire payload
                 },
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": r".*"},  # Always matches
                 },
@@ -162,7 +162,7 @@ DEMO_CONTROLS = [
                 "selector": {
                     "path": "input.query",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         # Simple profanity pattern for demo
@@ -189,7 +189,7 @@ DEMO_CONTROLS = [
                 "selector": {
                     "path": "input.priority",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "list",
                     "config": {
                         "values": ["high", "critical", "urgent"],
@@ -222,7 +222,7 @@ DEMO_CONTROLS = [
                 "selector": {
                     "path": "input.description",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         # Email pattern

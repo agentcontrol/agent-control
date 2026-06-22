@@ -13,7 +13,7 @@ import type { ValidationErrorItem } from '@/core/api/types';
  * Mapping result indicating which form and field an API error belongs to
  */
 type FieldMapping = {
-  form: 'definition' | 'evaluator';
+  form: 'definition' | 'rule';
   field: string;
 };
 
@@ -24,7 +24,7 @@ type FieldMapping = {
  * - "name" (control name)
  * - "data.scope.step_types" (definition field)
  * - "data.condition.selector.path" → selector_path (definition field)
- * - "data.condition.evaluator.config.pattern" (evaluator config field)
+ * - "data.condition.rule.config.pattern" (rule config field)
  *
  * Since forms use snake_case, we can directly use the API field names.
  *
@@ -57,7 +57,7 @@ export function mapApiFieldToFormField(
       return { form: 'definition', field: 'selector_path' };
     }
 
-    const evalPrefix = 'evaluator.';
+    const evalPrefix = 'rule.';
     if (conditionField.startsWith(evalPrefix)) {
       let configField = conditionField.slice(evalPrefix.length);
       if (configField.startsWith('config.')) {
@@ -68,7 +68,7 @@ export function mapApiFieldToFormField(
       const field =
         firstDotIndex > 0 ? configField.slice(0, firstDotIndex) : configField;
 
-      return { form: 'evaluator', field };
+      return { form: 'rule', field };
     }
 
     return null;
@@ -110,13 +110,13 @@ export function mapApiFieldToFormField(
  *
  * @param errors Array of validation errors from API
  * @param definitionForm The control definition form
- * @param evaluatorForm The evaluator config form
+ * @param ruleForm The rule config form
  * @returns Array of errors that couldn't be mapped to form fields
  */
 export function applyApiErrorsToForms(
   errors: ValidationErrorItem[] | undefined,
   definitionForm: UseFormReturnType<any>,
-  evaluatorForm?: UseFormReturnType<any> | null
+  ruleForm?: UseFormReturnType<any> | null
 ): ValidationErrorItem[] {
   if (!errors || errors.length === 0) {
     return [];
@@ -130,9 +130,9 @@ export function applyApiErrorsToForms(
     if (mapping) {
       if (mapping.form === 'definition') {
         definitionForm.setFieldError(mapping.field, error.message);
-      } else if (mapping.form === 'evaluator' && evaluatorForm) {
-        evaluatorForm.setFieldError(mapping.field, error.message);
-      } else if (mapping.form === 'evaluator') {
+      } else if (mapping.form === 'rule' && ruleForm) {
+        ruleForm.setFieldError(mapping.field, error.message);
+      } else if (mapping.form === 'rule') {
         unmappedErrors.push(error);
       }
     } else {

@@ -10,8 +10,8 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  extractEvaluatorNames,
-  findEvaluatorConfigEdit,
+  extractRuleNames,
+  findRuleConfigEdit,
   findSteeringContextEdit,
   fixJsonCommas,
   getEmptyValueHints,
@@ -56,7 +56,7 @@ const DEFAULT_VALIDATE_DEBOUNCE_MS = 500;
 const DEFAULT_LABEL = 'Configuration (JSON)';
 const DEFAULT_TOOLTIP = 'Raw JSON configuration';
 const DEFAULT_TEST_ID = 'raw-json-textarea';
-const DEFAULT_EDITOR_MODE = 'evaluator-config';
+const DEFAULT_EDITOR_MODE = 'rule-config';
 const HINT_DEBOUNCE_MS = 300;
 const COMMA_FIX_DEBOUNCE_MS = 800;
 const CURSOR_TRIGGER_DEBOUNCE_MS = 50;
@@ -211,8 +211,8 @@ function shouldAutoTriggerSuggest(
   if (contentLen <= 2) return true;
 
   // Longer strings: trigger if our provider has suggestions (enum values,
-  // evaluator names, selector paths). This covers all domain fields
-  // including evaluator config enums (logic, match_on, mode, etc.)
+  // rule names, selector paths). This covers all domain fields
+  // including rule config enums (logic, match_on, mode, etc.)
   // without hardcoding field names.
   return hasSuggestions();
 }
@@ -238,8 +238,8 @@ export const JsonEditorView = ({
   testId = DEFAULT_TEST_ID,
   editorMode = DEFAULT_EDITOR_MODE,
   schema,
-  evaluators,
-  activeEvaluatorId,
+  rules,
+  activeRuleId,
   steps,
   templateParameterNames,
 }: JsonEditorViewProps) => {
@@ -264,17 +264,17 @@ export const JsonEditorView = ({
       mode: editorMode,
       modelUri,
       schema,
-      evaluators,
-      activeEvaluatorId,
+      rules,
+      activeRuleId,
       steps,
       definitionPrefix,
       templateParameterNames,
     }),
     [
-      activeEvaluatorId,
+      activeRuleId,
       definitionPrefix,
       editorMode,
-      evaluators,
+      rules,
       modelUri,
       schema,
       steps,
@@ -369,7 +369,7 @@ export const JsonEditorView = ({
     };
     updateHints();
 
-    let prevEvalNames = extractEvaluatorNames(
+    let prevEvalNames = extractRuleNames(
       editor.getValue(),
       definitionPrefix
     );
@@ -402,7 +402,7 @@ export const JsonEditorView = ({
       const end = model.getPositionAt(edit.offset + edit.length);
       // NOTE: This async boundary (queueMicrotask) means the auto-edit
       // creates a separate undo group from the user's keystroke. This breaks
-      // redo after undo when auto-edits fire (e.g. evaluator config fill).
+      // redo after undo when auto-edits fire (e.g. rule config fill).
       // Synchronous alternatives (model.applyEdits) crash Monaco's worker.
       // This is a known Monaco limitation — undo still works correctly.
       queueMicrotask(() => {
@@ -459,15 +459,15 @@ export const JsonEditorView = ({
 
       // Immediate: dependent field updates (control & template modes)
       if (editorMode === 'control' || editorMode === 'template') {
-        const evalEdit = findEvaluatorConfigEdit(
+        const evalEdit = findRuleConfigEdit(
           text,
           prevEvalNames,
-          evaluators,
+          rules,
           definitionPrefix
         );
-        prevEvalNames = extractEvaluatorNames(text, definitionPrefix);
+        prevEvalNames = extractRuleNames(text, definitionPrefix);
         if (evalEdit) {
-          applyEdit(evalEdit, 'evaluator-config-update');
+          applyEdit(evalEdit, 'rule-config-update');
           return;
         }
 
@@ -507,7 +507,7 @@ export const JsonEditorView = ({
     autocompleteContext,
     definitionPrefix,
     editorMode,
-    evaluators,
+    rules,
     handleJsonChange,
   ]);
 

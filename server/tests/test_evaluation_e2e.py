@@ -15,7 +15,7 @@ def test_evaluation_flow_deny(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": "secret"}
         },
@@ -94,7 +94,7 @@ def test_evaluation_empty_policy(client: TestClient):
 
 
 def test_evaluation_path_failure(client: TestClient):
-    """Test that if path selection fails (returns None), the evaluator handles it gracefully."""
+    """Test that if path selection fails (returns None), the rule handles it gracefully."""
     # Given: A control selecting a non-existent path
     control_data = {
         "description": "Check non-existent field",
@@ -102,7 +102,7 @@ def test_evaluation_path_failure(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input.non_existent_field"}, # Invalid for string input
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": ".*"} # Match anything if found
         },
@@ -119,7 +119,7 @@ def test_evaluation_path_failure(client: TestClient):
     )
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
 
-    # Then: It should remain safe because selector returns None, and RegexEvaluator(None) -> False
+    # Then: It should remain safe because selector returns None, and RegexRule(None) -> False
     assert resp.status_code == 200
     data = resp.json()
     assert data["is_safe"] is True
@@ -127,14 +127,14 @@ def test_evaluation_path_failure(client: TestClient):
 
 
 def test_evaluation_selector_star_uses_full_step_json(client: TestClient):
-    # Given: a control with selector "*" and JSON evaluator
+    # Given: a control with selector "*" and JSON rule
     control_data = {
         "description": "Validate full step JSON",
         "enabled": True,
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "*"},
-        "evaluator": {"name": "json", "config": {"required_fields": ["type"]}},
+        "rule": {"name": "json", "config": {"required_fields": ["type"]}},
         "action": {"decision": "deny"},
     }
     agent_name, _ = create_and_assign_policy(client, control_data, agent_name="JsonStarAgent")
@@ -144,7 +144,7 @@ def test_evaluation_selector_star_uses_full_step_json(client: TestClient):
     req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
 
-    # Then: evaluation is safe (JSON evaluator accepts the full payload)
+    # Then: evaluation is safe (JSON rule accepts the full payload)
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
     assert resp.json()["matches"] is None
@@ -159,7 +159,7 @@ def test_evaluation_tool_step_nested(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "input.config.risk_level"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": "^critical$"}
         },
@@ -215,7 +215,7 @@ def test_evaluation_deny_precedence(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {"name": "regex", "config": {"pattern": "keyword"}},
+        "rule": {"name": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "observe"}
     }
     # Use helper to setup agent with first control
@@ -233,7 +233,7 @@ def test_evaluation_deny_precedence(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {"name": "regex", "config": {"pattern": "keyword"}},
+        "rule": {"name": "regex", "config": {"pattern": "keyword"}},
         "action": {"decision": "deny"}
     }
     resp = client.put(
@@ -275,7 +275,7 @@ def test_evaluation_stage_filtering(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["post"]},
         "selector": {"path": "output"},
-        "evaluator": {"name": "regex", "config": {"pattern": "bad_output"}},
+        "rule": {"name": "regex", "config": {"pattern": "bad_output"}},
         "action": {"decision": "deny"}
     }
     agent_name, _ = create_and_assign_policy(client, control_data, agent_name="StageAgent")
@@ -314,7 +314,7 @@ def test_evaluation_step_type_filtering(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "name"},
-        "evaluator": {"name": "regex", "config": {"pattern": "rm_rf"}},
+        "rule": {"name": "regex", "config": {"pattern": "rm_rf"}},
         "action": {"decision": "deny"}
     }
     agent_name, _ = create_and_assign_policy(client, control_data, agent_name="AppliesToAgent")
@@ -350,7 +350,7 @@ def test_evaluation_denylist_step_name(client: TestClient):
         "execution": "server",
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "name"},
-        "evaluator": {
+        "rule": {
             "name": "list", # Matches if value is IN list (exact match)
             "config": {"values": ["dangerous_tool", "rm_rf"], "match_on": "match"}
         },

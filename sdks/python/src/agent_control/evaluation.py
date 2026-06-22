@@ -6,7 +6,7 @@ from inspect import iscoroutinefunction
 from typing import Any, Literal, cast
 
 import httpx
-from agent_control_engine import list_evaluators
+from agent_control_engine import list_rules
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
     ControlDefinitionRuntime,
@@ -14,7 +14,7 @@ from agent_control_models import (
     EvaluationRequest,
     EvaluationResponse,
     EvaluationResult,
-    EvaluatorResult,
+    RuleResult,
     Step,
 )
 
@@ -349,7 +349,7 @@ async def check_evaluation_with_local(
 
     local_controls: list[_ControlAdapter] = []
     parse_errors: list[ControlMatch] = []
-    available_evaluators = list_evaluators()
+    available_rules = list_rules()
     server_control_payloads: list[dict[str, Any]] = []
 
     for control in controls:
@@ -372,20 +372,20 @@ async def check_evaluation_with_local(
 
         try:
             control_def = ControlDefinitionRuntime.model_validate(control_data)
-            for _, evaluator_spec in control_def.iter_condition_leaf_parts():
-                evaluator_name = evaluator_spec.name
+            for _, rule_spec in control_def.iter_condition_leaf_parts():
+                rule_name = rule_spec.name
 
-                if ":" in evaluator_name:
+                if ":" in rule_name:
                     raise RuntimeError(
                         f"Control '{control['name']}' is marked execution='sdk' but uses "
-                        f"agent-scoped evaluator '{evaluator_name}' which is server-only. "
-                        "Set execution='server' or use a built-in evaluator."
+                        f"agent-scoped rule '{rule_name}' which is server-only. "
+                        "Set execution='server' or use a built-in rule."
                     )
-                if evaluator_name not in available_evaluators:
+                if rule_name not in available_rules:
                     raise RuntimeError(
-                        f"Control '{control['name']}' is marked execution='sdk' but evaluator "
-                        f"'{evaluator_name}' is not available in the SDK. "
-                        "Install the evaluator or set execution='server'."
+                        f"Control '{control['name']}' is marked execution='sdk' but rule "
+                        f"'{rule_name}' is not available in the SDK. "
+                        "Install the rule or set execution='server'."
                     )
 
             local_controls.append(
@@ -405,7 +405,7 @@ async def check_evaluation_with_local(
                     control_id=control_id,
                     control_name=control_name,
                     action="observe",
-                    result=EvaluatorResult(
+                    result=RuleResult(
                         matched=False,
                         confidence=0.0,
                         error=f"Failed to parse local control: {exc}",

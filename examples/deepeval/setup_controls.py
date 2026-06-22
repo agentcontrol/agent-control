@@ -4,7 +4,7 @@ Setup script that creates DeepEval-based controls for the Q&A Agent.
 
 This script:
 1. Registers the agent with the server
-2. Creates DeepEval GEval evaluator controls for quality checks
+2. Creates DeepEval GEval rule controls for quality checks
 3. Directly associates controls to the agent
 
 The controls demonstrate using DeepEval's LLM-as-a-judge to enforce:
@@ -20,22 +20,22 @@ import os
 import sys
 import httpx
 
-# Add the current directory to the path so we can import the evaluator
+# Add the current directory to the path so we can import the rule
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import and register the DeepEval evaluator
+# Import and register the DeepEval rule
 # This must be done before creating controls that use it
 try:
-    from evaluator import DeepEvalEvaluator
+    from rule import DeepEvalRule
 
-    print(f"✓ DeepEval evaluator loaded: {DeepEvalEvaluator.metadata.name}")
+    print(f"✓ DeepEval rule loaded: {DeepEvalRule.metadata.name}")
 
-    # Note: We don't check is_available() here because the evaluator
+    # Note: We don't check is_available() here because the rule
     # may not be used immediately - it just needs to be registered
     # so the server knows about it when creating control definitions
 
 except ImportError as e:
-    print(f"❌ Error: Cannot import DeepEval evaluator: {e}")
+    print(f"❌ Error: Cannot import DeepEval rule: {e}")
     print("\nMake sure you're running from the examples/deepeval directory")
     print("and that agent-control-models is installed")
     sys.exit(1)
@@ -58,7 +58,7 @@ DEEPEVAL_CONTROLS = [
             "scope": {"step_types": ["llm"], "stages": ["post"]},
             "condition": {
                 "selector": {"path": "*"},
-                "evaluator": {
+                "rule": {
                     "name": "deepeval-geval",
                     "config": {
                         "name": "Coherence",
@@ -88,7 +88,7 @@ DEEPEVAL_CONTROLS = [
             "scope": {"step_types": ["llm"], "stages": ["post"]},
             "condition": {
                 "selector": {"path": "*"},
-                "evaluator": {
+                "rule": {
                     "name": "deepeval-geval",
                     "config": {
                         "name": "Relevance",
@@ -117,7 +117,7 @@ DEEPEVAL_CONTROLS = [
             "scope": {"step_types": ["llm"], "stages": ["post"]},
             "condition": {
                 "selector": {"path": "*"},
-                "evaluator": {
+                "rule": {
                     "name": "deepeval-geval",
                     "config": {
                         "name": "Correctness",

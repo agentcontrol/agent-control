@@ -44,10 +44,10 @@ export {
 import {
   getEnumValues,
   getScopeFilters,
-  isEvaluatorNameLocation,
+  isRuleNameLocation,
   isSelectorPathLocation,
   parseJsonTree,
-  resolveActiveEvaluator,
+  resolveActiveRule,
   resolveSchemaAtJsonPath,
 } from './context';
 import {
@@ -203,11 +203,11 @@ function getPropertySuggestions(
   isAtPropertyKey: boolean
 ): Completion[] {
   const tree = parseJsonTree(text);
-  const activeEvaluator = resolveActiveEvaluator(context, tree, path);
+  const activeRule = resolveActiveRule(context, tree, path);
   const objectPath = path.slice(0, -1);
   const schemaCursor = resolveSchemaAtJsonPath(
     context,
-    activeEvaluator,
+    activeRule,
     objectPath
   );
   if (!schemaCursor.schema) return [];
@@ -274,8 +274,8 @@ function getValueSuggestions(
   isStringValueContext: boolean
 ): Completion[] {
   const tree = parseJsonTree(text);
-  if (isEvaluatorNameLocation(path) && context.evaluators?.length) {
-    return context.evaluators.map((item) => ({
+  if (isRuleNameLocation(path) && context.rules?.length) {
+    return context.rules.map((item) => ({
       label: item.id,
       type: 'constant',
       detail: item.description ?? undefined,
@@ -343,8 +343,8 @@ function getValueSuggestions(
     );
   }
 
-  const activeEvaluator = resolveActiveEvaluator(context, tree, path);
-  const cursor = resolveSchemaAtJsonPath(context, activeEvaluator, path);
+  const activeRule = resolveActiveRule(context, tree, path);
+  const cursor = resolveSchemaAtJsonPath(context, activeRule, path);
   const enumValues = getEnumValues(cursor.schema);
   if (enumValues.length === 0) return [];
   return enumValues.map((value) => ({
@@ -404,11 +404,11 @@ function findConditionAtOffset(
   }
 
   const hasSelector = !!findNodeAtLocation(node, ['selector']);
-  const hasEvaluator = !!findNodeAtLocation(node, ['evaluator']);
+  const hasRule = !!findNodeAtLocation(node, ['rule']);
   const hasAnd = !!findNodeAtLocation(node, ['and']);
   const hasOr = !!findNodeAtLocation(node, ['or']);
   const hasNot = !!findNodeAtLocation(node, ['not']);
-  const isLeaf = (hasSelector || hasEvaluator) && !hasAnd && !hasOr;
+  const isLeaf = (hasSelector || hasRule) && !hasAnd && !hasOr;
   return {
     node,
     isLeaf,
@@ -473,7 +473,7 @@ function buildConditionRefactorActions(
           const next = applyNodeTransform((p) => ({
             and: [
               p as Record<string, unknown>,
-              { selector: { path: '*' }, evaluator: { name: '', config: {} } },
+              { selector: { path: '*' }, rule: { name: '', config: {} } },
             ],
           }));
           if (!next) return;
@@ -488,7 +488,7 @@ function buildConditionRefactorActions(
           const next = applyNodeTransform((p) => ({
             or: [
               p as Record<string, unknown>,
-              { selector: { path: '*' }, evaluator: { name: '', config: {} } },
+              { selector: { path: '*' }, rule: { name: '', config: {} } },
             ],
           }));
           if (!next) return;
@@ -526,7 +526,7 @@ function buildConditionRefactorActions(
                 ...arr,
                 {
                   selector: { path: '*' },
-                  evaluator: { name: '', config: {} },
+                  rule: { name: '', config: {} },
                 },
               ],
             };
@@ -643,7 +643,7 @@ function getHintForPath(
   context: JsonEditorCodeMirrorContext
 ): string | null {
   // Avoid showing hint widgets for fields that already have a good dropdown UX.
-  if (isEvaluatorNameLocation(path)) {
+  if (isRuleNameLocation(path)) {
     return null;
   }
 
@@ -660,19 +660,19 @@ function getHintForPath(
   }
 
   const tree = parseJsonTree(text);
-  if (isEvaluatorNameLocation(path) && context.evaluators?.length) {
-    const display = context.evaluators
+  if (isRuleNameLocation(path) && context.rules?.length) {
+    const display = context.rules
       .map((item) => item.id)
       .slice(0, MAX_HINT_VALUES);
-    return `  ${display.join('  |  ')}${context.evaluators.length > MAX_HINT_VALUES ? '  | ...' : ''}`;
+    return `  ${display.join('  |  ')}${context.rules.length > MAX_HINT_VALUES ? '  | ...' : ''}`;
   }
 
   if (isSelectorPathLocation(path)) {
     return '  *  |  input  |  output  |  context  |  ...';
   }
 
-  const activeEvaluator = resolveActiveEvaluator(context, tree, path);
-  const cursor = resolveSchemaAtJsonPath(context, activeEvaluator, path);
+  const activeRule = resolveActiveRule(context, tree, path);
+  const cursor = resolveSchemaAtJsonPath(context, activeRule, path);
   const enumValues = getEnumValues(cursor.schema);
   if (enumValues.length > 0 && enumValues.length <= MAX_HINT_VALUES) {
     return `  ${enumValues.map(String).join('  |  ')}`;
@@ -683,11 +683,11 @@ function getHintForPath(
 /**
  * `activateOnTyping` often does not reopen completions after Backspace.
  * Also reopen when the user edits inside a JSON string that has value
- * suggestions (enums, evaluator name, selector path), including partial text
+ * suggestions (enums, rule name, selector path), including partial text
  * like `"s"` after deleting `"sdk"`.
  *
  * Only runs for direct typing/paste/delete — not programmatic doc updates
- * (for example default `config` injection after an evaluator rename).
+ * (for example default `config` injection after a rule rename).
  */
 function _createAutocompleteOpenWhenValueSuggestionsAfterEditExtension(
   context: JsonEditorCodeMirrorContext
@@ -703,7 +703,7 @@ function _createAutocompleteOpenWhenValueSuggestionsAfterEditExtension(
         ) {
           return;
         }
-        // Ignore programmatic doc changes (e.g. evaluator `config` auto-fill); those
+        // Ignore programmatic doc changes (e.g. rule `config` auto-fill); those
         // must not queue another completion — the dropdown would pop right back.
         if (
           !update.transactions.some(
@@ -818,7 +818,7 @@ function _createHoverExtension(
     const location = getLocation(text, pos);
     if (!location.path.length) return null;
 
-    const activeEvaluator = resolveActiveEvaluator(
+    const activeRule = resolveActiveRule(
       context,
       tree,
       location.path
@@ -826,7 +826,7 @@ function _createHoverExtension(
     const path = location.isAtPropertyKey
       ? location.path.slice(0, -1)
       : location.path;
-    const cursor = resolveSchemaAtJsonPath(context, activeEvaluator, path);
+    const cursor = resolveSchemaAtJsonPath(context, activeRule, path);
 
     let title: string | null = null;
     let description: string | null = null;
@@ -1149,12 +1149,12 @@ export function getCodeMirrorCompletionItems(
   }));
 }
 
-export function shouldTriggerEvaluatorNameCompletion(
+export function shouldTriggerRuleNameCompletion(
   text: string,
   offset: number
 ): boolean {
   const location = getLocation(text, offset);
-  if (!isEvaluatorNameLocation(location.path)) {
+  if (!isRuleNameLocation(location.path)) {
     return false;
   }
 

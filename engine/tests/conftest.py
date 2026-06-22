@@ -2,17 +2,17 @@
 
 import pytest
 
-from agent_control_engine import clear_evaluator_cache, reset_evaluator_discovery
-from agent_control_evaluators import clear_evaluators
+from agent_control_engine import clear_rule_cache, reset_rule_discovery
+from agent_control_rules import clear_rules
 
 
 @pytest.fixture(autouse=True)
-def clean_evaluator_state() -> None:
-    """Clean up evaluator registry and discovery state before each test.
+def clean_rule_state() -> None:
+    """Clean up rule registry and discovery state before each test.
 
     This fixture runs automatically for all tests to ensure isolation.
     Tests that mock entry_points won't pollute the registry for other tests.
     """
-    clear_evaluators()
-    reset_evaluator_discovery()
-    clear_evaluator_cache()
+    clear_rules()
+    reset_rule_discovery()
+    clear_rule_cache()

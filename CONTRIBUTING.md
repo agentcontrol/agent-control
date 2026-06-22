@@ -25,9 +25,9 @@ We welcome examples showing how Agent Control works with different agent framewo
 
 See existing examples in [examples/](examples/) for the expected structure.
 
-## 2. Contribute New Evaluators
+## 2. Contribute New Rules
 
-See [evaluators/contrib/template/README.md](evaluators/contrib/template/README.md) for instructions on how to create a new evaluator package.
+See [rules/contrib/template/README.md](rules/contrib/template/README.md) for instructions on how to create a new rule package.
 
 ## 3. Improve Code and Documentation
 

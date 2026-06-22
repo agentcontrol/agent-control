@@ -97,7 +97,7 @@ def researcher_controls() -> list[tuple[str, dict]]:
         },
         "condition": {
             "selector": {"path": "input.query"},
-            "evaluator": {
+            "rule": {
                 "name": "sql",
                 "config": {
                     "blocked_operations": ["DROP", "DELETE", "TRUNCATE", "ALTER", "INSERT", "UPDATE"],
@@ -121,7 +121,7 @@ def researcher_controls() -> list[tuple[str, dict]]:
         },
         "condition": {
             "selector": {"path": "input.query"},
-            "evaluator": {
+            "rule": {
                 "name": "list",
                 "config": {
                     "values": ["salary_data", "admin_users", "credentials", "auth_tokens"],
@@ -153,7 +153,7 @@ def analyst_controls() -> list[tuple[str, dict]]:
         },
         "condition": {
             "selector": {"path": "input.request"},
-            "evaluator": {
+            "rule": {
                 "name": "json",
                 "config": {
                     "required_fields": ["dataset", "findings", "confidence_score"],
@@ -181,7 +181,7 @@ def analyst_controls() -> list[tuple[str, dict]]:
         },
         "condition": {
             "selector": {"path": "input.request"},
-            "evaluator": {
+            "rule": {
                 "name": "json",
                 "config": {
                     "json_schema": {
@@ -231,7 +231,7 @@ def writer_controls() -> list[tuple[str, dict]]:
         },
         "condition": {
             "selector": {"path": "output"},
-            "evaluator": {
+            "rule": {
                 "name": "regex",
                 "config": {
                     "pattern": (
@@ -248,7 +248,7 @@ def writer_controls() -> list[tuple[str, dict]]:
     }
 
     # NOTE: The citation-presence check is handled client-side in the tool
-    # wrapper (write_report in research_crew.py) because the regex evaluator
+    # wrapper (write_report in research_crew.py) because the regex rule
     # triggers actions on match, not on non-match. The tool adds citations
     # if they are missing before returning the report.
 

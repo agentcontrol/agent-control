@@ -26,11 +26,11 @@ import {
 const EDITOR = CT_JSON_EDITOR_TEST_ID;
 
 test.describe('JsonEditorCodeMirror (component)', () => {
-  test('evaluator-config mode loads empty object document', async ({
+  test('rule-config mode loads empty object document', async ({
     mount,
     page,
   }) => {
-    await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
+    await mount(<JsonEditorCodeMirrorCtHost mode="rule-config" />);
     await expect(
       page.getByTestId('json-editor-codemirror-ct-host')
     ).toBeVisible();
@@ -55,7 +55,7 @@ test.describe('JsonEditorCodeMirror (component)', () => {
   });
 
   test('setJsonEditorValue updates document', async ({ mount, page }) => {
-    await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
+    await mount(<JsonEditorCodeMirrorCtHost mode="rule-config" />);
     const next = JSON.stringify({ threshold: 0.5, enabled: true });
     await setJsonEditorValue(page, EDITOR, next);
     expect(JSON.parse(await getJsonEditorValue(page, EDITOR))).toEqual({
@@ -65,7 +65,7 @@ test.describe('JsonEditorCodeMirror (component)', () => {
   });
 
   test('keyboard typing inserts text at cursor', async ({ mount, page }) => {
-    await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
+    await mount(<JsonEditorCodeMirrorCtHost mode="rule-config" />);
     expect(JSON.parse(await getJsonEditorValue(page, EDITOR))).toEqual({});
 
     await focusJsonEditorAt(page, EDITOR, 1, 2);
@@ -112,7 +112,7 @@ test.describe('JsonEditorCodeMirror (component)', () => {
         execution: 'server',
         condition: {
           selector: { path: 'output' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: 'a,}' },
           },
@@ -127,13 +127,13 @@ test.describe('JsonEditorCodeMirror (component)', () => {
     await page.getByRole('button', { name: 'Format document' }).click();
 
     const after = JSON.parse(await getJsonEditorValue(page, EDITOR)) as {
-      condition: { evaluator: { config: { pattern: string } } };
+      condition: { rule: { config: { pattern: string } } };
     };
-    expect(after.condition.evaluator.config.pattern).toBe('a,}');
+    expect(after.condition.rule.config.pattern).toBe('a,}');
   });
 
   test('toggle jsonError shows parent message', async ({ mount, page }) => {
-    await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
+    await mount(<JsonEditorCodeMirrorCtHost mode="rule-config" />);
     await page.getByTestId('ct-toggle-json-error').click();
     await expect(
       page.getByText('Simulated invalid JSON message from parent')
@@ -145,7 +145,7 @@ test.describe('JsonEditorCodeMirror (component)', () => {
   });
 
   test('helperText is visible', async ({ mount, page }) => {
-    await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
+    await mount(<JsonEditorCodeMirrorCtHost mode="rule-config" />);
     await expect(
       page.getByText('Playwright CT mounts this host without a Next.js page.')
     ).toBeVisible();
@@ -166,7 +166,7 @@ test.describe('JsonEditorCodeMirror (component)', () => {
 
   test('remounting host switches mode document', async ({ mount, page }) => {
     let host = await mount(
-      <JsonEditorCodeMirrorCtHost mode="evaluator-config" />
+      <JsonEditorCodeMirrorCtHost mode="rule-config" />
     );
     expect(JSON.parse(await getJsonEditorValue(page, EDITOR))).toEqual({});
 
@@ -178,7 +178,7 @@ test.describe('JsonEditorCodeMirror (component)', () => {
     expect(controlParse.execution).toBe('server');
 
     await host.unmount();
-    await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
+    await mount(<JsonEditorCodeMirrorCtHost mode="rule-config" />);
     expect(JSON.parse(await getJsonEditorValue(page, EDITOR))).toEqual({});
   });
 
@@ -186,7 +186,7 @@ test.describe('JsonEditorCodeMirror (component)', () => {
     mount,
     page,
   }) => {
-    await mount(<JsonEditorCodeMirrorCtHost mode="evaluator-config" />);
+    await mount(<JsonEditorCodeMirrorCtHost mode="rule-config" />);
     const broken = '{"a":1';
     await setJsonEditorValue(page, EDITOR, broken);
     expect(await getJsonEditorValue(page, EDITOR)).toBe(broken);

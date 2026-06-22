@@ -55,7 +55,7 @@ class Operation(StrEnum):
     AGENTS_READ = "agents.read"
     AGENTS_CREATE = "agents.create"
     AGENTS_UPDATE = "agents.update"
-    EVALUATORS_READ = "evaluators.read"
+    RULES_READ = "rules.read"
     OBSERVABILITY_READ = "observability.read"
     OBSERVABILITY_WRITE = "observability.write"
     RUNTIME_USE = "runtime.use"

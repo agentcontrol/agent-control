@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create controls for the direct Galileo Luna evaluator demo.
+"""Create controls for the direct Galileo Luna rule demo.
 
 Prerequisites:
     - Agent Control server running at AGENT_CONTROL_URL, default http://localhost:8000
@@ -45,7 +45,7 @@ DEMO_STEPS = [
 
 
 def luna_config() -> dict[str, Any]:
-    """Build the direct Luna evaluator config used by the composite control."""
+    """Build the direct Luna rule config used by the composite control."""
     config: dict[str, Any] = {
         "threshold": LUNA_THRESHOLD,
         "operator": "gte",
@@ -79,7 +79,7 @@ DEMO_CONTROLS: list[dict[str, Any]] = [
                 "and": [
                     {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "list",
                             "config": {
                                 "values": [
@@ -98,7 +98,7 @@ DEMO_CONTROLS: list[dict[str, Any]] = [
                     },
                     {
                         "selector": {"path": "output"},
-                        "evaluator": {
+                        "rule": {
                             "name": "galileo.luna",
                             "config": luna_config(),
                         },
@@ -122,7 +122,7 @@ DEMO_CONTROLS: list[dict[str, Any]] = [
             },
             "condition": {
                 "selector": {"path": "output"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": r"\bsk-[A-Za-z0-9_-]{12,}\b"},
                 },

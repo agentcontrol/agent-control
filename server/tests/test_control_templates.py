@@ -38,7 +38,7 @@ def _template_payload() -> dict[str, object]:
                 },
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": {"$param": "pattern"}},
                     },
@@ -54,7 +54,7 @@ def _template_payload() -> dict[str, object]:
 def _defaults_only_template_payload() -> dict[str, object]:
     return {
         "template": {
-            "description": "List evaluator template",
+            "description": "List rule template",
             "parameters": {
                 "values": {
                     "type": "string_list",
@@ -79,7 +79,7 @@ def _defaults_only_template_payload() -> dict[str, object]:
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "list",
                         "config": {
                             "values": {"$param": "values"},
@@ -132,7 +132,7 @@ def _case_sensitive_template_payload(
                 },
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "list",
                         "config": {
                             "values": {"$param": "values"},
@@ -156,7 +156,7 @@ def _raw_control_payload(pattern: str = "raw", *, action: str = "deny") -> dict[
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "condition": {
             "selector": {"path": "input"},
-            "evaluator": {
+            "rule": {
                 "name": "regex",
                 "config": {"pattern": pattern},
             },
@@ -275,7 +275,7 @@ def test_render_control_template_preview_returns_rendered_control(client: TestCl
         "pattern": "hello",
         "step_name": "templated-step",
     }
-    assert control["condition"]["evaluator"]["config"]["pattern"] == "hello"
+    assert control["condition"]["rule"]["config"]["pattern"] == "hello"
     assert control["scope"]["step_names"] == ["templated-step"]
 
 
@@ -297,8 +297,8 @@ def test_render_control_template_preview_uses_defaults_when_values_omitted(
         "logic": "any",
         "case_sensitive": False,
     }
-    assert control["condition"]["evaluator"]["name"] == "list"
-    assert control["condition"]["evaluator"]["config"] == {
+    assert control["condition"]["rule"]["name"] == "list"
+    assert control["condition"]["rule"]["config"] == {
         "values": ["secret", "blocked"],
         "logic": "any",
         "case_sensitive": False,
@@ -354,7 +354,7 @@ def test_create_template_backed_control_persists_template_metadata(client: TestC
         "pattern": "hello",
         "step_name": "templated-step",
     }
-    assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
+    assert data["condition"]["rule"]["config"]["pattern"] == "hello"
     assert data["scope"]["step_names"] == ["templated-step"]
 
 
@@ -400,7 +400,7 @@ def test_create_template_backed_control_persists_resolved_defaults_when_values_o
         "logic": "any",
         "case_sensitive": False,
     }
-    assert data["condition"]["evaluator"]["config"] == {
+    assert data["condition"]["rule"]["config"] == {
         "values": ["secret", "blocked"],
         "logic": "any",
         "case_sensitive": False,
@@ -785,7 +785,7 @@ def test_raw_control_can_be_replaced_with_template_backed_control(client: TestCl
     data = get_response.json()["data"]
     assert data["template"]["description"] == "Regex denial template"
     assert data["template_values"]["pattern"] == "hello"
-    assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
+    assert data["condition"]["rule"]["config"]["pattern"] == "hello"
 
 
 def test_raw_control_failed_template_replacement_does_not_mutate_raw_control(
@@ -849,7 +849,7 @@ def test_template_update_preserves_enabled_value(client: TestClient) -> None:
         "pattern": "updated",
         "step_name": "updated-step",
     }
-    assert data["condition"]["evaluator"]["config"]["pattern"] == "updated"
+    assert data["condition"]["rule"]["config"]["pattern"] == "updated"
     assert data["scope"]["step_names"] == ["updated-step"]
 
 
@@ -933,14 +933,14 @@ def test_template_update_accepts_different_template_structure(client: TestClient
     get_response = client.get(f"/api/v1/controls/{control_id}/data")
     assert get_response.status_code == 200, get_response.text
     data = get_response.json()["data"]
-    assert data["template"]["description"] == "List evaluator template"
+    assert data["template"]["description"] == "List rule template"
     assert data["template_values"] == {
         "values": ["secret", "blocked"],
         "logic": "any",
         "case_sensitive": False,
     }
-    assert data["condition"]["evaluator"]["name"] == "list"
-    assert data["condition"]["evaluator"]["config"] == {
+    assert data["condition"]["rule"]["name"] == "list"
+    assert data["condition"]["rule"]["config"] == {
         "values": ["secret", "blocked"],
         "logic": "any",
         "case_sensitive": False,
@@ -1027,7 +1027,7 @@ def test_template_validate_rejects_structurally_invalid_unrendered(
     # Given: a template with an undefined $param reference and empty values
     payload = _template_payload()
     payload["template_values"] = {}
-    payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["extra"] = {  # type: ignore[index]
+    payload["template"]["definition_template"]["condition"]["rule"]["config"]["extra"] = {  # type: ignore[index]
         "$param": "nonexistent",
     }
 
@@ -1076,7 +1076,7 @@ def test_render_control_template_rejects_undefined_param_reference(client: TestC
     # Given: a template definition that references an undeclared parameter
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
-    payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["pattern"] = {  # type: ignore[index]
+    payload["template"]["definition_template"]["condition"]["rule"]["config"]["pattern"] = {  # type: ignore[index]
         "$param": "undefined_pattern",
     }
 
@@ -1089,7 +1089,7 @@ def test_render_control_template_rejects_undefined_param_reference(client: TestC
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
     assert any(
         err.get("code") == "undefined_parameter_reference"
-        and err.get("field") == "condition.evaluator.config.pattern"
+        and err.get("field") == "condition.rule.config.pattern"
         for err in body.get("errors", [])
     )
 
@@ -1127,7 +1127,7 @@ def test_template_backed_control_rejects_raw_put_update(client: TestClient) -> N
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": "raw"},
                 },
@@ -1284,7 +1284,7 @@ def test_render_control_template_rejects_malformed_param_binding(client: TestCli
     # Given: a malformed $param binding object with extra keys
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
-    payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["pattern"] = {  # type: ignore[index]
+    payload["template"]["definition_template"]["condition"]["rule"]["config"]["pattern"] = {  # type: ignore[index]
         "$param": "pattern",
         "extra": True,
     }
@@ -1303,7 +1303,7 @@ def test_render_control_template_rejects_non_string_param_reference(client: Test
     # Given: a malformed $param binding whose reference is not a string
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
-    payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["pattern"] = {  # type: ignore[index]
+    payload["template"]["definition_template"]["condition"]["rule"]["config"]["pattern"] = {  # type: ignore[index]
         "$param": 123,
     }
 
@@ -1341,51 +1341,51 @@ def test_render_control_template_rejects_unused_parameter(client: TestClient) ->
     )
 
 
-def test_render_control_template_rejects_agent_scoped_evaluator(client: TestClient) -> None:
-    # Given: a template definition that uses an agent-scoped evaluator directly
+def test_render_control_template_rejects_agent_scoped_rule(client: TestClient) -> None:
+    # Given: a template definition that uses an agent-scoped rule directly
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
-    payload["template"]["definition_template"]["condition"]["evaluator"]["name"] = "agent-x:custom"  # type: ignore[index]
+    payload["template"]["definition_template"]["condition"]["rule"]["name"] = "agent-x:custom"  # type: ignore[index]
 
     # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
-    # Then: the API rejects agent-scoped evaluators for template-backed controls
+    # Then: the API rejects agent-scoped rules for template-backed controls
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
     assert any(
-        err.get("code") == "agent_scoped_evaluator_not_supported"
+        err.get("code") == "agent_scoped_rule_not_supported"
         for err in body.get("errors", [])
     )
 
 
-def test_render_control_template_remaps_param_bound_agent_scoped_evaluator_error(
+def test_render_control_template_remaps_param_bound_agent_scoped_rule_error(
     client: TestClient,
 ) -> None:
-    # Given: a template whose evaluator name comes from a bound parameter
+    # Given: a template whose rule name comes from a bound parameter
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
-    payload["template"]["parameters"]["evaluator_name"] = {  # type: ignore[index]
+    payload["template"]["parameters"]["rule_name"] = {  # type: ignore[index]
         "type": "string",
-        "label": "Evaluator Name",
+        "label": "Rule Name",
     }
-    payload["template"]["definition_template"]["condition"]["evaluator"]["name"] = {  # type: ignore[index]
-        "$param": "evaluator_name",
+    payload["template"]["definition_template"]["condition"]["rule"]["name"] = {  # type: ignore[index]
+        "$param": "rule_name",
     }
-    payload["template_values"]["evaluator_name"] = "agent-x:custom"  # type: ignore[index]
+    payload["template_values"]["rule_name"] = "agent-x:custom"  # type: ignore[index]
 
     # When: rendering a template preview
     response = client.post("/api/v1/control-templates/render", json=payload)
 
-    # Then: the agent-scoped evaluator error is remapped to the bound parameter
+    # Then: the agent-scoped rule error is remapped to the bound parameter
     assert response.status_code == 422
     body = response.json()
     assert body["error_code"] == "TEMPLATE_PARAMETER_INVALID"
     assert any(
-        err.get("field") == "template_values.evaluator_name"
-        and err.get("parameter") == "evaluator_name"
-        and err.get("rendered_field") == "condition.evaluator.name"
+        err.get("field") == "template_values.rule_name"
+        and err.get("parameter") == "rule_name"
+        and err.get("rendered_field") == "condition.rule.name"
         and err.get("code") == "template_parameter_invalid"
         for err in body.get("errors", [])
     )
@@ -1414,14 +1414,14 @@ def test_render_control_template_rejects_forbidden_top_level_template_fields(
 
 
 def test_render_control_template_rejects_legacy_flat_format(client: TestClient) -> None:
-    # Given: a template that uses the legacy flat selector/evaluator format
+    # Given: a template that uses the legacy flat selector/rule format
     payload = _template_payload()
     payload["template"] = deepcopy(payload["template"])
     payload["template"]["definition_template"] = {  # type: ignore[index]
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": {"$param": "pattern"}},
         },
@@ -1506,7 +1506,7 @@ def _unrendered_template_payload() -> dict[str, object]:
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": {"$param": "pattern"}},
                     },
@@ -1580,7 +1580,7 @@ def test_update_unrendered_template_with_complete_values_renders(client: TestCli
     get_response = client.get(f"/api/v1/controls/{control_id}/data")
     assert get_response.status_code == 200, get_response.text
     data = get_response.json()["data"]
-    assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
+    assert data["condition"]["rule"]["config"]["pattern"] == "hello"
     assert data["template_values"]["pattern"] == "hello"
     # And: enabled remains false (preserved from unrendered state)
     assert data["enabled"] is False
@@ -1914,7 +1914,7 @@ def test_create_unrendered_template_rejects_undefined_param_reference(
 ) -> None:
     # Given: a template whose definition_template references an undefined parameter
     payload = _unrendered_template_payload()
-    payload["template"]["definition_template"]["condition"]["evaluator"]["config"]["extra"] = {  # type: ignore[index]
+    payload["template"]["definition_template"]["condition"]["rule"]["config"]["extra"] = {  # type: ignore[index]
         "$param": "nonexistent",
     }
 
@@ -1961,12 +1961,12 @@ def test_create_unrendered_template_rejects_unused_parameter(
     )
 
 
-def test_create_unrendered_template_rejects_agent_scoped_evaluator(
+def test_create_unrendered_template_rejects_agent_scoped_rule(
     client: TestClient,
 ) -> None:
-    # Given: a template with a hardcoded agent-scoped evaluator name
+    # Given: a template with a hardcoded agent-scoped rule name
     payload = _unrendered_template_payload()
-    payload["template"]["definition_template"]["condition"]["evaluator"]["name"] = "agent-x:custom"  # type: ignore[index]
+    payload["template"]["definition_template"]["condition"]["rule"]["name"] = "agent-x:custom"  # type: ignore[index]
 
     # When: creating the unrendered control
     response = client.put(
@@ -1979,7 +1979,7 @@ def test_create_unrendered_template_rejects_agent_scoped_evaluator(
     body = response.json()
     assert body["error_code"] == "TEMPLATE_RENDER_ERROR"
     assert any(
-        err.get("code") == "agent_scoped_evaluator_not_supported"
+        err.get("code") == "agent_scoped_rule_not_supported"
         for err in body.get("errors", [])
     )
 
@@ -2005,4 +2005,4 @@ def test_rendered_template_rejects_update_with_incomplete_values(
     get_response = client.get(f"/api/v1/controls/{control_id}/data")
     data = get_response.json()["data"]
     assert "condition" in data
-    assert data["condition"]["evaluator"]["config"]["pattern"] == "hello"
+    assert data["condition"]["rule"]["config"]["pattern"] == "hello"

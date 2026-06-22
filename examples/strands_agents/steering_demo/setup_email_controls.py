@@ -45,7 +45,7 @@ SAFETY_CONTROLS = [
             },
             "condition": {
                 "selector": {"path": "output"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": r"(\b\d{9,12}\b)|(\d{3}[-\s]?\d{2}[-\s]?\d{4})|(\$[\d,]+\d{3,})"
@@ -100,7 +100,7 @@ SAFETY_CONTROLS = [
             },
             "condition": {
                 "selector": {"path": "input.summary_text"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         # Match patterns like: api_key, password, secret, token
@@ -128,7 +128,7 @@ SAFETY_CONTROLS = [
             },
             "condition": {
                 "selector": {"path": "input.summary_text"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         # Match database names, server paths

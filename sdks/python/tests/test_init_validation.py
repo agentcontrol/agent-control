@@ -4,7 +4,7 @@ import agent_control
 import pytest
 from agent_control_models import ControlMatch as ModelControlMatch
 from agent_control_models import ControlScope as ModelControlScope
-from agent_control_models import EvaluatorResult as ModelEvaluatorResult
+from agent_control_models import RuleResult as ModelRuleResult
 
 
 def test_init_rejects_invalid_agent_name() -> None:
@@ -45,6 +45,6 @@ def test_init_exports_control_match() -> None:
     assert "ControlMatch" in agent_control.__all__
 
 
-def test_init_exports_evaluator_result() -> None:
-    assert agent_control.EvaluatorResult is ModelEvaluatorResult
-    assert "EvaluatorResult" in agent_control.__all__
+def test_init_exports_rule_result() -> None:
+    assert agent_control.RuleResult is ModelRuleResult
+    assert "RuleResult" in agent_control.__all__

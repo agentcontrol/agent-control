@@ -25,7 +25,7 @@ import {
 export type ControlAction = {
   decision: ActionDecision;
   /**
-   * Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback.
+   * Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the rule result message will be used as fallback.
    */
   steeringContext?: SteeringContext | null | undefined;
 };

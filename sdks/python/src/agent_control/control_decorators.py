@@ -23,7 +23,7 @@ Usage:
     # Server-side controls define:
     # - stage: "pre" or "post"
     # - selector.path: "input" or "output"
-    # - evaluator: regex, list, Luna evaluator, etc.
+    # - rule: regex, list, Luna rule, etc.
     # - action: deny, steer, or observe
 """
 
@@ -607,7 +607,7 @@ def _handle_evaluation_result(result: dict[str, Any]) -> None:
             elif isinstance(steering_context_obj, str):
                 steering_context = steering_context_obj
             else:
-                # No steering context provided, use evaluator message
+                # No steering context provided, use rule message
                 steering_context = message
 
             raise ControlSteerError(

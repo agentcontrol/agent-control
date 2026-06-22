@@ -36,7 +36,7 @@ async function main(): Promise<void> {
       action: { decision: "deny" },
       description: "Block SSN-like patterns in post-step output.",
       enabled: true,
-      evaluator: {
+      rule: {
         name: "regex",
         config: {
           pattern: "\\b\\d{3}-\\d{2}-\\d{4}\\b",
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
       controlId: createdControlId,
     });
     console.log(
-      `Fetched control config: evaluator=${fetched.data.evaluator.name}, selector=${fetched.data.selector.path ?? "*"}`,
+      `Fetched control config: rule=${fetched.data.rule.name}, selector=${fetched.data.selector.path ?? "*"}`,
     );
   } finally {
     if (createdControlId !== null) {

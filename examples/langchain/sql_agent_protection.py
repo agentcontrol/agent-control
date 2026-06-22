@@ -150,7 +150,7 @@ def create_safe_tools(db, llm, *, use_local_controls: bool, local_controls: list
             print(error_msg)
             return error_msg
         except RuntimeError as e:
-            # Server-side error (e.g., evaluator not loaded)
+            # Server-side error (e.g., rule not loaded)
             error_msg = f"⚠️ Safety check unavailable: {str(e)}"
             print(error_msg)
             return error_msg

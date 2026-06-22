@@ -5,7 +5,7 @@ A production-quality example of a 3-agent CrewAI crew where each agent has its o
 ## What It Demonstrates
 
 - **Per-agent policies**: Different controls for different agent roles, all assigned to a single runtime agent and differentiated by `step_names` in control scopes.
-- **Multiple evaluator types**: SQL, LIST, JSON, JSON Schema, and REGEX evaluators working together.
+- **Multiple rule types**: SQL, LIST, JSON, JSON Schema, and REGEX rules working together.
 - **Deny and steer actions**: Hard blocks for security violations, corrective steering for recoverable issues.
 - **Idempotent setup**: The setup script handles 409 conflicts gracefully and can be run repeatedly.
 
@@ -40,11 +40,11 @@ A production-quality example of a 3-agent CrewAI crew where each agent has its o
     +------------------------------------------------------------+
 ```
 
-Each tool's `step_name` matches the `step_names` in its corresponding control scope, so the SQL evaluator only fires for `query_database`, the JSON evaluator only fires for `validate_data`, etc.
+Each tool's `step_name` matches the `step_names` in its corresponding control scope, so the SQL rule only fires for `query_database`, the JSON rule only fires for `validate_data`, etc.
 
 ## Scenarios
 
-| # | Scenario | Agent | Control | Evaluator | Action | Expected |
+| # | Scenario | Agent | Control | Rule | Action | Expected |
 |---|----------|-------|---------|-----------|--------|----------|
 | 1 | Happy path | All | All | All | observe | Report generated |
 | 2 | SQL injection | Researcher | researcher-sql-safety | SQL | deny | Query blocked |
@@ -75,14 +75,14 @@ Then from this directory:
 cd examples/crewai/secure_research_crew
 ```
 
-`agent-control-sdk` and `crewai` have an incompatible transitive dependency on `pydantic` (crewai caps at `<2.12`, the SDK evaluators require `>=2.12.4`). Install in two steps to work around this:
+`agent-control-sdk` and `crewai` have an incompatible transitive dependency on `pydantic` (crewai caps at `<2.12`, the SDK rules require `>=2.12.4`). Install in two steps to work around this:
 
 ```bash
 # Install crewai and all other deps via normal resolver
 uv pip install -e .
 
-# Install agent-control-sdk separately, skipping the conflicting evaluators dep
-# (this example uses server-mode execution and does not need evaluators locally)
+# Install agent-control-sdk separately, skipping the conflicting rules dep
+# (this example uses server-mode execution and does not need rules locally)
 uv pip install agent-control-sdk==7.5.0 --no-deps
 uv pip install httpx pydantic-settings docstring-parser google-re2 jsonschema
 ```

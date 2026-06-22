@@ -1,4 +1,4 @@
-"""Tests for new features: evaluators endpoint, policy validation, PATCH agents."""
+"""Tests for new features: rules endpoint, policy validation, PATCH agents."""
 
 import uuid
 
@@ -11,7 +11,7 @@ def make_agent_payload(
     agent_name: str | None = None,
     name: str | None = None,
     steps: list | None = None,
-    evaluators: list | None = None,
+    rules: list | None = None,
 ):
     """Helper to create agent payload."""
     if agent_name is not None:
@@ -29,29 +29,29 @@ def make_agent_payload(
             "agent_version": "1.0",
         },
         "steps": steps or [],
-        "evaluators": evaluators or [],
+        "rules": rules or [],
     }
 
 
 # =============================================================================
-# GET /evaluators endpoint
+# GET /rules endpoint
 # =============================================================================
 
 
-def test_get_evaluators(client: TestClient) -> None:
-    """Given built-in evaluators are registered, when listing evaluators, then returns all with schemas."""
-    # Given: built-in evaluators are registered
-    # When: listing evaluators
-    resp = client.get("/api/v1/evaluators")
+def test_get_rules(client: TestClient) -> None:
+    """Given built-in rules are registered, when listing rules, then returns all with schemas."""
+    # Given: built-in rules are registered
+    # When: listing rules
+    resp = client.get("/api/v1/rules")
 
-    # Then: response includes built-in evaluators with schemas
+    # Then: response includes built-in rules with schemas
     assert resp.status_code == 200
-    evaluators = resp.json()
-    assert isinstance(evaluators, dict)
-    assert "regex" in evaluators
-    assert "list" in evaluators
+    rules = resp.json()
+    assert isinstance(rules, dict)
+    assert "regex" in rules
+    assert "list" in rules
 
-    regex = evaluators["regex"]
+    regex = rules["regex"]
     assert regex["name"] == "regex"
     assert "version" in regex
     assert "description" in regex
@@ -59,16 +59,16 @@ def test_get_evaluators(client: TestClient) -> None:
     assert isinstance(regex["config_schema"], dict)
 
 
-def test_get_evaluators_schema_has_properties(client: TestClient) -> None:
-    """Given the regex evaluator is registered, when listing evaluators, then schema has pattern property."""
-    # Given: the regex evaluator is registered
-    # When: listing evaluators
-    resp = client.get("/api/v1/evaluators")
+def test_get_rules_schema_has_properties(client: TestClient) -> None:
+    """Given the regex rule is registered, when listing rules, then schema has pattern property."""
+    # Given: the regex rule is registered
+    # When: listing rules
+    resp = client.get("/api/v1/rules")
 
     # Then: regex schema includes expected properties
     assert resp.status_code == 200
-    evaluators = resp.json()
-    regex_schema = evaluators["regex"]["config_schema"]
+    rules = resp.json()
+    regex_schema = rules["regex"]["config_schema"]
     assert "properties" in regex_schema
     assert "pattern" in regex_schema["properties"]
 
@@ -103,7 +103,7 @@ def test_patch_agent_remove_step(client: TestClient) -> None:
     assert patch_resp.status_code == 200
     data = patch_resp.json()
     assert data["steps_removed"] == [{"type": "tool", "name": "tool1"}]
-    assert data["evaluators_removed"] == []
+    assert data["rules_removed"] == []
 
     get_resp = client.get(f"/api/v1/agents/{agent_name}")
     steps = [s["name"] for s in get_resp.json()["steps"]]
@@ -111,15 +111,15 @@ def test_patch_agent_remove_step(client: TestClient) -> None:
     assert "tool2" in steps
 
 
-def test_patch_agent_remove_evaluator(client: TestClient) -> None:
-    """Given an agent with multiple evaluators, when removing one, then only that evaluator is removed."""
+def test_patch_agent_remove_rule(client: TestClient) -> None:
+    """Given an agent with multiple rules, when removing one, then only that rule is removed."""
     # Given:
     agent_name = str(uuid.uuid4())
     name = f"Test Agent {uuid.uuid4().hex[:8]}"
     payload = make_agent_payload(
         agent_name=agent_name,
         name=name,
-        evaluators=[
+        rules=[
             {"name": "eval1", "config_schema": {}},
             {"name": "eval2", "config_schema": {}},
         ],
@@ -129,16 +129,16 @@ def test_patch_agent_remove_evaluator(client: TestClient) -> None:
     # When:
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_name}",
-        json={"remove_evaluators": ["eval1"]},
+        json={"remove_rules": ["eval1"]},
     )
 
     # Then:
     assert patch_resp.status_code == 200
     data = patch_resp.json()
-    assert data["evaluators_removed"] == ["eval1"]
+    assert data["rules_removed"] == ["eval1"]
 
-    get_resp = client.get(f"/api/v1/agents/{agent_name}/evaluators")
-    evals = [e["name"] for e in get_resp.json()["evaluators"]]
+    get_resp = client.get(f"/api/v1/agents/{agent_name}/rules")
+    evals = [e["name"] for e in get_resp.json()["rules"]]
     assert "eval1" not in evals
     assert "eval2" in evals
 
@@ -156,7 +156,7 @@ def test_patch_agent_remove_nonexistent_is_idempotent(client: TestClient) -> Non
         f"/api/v1/agents/{agent_name}",
         json={
             "remove_steps": [{"type": "tool", "name": "nonexistent"}],
-            "remove_evaluators": ["also_nonexistent"],
+            "remove_rules": ["also_nonexistent"],
         },
     )
 
@@ -164,7 +164,7 @@ def test_patch_agent_remove_nonexistent_is_idempotent(client: TestClient) -> Non
     assert patch_resp.status_code == 200
     data = patch_resp.json()
     assert data["steps_removed"] == []
-    assert data["evaluators_removed"] == []
+    assert data["rules_removed"] == []
 
 
 def test_patch_agent_not_found(client: TestClient) -> None:
@@ -183,7 +183,7 @@ def test_patch_agent_not_found(client: TestClient) -> None:
 
 
 def test_patch_agent_remove_both(client: TestClient) -> None:
-    """Given an agent with steps and evaluators, when removing both, then both are removed."""
+    """Given an agent with steps and rules, when removing both, then both are removed."""
     # Given:
     agent_name = str(uuid.uuid4())
     name = f"Test Agent {uuid.uuid4().hex[:8]}"
@@ -191,7 +191,7 @@ def test_patch_agent_remove_both(client: TestClient) -> None:
         agent_name=agent_name,
         name=name,
         steps=[{"type": "tool", "name": "my_tool", "input_schema": {}, "output_schema": {}}],
-        evaluators=[{"name": "my_eval", "config_schema": {}}],
+        rules=[{"name": "my_eval", "config_schema": {}}],
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
@@ -200,7 +200,7 @@ def test_patch_agent_remove_both(client: TestClient) -> None:
         f"/api/v1/agents/{agent_name}",
         json={
             "remove_steps": [{"type": "tool", "name": "my_tool"}],
-            "remove_evaluators": ["my_eval"],
+            "remove_rules": ["my_eval"],
         },
     )
 
@@ -208,7 +208,7 @@ def test_patch_agent_remove_both(client: TestClient) -> None:
     assert patch_resp.status_code == 200
     data = patch_resp.json()
     assert data["steps_removed"] == [{"type": "tool", "name": "my_tool"}]
-    assert data["evaluators_removed"] == ["my_eval"]
+    assert data["rules_removed"] == ["my_eval"]
 
 
 def test_patch_agent_empty_request_is_noop(client: TestClient) -> None:
@@ -220,29 +220,29 @@ def test_patch_agent_empty_request_is_noop(client: TestClient) -> None:
         agent_name=agent_name,
         name=name,
         steps=[{"type": "tool", "name": "keep_me", "input_schema": {}, "output_schema": {}}],
-        evaluators=[{"name": "keep_me_too", "config_schema": {}}],
+        rules=[{"name": "keep_me_too", "config_schema": {}}],
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
     # When:
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_name}",
-        json={"remove_steps": [], "remove_evaluators": []},
+        json={"remove_steps": [], "remove_rules": []},
     )
 
     # Then:
     assert patch_resp.status_code == 200
     data = patch_resp.json()
     assert data["steps_removed"] == []
-    assert data["evaluators_removed"] == []
+    assert data["rules_removed"] == []
 
     # Verify nothing was removed
     get_resp = client.get(f"/api/v1/agents/{agent_name}")
     steps = [s["name"] for s in get_resp.json()["steps"]]
     assert "keep_me" in steps
 
-    get_evals = client.get(f"/api/v1/agents/{agent_name}/evaluators")
-    evals = [e["name"] for e in get_evals.json()["evaluators"]]
+    get_evals = client.get(f"/api/v1/agents/{agent_name}/rules")
+    evals = [e["name"] for e in get_evals.json()["rules"]]
     assert "keep_me_too" in evals
 
 
@@ -277,8 +277,8 @@ def _create_policy_with_control(
     return policy_id, control_id
 
 
-def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
-    """Given an agent and a policy with built-in evaluator control, when assigning policy, then succeeds."""
+def test_policy_assignment_with_builtin_rule(client: TestClient) -> None:
+    """Given an agent and a policy with built-in rule control, when assigning policy, then succeeds."""
     # Given:
     agent_name = str(uuid.uuid4())
     name = f"Test Agent {uuid.uuid4().hex[:8]}"
@@ -293,7 +293,7 @@ def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
-            "evaluator": {"name": "regex", "config": {"pattern": "test.*"}},
+            "rule": {"name": "regex", "config": {"pattern": "test.*"}},
             "action": {"decision": "deny"},
         },
     )
@@ -305,15 +305,15 @@ def test_policy_assignment_with_builtin_evaluator(client: TestClient) -> None:
     assert resp.status_code == 200
 
 
-def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -> None:
-    """Given an agent with custom evaluator and matching policy, when assigning policy, then succeeds."""
+def test_policy_assignment_with_registered_agent_rule(client: TestClient) -> None:
+    """Given an agent with custom rule and matching policy, when assigning policy, then succeeds."""
     # Given:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     agent_name = agent_name
     payload = make_agent_payload(
         agent_name=agent_name,
         name=agent_name,
-        evaluators=[{"name": "custom-eval", "config_schema": {"type": "object"}}],
+        rules=[{"name": "custom-eval", "config_schema": {"type": "object"}}],
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
@@ -325,7 +325,7 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
-            "evaluator": {"name": f"{agent_name}:custom-eval", "config": {}},
+            "rule": {"name": f"{agent_name}:custom-eval", "config": {}},
             "action": {"decision": "deny"},
         },
     )
@@ -337,8 +337,8 @@ def test_policy_assignment_with_registered_agent_evaluator(client: TestClient) -
     assert resp.status_code == 200
 
 
-def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) -> None:
-    """Given an agent without evaluator, when creating a control that uses it, then fails."""
+def test_control_creation_with_unregistered_rule_fails(client: TestClient) -> None:
+    """Given an agent without rule, when creating a control that uses it, then fails."""
     # Given:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     agent_name = agent_name
@@ -355,7 +355,7 @@ def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) 
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {"name": f"{agent_name}:nonexistent-eval", "config": {}},
+                    "rule": {"name": f"{agent_name}:nonexistent-eval", "config": {}},
                 },
                 "action": {"decision": "deny"},
             }
@@ -369,15 +369,15 @@ def test_control_creation_with_unregistered_evaluator_fails(client: TestClient) 
     assert "not registered" in response_data.get("detail", "")
 
 
-def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> None:
-    """Given policy with Agent A's evaluator, when assigning to Agent B, then fails."""
-    # Given: Agent A has evaluator, Agent B does not
+def test_policy_assignment_cross_agent_rule_fails(client: TestClient) -> None:
+    """Given policy with Agent A's rule, when assigning to Agent B, then fails."""
+    # Given: Agent A has rule, Agent B does not
     agent_a_id = f"agent-a-{uuid.uuid4().hex[:12]}"
     agent_a_name = agent_a_id
     payload_a = make_agent_payload(
         agent_name=agent_a_id,
         name=agent_a_name,
-        evaluators=[{"name": "shared-eval", "config_schema": {"type": "object"}}],
+        rules=[{"name": "shared-eval", "config_schema": {"type": "object"}}],
     )
     client.post("/api/v1/agents/initAgent", json=payload_a)
 
@@ -394,7 +394,7 @@ def test_policy_assignment_cross_agent_evaluator_fails(client: TestClient) -> No
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
-            "evaluator": {"name": f"{agent_a_name}:shared-eval", "config": {}},
+            "rule": {"name": f"{agent_a_name}:shared-eval", "config": {}},
             "action": {"decision": "deny"},
         },
     )
@@ -429,7 +429,7 @@ def test_schema_compat_nested_additional_properties_compatible(client: TestClien
     payload1 = make_agent_payload(
         agent_name=agent_name,
         name=name,
-        evaluators=[
+        rules=[
             {
                 "name": "nested-eval",
                 "config_schema": {
@@ -450,7 +450,7 @@ def test_schema_compat_nested_additional_properties_compatible(client: TestClien
     payload2 = make_agent_payload(
         agent_name=agent_name,
         name=name,
-        evaluators=[
+        rules=[
             {
                 "name": "nested-eval",
                 "config_schema": {
@@ -482,7 +482,7 @@ def test_schema_compat_nested_type_change_incompatible(client: TestClient) -> No
     payload1 = make_agent_payload(
         agent_name=agent_name,
         name=name,
-        evaluators=[
+        rules=[
             {
                 "name": "nested-eval",
                 "config_schema": {
@@ -503,7 +503,7 @@ def test_schema_compat_nested_type_change_incompatible(client: TestClient) -> No
     payload2 = make_agent_payload(
         agent_name=agent_name,
         name=name,
-        evaluators=[
+        rules=[
             {
                 "name": "nested-eval",
                 "config_schema": {
@@ -526,28 +526,28 @@ def test_schema_compat_nested_type_change_incompatible(client: TestClient) -> No
 
 
 # =============================================================================
-# Evaluator removal protection
+# Rule removal protection
 # =============================================================================
 
 
-def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> None:
-    """Given an agent with evaluator used by a control, when removing evaluator, then rejected.
+def test_patch_agent_remove_rule_blocked_by_control(client: TestClient) -> None:
+    """Given an agent with rule used by a control, when removing rule, then rejected.
 
-    Given: An agent with evaluator "my-eval" and a control using that evaluator
+    Given: An agent with rule "my-eval" and a control using that rule
     When: Trying to remove "my-eval" via PATCH
     Then: Returns 409 with error message about referencing control
     """
-    # Given: Agent with custom evaluator
+    # Given: Agent with custom rule
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     agent_name = agent_name
     payload = make_agent_payload(
         agent_name=agent_name,
         name=agent_name,
-        evaluators=[{"name": "my-eval", "config_schema": {"type": "object"}}],
+        rules=[{"name": "my-eval", "config_schema": {"type": "object"}}],
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    # And: A control set up to use that evaluator
+    # And: A control set up to use that rule
     policy_id, _ = _create_policy_with_control(
         client,
         f"policy-{uuid.uuid4().hex[:8]}",
@@ -556,7 +556,7 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
             "execution": "server",
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "selector": {"path": "input"},
-            "evaluator": {"name": f"{agent_name}:my-eval", "config": {}},
+            "rule": {"name": f"{agent_name}:my-eval", "config": {}},
             "action": {"decision": "deny"},
         },
     )
@@ -565,10 +565,10 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
     assign_resp = client.post(f"/api/v1/agents/{agent_name}/policy/{policy_id}")
     assert assign_resp.status_code == 200
 
-    # When: Trying to remove the evaluator
+    # When: Trying to remove the rule
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_name}",
-        json={"remove_evaluators": ["my-eval"]},
+        json={"remove_rules": ["my-eval"]},
     )
 
     # Then: Should be rejected with 409 (RFC 7807 format)
@@ -576,34 +576,34 @@ def test_patch_agent_remove_evaluator_blocked_by_control(client: TestClient) -> 
     response_data = patch_resp.json()
     detail = response_data.get("detail", "")
     errors = response_data.get("errors", [])
-    assert "Cannot remove evaluators" in detail
-    # Check errors array contains reference to the evaluator
+    assert "Cannot remove rules" in detail
+    # Check errors array contains reference to the rule
     assert any("my-eval" in e.get("message", "") for e in errors)
 
 
-def test_patch_agent_remove_evaluator_allowed_without_policy(client: TestClient) -> None:
-    """Given an agent with evaluator but no policy, when removing evaluator, then succeeds.
+def test_patch_agent_remove_rule_allowed_without_policy(client: TestClient) -> None:
+    """Given an agent with rule but no policy, when removing rule, then succeeds.
 
-    Given: An agent with evaluator "my-eval" but no policy assigned
+    Given: An agent with rule "my-eval" but no policy assigned
     When: Trying to remove "my-eval" via PATCH
     Then: Succeeds since no controls can reference it
     """
-    # Given: Agent with custom evaluator but no policy
+    # Given: Agent with custom rule but no policy
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     agent_name = agent_name
     payload = make_agent_payload(
         agent_name=agent_name,
         name=agent_name,
-        evaluators=[{"name": "my-eval", "config_schema": {"type": "object"}}],
+        rules=[{"name": "my-eval", "config_schema": {"type": "object"}}],
     )
     client.post("/api/v1/agents/initAgent", json=payload)
 
-    # When: Removing the evaluator (no policy = no controls can reference it)
+    # When: Removing the rule (no policy = no controls can reference it)
     patch_resp = client.patch(
         f"/api/v1/agents/{agent_name}",
-        json={"remove_evaluators": ["my-eval"]},
+        json={"remove_rules": ["my-eval"]},
     )
 
     # Then: Should succeed
     assert patch_resp.status_code == 200
-    assert patch_resp.json()["evaluators_removed"] == ["my-eval"]
+    assert patch_resp.json()["rules_removed"] == ["my-eval"]

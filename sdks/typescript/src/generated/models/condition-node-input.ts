@@ -9,10 +9,10 @@ import {
   ControlSelector$outboundSchema,
 } from "./control-selector.js";
 import {
-  EvaluatorSpec,
-  EvaluatorSpec$Outbound,
-  EvaluatorSpec$outboundSchema,
-} from "./evaluator-spec.js";
+  RuleSpec,
+  RuleSpec$Outbound,
+  RuleSpec$outboundSchema,
+} from "./rule-spec.js";
 
 /**
  * Recursive boolean condition tree for control evaluation.
@@ -23,9 +23,9 @@ export type ConditionNodeInput = {
    */
   and?: Array<ConditionNodeInput> | null | undefined;
   /**
-   * Leaf evaluator. Must be provided together with selector.
+   * Leaf rule. Must be provided together with selector.
    */
-  evaluator?: EvaluatorSpec | null | undefined;
+  rule?: RuleSpec | null | undefined;
   /**
    * Logical NOT over a single child condition.
    */
@@ -35,7 +35,7 @@ export type ConditionNodeInput = {
    */
   or?: Array<ConditionNodeInput> | null | undefined;
   /**
-   * Leaf selector. Must be provided together with evaluator.
+   * Leaf selector. Must be provided together with rule.
    */
   selector?: ControlSelector | null | undefined;
 };
@@ -43,7 +43,7 @@ export type ConditionNodeInput = {
 /** @internal */
 export type ConditionNodeInput$Outbound = {
   and?: Array<ConditionNodeInput$Outbound> | null | undefined;
-  evaluator?: EvaluatorSpec$Outbound | null | undefined;
+  rule?: RuleSpec$Outbound | null | undefined;
   not?: ConditionNodeInput$Outbound | null | undefined;
   or?: Array<ConditionNodeInput$Outbound> | null | undefined;
   selector?: ControlSelector$Outbound | null | undefined;
@@ -57,7 +57,7 @@ export const ConditionNodeInput$outboundSchema: z.ZodMiniType<
   and: z.optional(
     z.nullable(z.array(z.lazy(() => ConditionNodeInput$outboundSchema))),
   ),
-  evaluator: z.optional(z.nullable(EvaluatorSpec$outboundSchema)),
+  rule: z.optional(z.nullable(RuleSpec$outboundSchema)),
   not: z.optional(z.nullable(z.lazy(() => ConditionNodeInput$outboundSchema))),
   or: z.optional(
     z.nullable(z.array(z.lazy(() => ConditionNodeInput$outboundSchema))),

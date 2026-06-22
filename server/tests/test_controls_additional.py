@@ -9,7 +9,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from agent_control_evaluators import RegexEvaluatorConfig
+from agent_control_rules import RegexRuleConfig
 from agent_control_models import ConditionNode
 from agent_control_models.errors import ErrorCode, ErrorReason
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
@@ -1719,9 +1719,9 @@ def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> No
     # Given: a control
     control_id, _ = _create_control(client)
 
-    # When: setting data with a missing agent in evaluator ref
+    # When: setting data with a missing agent in rule ref
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": "missing-agent:custom", "config": {"pattern": "x"}}
+    payload["condition"]["rule"] = {"name": "missing-agent:custom", "config": {"pattern": "x"}}
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
     # Then: not found
@@ -1729,8 +1729,8 @@ def test_set_control_data_agent_scoped_agent_not_found(client: TestClient) -> No
     assert resp.json()["error_code"] == "AGENT_NOT_FOUND"
 
 
-def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> None:
-    # Given: an agent without the referenced evaluator
+def test_set_control_data_agent_scoped_rule_missing(client: TestClient) -> None:
+    # Given: an agent without the referenced rule
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     agent_name = agent_name
     resp = client.post(
@@ -1738,27 +1738,27 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
         json={
             "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
-            "evaluators": [],
+            "rules": [],
         },
     )
     assert resp.status_code == 200
 
     control_id, _ = _create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": f"{agent_name}:missing", "config": {"pattern": "x"}}
+    payload["condition"]["rule"] = {"name": f"{agent_name}:missing", "config": {"pattern": "x"}}
 
-    # When: setting data with evaluator not registered on agent
+    # When: setting data with rule not registered on agent
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
     # Then: validation error
     assert resp.status_code == 422
     body = resp.json()
-    assert body["error_code"] == "EVALUATOR_NOT_FOUND"
-    assert any(err.get("field") == "data.condition.evaluator.name" for err in body.get("errors", []))
+    assert body["error_code"] == "RULE_NOT_FOUND"
+    assert any(err.get("field") == "data.condition.rule.name" for err in body.get("errors", []))
 
 
 def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> None:
-    # Given: an agent with evaluator schema requiring "pattern"
+    # Given: an agent with rule schema requiring "pattern"
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     agent_name = agent_name
     resp = client.post(
@@ -1766,7 +1766,7 @@ def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> Non
         json={
             "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
-            "evaluators": [
+            "rules": [
                 {
                     "name": "custom",
                     "description": "custom",
@@ -1783,7 +1783,7 @@ def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> Non
 
     control_id, _ = _create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": f"{agent_name}:custom", "config": {}}
+    payload["condition"]["rule"] = {"name": f"{agent_name}:custom", "config": {}}
 
     # When: setting data with config missing required fields
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -1792,7 +1792,7 @@ def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> Non
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "INVALID_CONFIG"
-    assert any(err.get("field") == "data.condition.evaluator.config" for err in body.get("errors", []))
+    assert any(err.get("field") == "data.condition.rule.config" for err in body.get("errors", []))
 
 
 def test_patch_control_updates_name_and_enabled(client: TestClient) -> None:
@@ -1856,7 +1856,7 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
         json={
             "agent": {"agent_name": agent_name, "agent_name": agent_name},
             "steps": [],
-            "evaluators": [{"name": "custom", "config_schema": {"type": "object"}}],
+            "rules": [{"name": "custom", "config_schema": {"type": "object"}}],
         },
     )
     assert resp.status_code == 200
@@ -1869,9 +1869,9 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
 
     control_id, _ = _create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": f"{agent_name}:custom", "config": {}}
+    payload["condition"]["rule"] = {"name": f"{agent_name}:custom", "config": {}}
 
-    # When: setting control data referencing the corrupted agent's evaluator
+    # When: setting control data referencing the corrupted agent's rule
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
     # Then: corrupted agent data error is returned
@@ -1879,37 +1879,37 @@ def test_set_control_data_agent_scoped_corrupted_agent_data_returns_422(
     assert resp.json()["error_code"] == "CORRUPTED_DATA"
 
 
-def test_set_control_data_unknown_evaluator_allowed(client: TestClient) -> None:
-    # Given: a control with a non-registered evaluator name
+def test_set_control_data_unknown_rule_allowed(client: TestClient) -> None:
+    # Given: a control with a non-registered rule name
     control_id, _ = _create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": "unknown-eval", "config": {}}
+    payload["condition"]["rule"] = {"name": "unknown-eval", "config": {}}
 
     # When: setting the control data
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
-    # Then: update succeeds (unknown evaluators are allowed)
+    # Then: update succeeds (unknown rules are allowed)
     assert resp.status_code == 200
     assert resp.json()["success"] is True
 
 
-def test_set_control_data_builtin_evaluator_validation_error(
+def test_set_control_data_builtin_rule_validation_error(
     client: TestClient, monkeypatch
 ) -> None:
-    # Given: a control and a server-side evaluator that enforces a schema
+    # Given: a control and a server-side rule that enforces a schema
     control_id, _ = _create_control(client)
 
-    class DummyEvaluator:
-        config_model = RegexEvaluatorConfig
+    class DummyRule:
+        config_model = RegexRuleConfig
 
     monkeypatch.setattr(
         controls_module,
-        "list_evaluators",
-        lambda: {"dummy": DummyEvaluator},
+        "list_rules",
+        lambda: {"dummy": DummyRule},
     )
 
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": "dummy", "config": {}}
+    payload["condition"]["rule"] = {"name": "dummy", "config": {}}
 
     # When: setting control data with invalid config
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -1919,30 +1919,30 @@ def test_set_control_data_builtin_evaluator_validation_error(
     body = resp.json()
     assert body["error_code"] == "INVALID_CONFIG"
     assert any(
-        "data.condition.evaluator.config" in err.get("field", "")
+        "data.condition.rule.config" in err.get("field", "")
         for err in body.get("errors", [])
     )
 
 
-def test_set_control_data_builtin_evaluator_invalid_parameters(
+def test_set_control_data_builtin_rule_invalid_parameters(
     client: TestClient, monkeypatch
 ) -> None:
-    # Given: a control and a server-side evaluator that raises TypeError
+    # Given: a control and a server-side rule that raises TypeError
     control_id, _ = _create_control(client)
 
-    class DummyEvaluator:
+    class DummyRule:
         @staticmethod
         def config_model(**_kwargs):  # type: ignore[no-untyped-def]
             raise TypeError("unexpected parameter")
 
     monkeypatch.setattr(
         controls_module,
-        "list_evaluators",
-        lambda: {"dummy": DummyEvaluator},
+        "list_rules",
+        lambda: {"dummy": DummyRule},
     )
 
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": "dummy", "config": {"unexpected": "value"}}
+    payload["condition"]["rule"] = {"name": "dummy", "config": {"unexpected": "value"}}
 
     # When: setting control data with invalid parameters
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -1953,7 +1953,7 @@ def test_set_control_data_builtin_evaluator_invalid_parameters(
     assert body["error_code"] == "INVALID_CONFIG"
     assert any(err.get("code") == "invalid_parameters" for err in body.get("errors", []))
     assert any(
-        err.get("message") == "Invalid config parameters for evaluator."
+        err.get("message") == "Invalid config parameters for rule."
         for err in body.get("errors", [])
     )
     assert "unexpected parameter" not in resp.text

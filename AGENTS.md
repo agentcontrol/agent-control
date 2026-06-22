@@ -22,12 +22,12 @@ Forwarded targets:
 
 ## Repo layout (uv workspace members)
 
-- `models/`: shared Pydantic v2 models and evaluator base classes (`models/src/agent_control_models/`)
-- `engine/`: **control evaluation engine and evaluator system** — all evaluation logic, evaluator discovery, and evaluator orchestration lives here (`engine/src/agent_control_engine/`)
+- `models/`: shared Pydantic v2 models and rule base classes (`models/src/agent_control_models/`)
+- `engine/`: **control evaluation engine and rule system** — all evaluation logic, rule discovery, and rule orchestration lives here (`engine/src/agent_control_engine/`)
 - `server/`: FastAPI server (`server/src/agent_control_server/`)
 - `sdks/python/`: Python SDK — uses engine for evaluation (`sdks/python/src/agent_control/`)
-- `evaluators/builtin/`: builtin evaluator implementations (`evaluators/builtin/src/agent_control_evaluators/`)
-- `evaluators/contrib/`: optional evaluator packages (e.g., `evaluators/contrib/galileo/`)
+- `rules/builtin/`: builtin rule implementations (`rules/builtin/src/agent_control_rules/`)
+- `rules/contrib/`: optional rule packages (e.g., `rules/contrib/galileo/`)
 - `ui/`: Nextjs based web app to manage agent controls 
 - `examples/`: runnable examples (ruff has relaxed import rules here)
 
@@ -67,16 +67,16 @@ All testing guidance (including "behavior changes require tests") lives in `TEST
   4) add SDK wrapper in `sdks/python/src/agent_control/`
   5) add tests (server + SDK) and update docs/examples if user-facing
 
-- Add a new builtin evaluator:
-  1) implement evaluator class extending `Evaluator` in `evaluators/builtin/src/agent_control_evaluators/`
-  2) use `@register_evaluator` decorator (from `agent_control_evaluators`)
-  3) add entry point in `evaluators/builtin/pyproject.toml` for auto-discovery
-  4) add tests in the evaluators/builtin package
-  5) evaluator is automatically available to server and SDK via `discover_evaluators()`
+- Add a new builtin rule:
+  1) implement rule class extending `Rule` in `rules/builtin/src/agent_control_rules/`
+  2) use `@register_rule` decorator (from `agent_control_rules`)
+  3) add entry point in `rules/builtin/pyproject.toml` for auto-discovery
+  4) add tests in the rules/builtin package
+  5) rule is automatically available to server and SDK via `discover_rules()`
 
-- Add an external evaluator package:
-  1) copy `evaluators/contrib/template/` as a starting point
-  2) implement evaluator class extending `Evaluator` from `agent_control_evaluators`
+- Add an external rule package:
+  1) copy `rules/contrib/template/` as a starting point
+  2) implement rule class extending `Rule` from `agent_control_rules`
   3) add entry point using `org.name` format (e.g., `galileo.luna`)
   4) package is discovered automatically when installed alongside agent-control
 

@@ -4,7 +4,7 @@ Question Answering Agent with DeepEval Quality Controls
 
 This example demonstrates:
 1. Using agent-control SDK with @control() decorator
-2. DeepEval GEval evaluators for quality enforcement
+2. DeepEval GEval rules for quality enforcement
 3. Handling ControlViolationError gracefully
 
 The agent is protected by DeepEval-based controls that check:

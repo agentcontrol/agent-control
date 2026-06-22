@@ -22,7 +22,7 @@ Usage:
         errors=[
             ValidationErrorItem(
                 resource="Control",
-                field="data.evaluator.config",
+                field="data.rule.config",
                 code="invalid_format",
                 message="Config must be an object",
             )
@@ -587,7 +587,7 @@ async def validation_exception_handler(
             prefix_map = {
                 "agent": "Agent",
                 "steps": "Step",
-                "evaluators": "Evaluator",
+                "rules": "Rule",
                 "data": "Control",
                 "policy": "Policy",
             }

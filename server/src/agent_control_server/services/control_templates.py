@@ -483,13 +483,13 @@ def remap_template_api_error(
     )
 
 
-def _reject_agent_scoped_evaluators(
+def _reject_agent_scoped_rules(
     control: ControlDefinition,
     *,
     reverse_path_map: Mapping[str, str],
     template: TemplateDefinition,
 ) -> None:
-    """Reject agent-scoped evaluator references in v1 templates."""
+    """Reject agent-scoped rule references in v1 templates."""
     for field_prefix, leaf in iter_condition_leaves_with_paths(
         control.condition,
         path="condition",
@@ -497,16 +497,16 @@ def _reject_agent_scoped_evaluators(
         leaf_parts = leaf.leaf_parts()
         if leaf_parts is None:
             continue
-        _, evaluator_spec = leaf_parts
-        if ":" not in evaluator_spec.name:
+        _, rule_spec = leaf_parts
+        if ":" not in rule_spec.name:
             continue
 
         item = ValidationErrorItem(
             resource="Control",
-            field=f"{field_prefix}.evaluator.name",
-            code="agent_scoped_evaluator_not_supported",
+            field=f"{field_prefix}.rule.name",
+            code="agent_scoped_rule_not_supported",
             message=(
-                "Agent-scoped evaluators are not supported in control templates."
+                "Agent-scoped rules are not supported in control templates."
             ),
         )
         remapped_error, mapped = _map_rendered_error_item(
@@ -518,9 +518,9 @@ def _reject_agent_scoped_evaluators(
             error_code=(
                 ErrorCode.TEMPLATE_PARAMETER_INVALID if mapped else ErrorCode.TEMPLATE_RENDER_ERROR
             ),
-            detail="Agent-scoped evaluators are not supported in control templates",
+            detail="Agent-scoped rules are not supported in control templates",
             resource="Control",
-            hint="Use a built-in or package-scoped evaluator in template-backed controls.",
+            hint="Use a built-in or package-scoped rule in template-backed controls.",
             errors=[remapped_error],
         )
 
@@ -594,7 +594,7 @@ def validate_template_structure(template: TemplateDefinition) -> None:
 
     Performs all structural checks that don't require parameter values:
     forbidden top-level keys, legacy format, $param reference validity,
-    unused parameter detection, and agent-scoped evaluator rejection.
+    unused parameter detection, and agent-scoped rule rejection.
     """
     definition_template = template.definition_template
     if not isinstance(definition_template, dict):
@@ -618,7 +618,7 @@ def validate_template_structure(template: TemplateDefinition) -> None:
             )
 
     if "condition" not in definition_template and (
-        "selector" in definition_template or "evaluator" in definition_template
+        "selector" in definition_template or "rule" in definition_template
     ):
         raise _render_error(
             detail="Templates must use the canonical 'condition' format",
@@ -626,7 +626,7 @@ def validate_template_structure(template: TemplateDefinition) -> None:
             code="legacy_condition_format_not_supported",
             message=(
                 "Templates must use the canonical 'condition' wrapper instead of "
-                "top-level selector/evaluator fields."
+                "top-level selector/rule fields."
             ),
         )
 
@@ -660,8 +660,8 @@ def validate_template_structure(template: TemplateDefinition) -> None:
             ],
         )
 
-    # Reject agent-scoped evaluator names baked into the template (not via $param).
-    _reject_hardcoded_agent_scoped_evaluators(definition_template)
+    # Reject agent-scoped rule names baked into the template (not via $param).
+    _reject_hardcoded_agent_scoped_rules(definition_template)
 
 
 def validate_partial_template_values(
@@ -698,10 +698,10 @@ def validate_partial_template_values(
             _coerce_parameter_value(name, template.parameters[name], value)
 
 
-def _reject_hardcoded_agent_scoped_evaluators(
+def _reject_hardcoded_agent_scoped_rules(
     definition_template: dict[str, JsonValue],
 ) -> None:
-    """Reject agent-scoped evaluator names that are hardcoded in the template."""
+    """Reject agent-scoped rule names that are hardcoded in the template."""
     condition = definition_template.get("condition")
     if not isinstance(condition, dict):
         return
@@ -710,15 +710,15 @@ def _reject_hardcoded_agent_scoped_evaluators(
     stack: list[tuple[dict[str, JsonValue], str]] = [(condition, "condition")]
     while stack:
         node, path = stack.pop()
-        evaluator = node.get("evaluator")
-        if isinstance(evaluator, dict):
-            name = evaluator.get("name")
+        rule = node.get("rule")
+        if isinstance(rule, dict):
+            name = rule.get("name")
             if isinstance(name, str) and ":" in name:
                 raise _render_error(
-                    detail="Agent-scoped evaluators are not supported in control templates",
-                    field=f"{path}.evaluator.name",
-                    code="agent_scoped_evaluator_not_supported",
-                    message="Agent-scoped evaluators are not supported in control templates.",
+                    detail="Agent-scoped rules are not supported in control templates",
+                    field=f"{path}.rule.name",
+                    code="agent_scoped_rule_not_supported",
+                    message="Agent-scoped rules are not supported in control templates.",
                 )
 
         for key in ("and", "or"):
@@ -743,7 +743,7 @@ def render_template_control_input(
     definition_template = template.definition_template
 
     # Reuse structural validation (dict type, forbidden keys, legacy format,
-    # $param references, unused params, agent-scoped evaluators).
+    # $param references, unused params, agent-scoped rules).
     validate_template_structure(template)
     assert isinstance(definition_template, dict)  # guaranteed by validate_template_structure
 
@@ -795,7 +795,7 @@ def render_template_control_input(
             errors=mapped_items,
         ) from exc
 
-    _reject_agent_scoped_evaluators(
+    _reject_agent_scoped_rules(
         rendered_control,
         reverse_path_map=reverse_path_map,
         template=template,

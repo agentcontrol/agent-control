@@ -26,7 +26,7 @@ def _init_agent(client: TestClient, *, agent_name: str | None = None) -> str:
                 "agent_version": "1.0",
             },
             "steps": [],
-            "evaluators": [],
+            "rules": [],
         },
     )
     assert resp.status_code == 200
@@ -42,7 +42,7 @@ def _create_policy(client: TestClient) -> int:
 def _legacy_control_payload() -> dict[str, object]:
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
     payload["selector"] = payload["condition"]["selector"]
-    payload["evaluator"] = payload["condition"]["evaluator"]
+    payload["rule"] = payload["condition"]["rule"]
     payload.pop("condition")
     return payload
 
@@ -100,9 +100,9 @@ def test_get_control_data_returns_canonical_shape_for_legacy_stored_payload(
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert "selector" not in data
-    assert "evaluator" not in data
+    assert "rule" not in data
     assert data["condition"]["selector"]["path"] == "input"
-    assert data["condition"]["evaluator"]["name"] == "regex"
+    assert data["condition"]["rule"]["name"] == "regex"
 
 
 def test_list_agent_controls_returns_canonical_shape_for_legacy_stored_payload(
@@ -139,9 +139,9 @@ def test_list_agent_controls_returns_canonical_shape_for_legacy_stored_payload(
     assert len(controls) == 1
     control = controls[0]["control"]
     assert "selector" not in control
-    assert "evaluator" not in control
+    assert "rule" not in control
     assert control["condition"]["selector"]["path"] == "input"
-    assert control["condition"]["evaluator"]["name"] == "regex"
+    assert control["condition"]["rule"]["name"] == "regex"
 
 
 def test_list_agent_controls_omits_null_condition_fields_in_response(
@@ -157,7 +157,7 @@ def test_list_agent_controls_omits_null_condition_fields_in_response(
             {
                 "not": {
                     "selector": {"path": "context.channel.scope"},
-                    "evaluator": {
+                    "rule": {
                         "name": "list",
                         "config": {
                             "values": ["slack:direct:U123"],
@@ -171,7 +171,7 @@ def test_list_agent_controls_omits_null_condition_fields_in_response(
                 "or": [
                     {
                         "selector": {"path": "name"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": r"(^|\.)(read|memory_search|memory_get)$"},
                         },
@@ -207,13 +207,13 @@ def test_list_agent_controls_omits_null_condition_fields_in_response(
     first_child = condition["and"][0]
     assert set(first_child.keys()) == {"not"}
     assert first_child["not"]["selector"]["path"] == "context.channel.scope"
-    assert first_child["not"]["evaluator"]["name"] == "list"
+    assert first_child["not"]["rule"]["name"] == "list"
 
     second_child = condition["and"][1]
     assert set(second_child.keys()) == {"or"}
     assert len(second_child["or"]) == 1
     assert second_child["or"][0]["selector"]["path"] == "name"
-    assert second_child["or"][0]["evaluator"]["name"] == "regex"
+    assert second_child["or"][0]["rule"]["name"] == "regex"
 
 
 def test_get_control_data_rejects_partial_legacy_stored_payload(
@@ -228,7 +228,7 @@ def test_get_control_data_rejects_partial_legacy_stored_payload(
     control_id = control_resp.json()["control_id"]
 
     invalid_payload = _legacy_control_payload()
-    invalid_payload.pop("evaluator")
+    invalid_payload.pop("rule")
     with engine.begin() as conn:
         conn.execute(
             text("UPDATE controls SET data = CAST(:data AS JSONB) WHERE id = :id"),
@@ -243,7 +243,7 @@ def test_get_control_data_rejects_partial_legacy_stored_payload(
     body = resp.json()
     assert body["error_code"] == "CORRUPTED_DATA"
     assert any(
-        "Legacy control definition must include both selector and evaluator."
+        "Legacy control definition must include both selector and rule."
         in error.get("message", "")
         for error in body.get("errors", [])
     )

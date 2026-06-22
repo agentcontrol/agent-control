@@ -74,7 +74,7 @@ jobs:
               "coverage-server.xml",
               "coverage-sdk.xml",
           ]
-          contrib_reports = sorted(path.name for path in Path(".").glob("coverage-evaluators-*.xml"))
+          contrib_reports = sorted(path.name for path in Path(".").glob("coverage-rules-*.xml"))
           print(f"files={','.join([*base_reports, *contrib_reports])}")
           PY
 

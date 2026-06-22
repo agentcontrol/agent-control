@@ -1,7 +1,7 @@
 """Decorator-based example focusing on POST (output) checks.
 
 Prereqs:
-  1) Run the server with Cisco AI Defense evaluator available
+  1) Run the server with Cisco AI Defense rule available
   2) Seed controls and attach to the agent with examples/cisco_ai_defense/setup_ai_defense_controls.py
   3) Set env: AGENT_CONTROL_URL, AGENT_CONTROL_API_KEY
 

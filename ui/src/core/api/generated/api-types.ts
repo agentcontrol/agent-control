@@ -83,7 +83,7 @@ export interface paths {
      * @description List all registered agents with cursor-based pagination.
      *
      *     Returns a summary of each agent including identifier, policy associations,
-     *     and counts of registered steps and evaluators.
+     *     and counts of registered steps and rules.
      *
      *     Args:
      *         cursor: Optional cursor for pagination (last agent name from previous page)
@@ -122,7 +122,7 @@ export interface paths {
      *
      *     conflict_mode controls registration conflict handling:
      *     - strict (default): preserve compatibility checks and conflict errors
-     *     - overwrite: latest init payload replaces steps/evaluators and returns change summary
+     *     - overwrite: latest init payload replaces steps/rules and returns change summary
      *
      *     Args:
      *         request: Agent metadata and step schemas
@@ -169,15 +169,15 @@ export interface paths {
     options?: never;
     head?: never;
     /**
-     * Modify agent (remove steps/evaluators)
-     * @description Remove steps and/or evaluators from an agent.
+     * Modify agent (remove steps/rules)
+     * @description Remove steps and/or rules from an agent.
      *
      *     This is the complement to initAgent which only adds items.
      *     Removals are idempotent - attempting to remove non-existent items is not an error.
      *
      *     Args:
      *         agent_name: Agent identifier
-     *         request: Lists of step/evaluator identifiers to remove
+     *         request: Lists of step/rule identifiers to remove
      *         db: Database session (injected)
      *
      *     Returns:
@@ -246,7 +246,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_name}/evaluators': {
+  '/api/v1/agents/{agent_name}/rules': {
     parameters: {
       query?: never;
       header?: never;
@@ -254,26 +254,26 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List agent's registered evaluator schemas
-     * @description List all evaluator schemas registered with an agent.
+     * List agent's registered rule schemas
+     * @description List all rule schemas registered with an agent.
      *
-     *     Evaluator schemas are registered via initAgent and used for:
+     *     Rule schemas are registered via initAgent and used for:
      *     - Config validation when creating Controls
      *     - UI to display available config options
      *
      *     Args:
      *         agent_name: Agent identifier
-     *         cursor: Optional cursor for pagination (name of last evaluator from previous page)
+     *         cursor: Optional cursor for pagination (name of last rule from previous page)
      *         limit: Pagination limit (default 20, max 100)
      *         db: Database session (injected)
      *
      *     Returns:
-     *         ListEvaluatorsResponse with evaluator schemas and pagination
+     *         ListRulesResponse with rule schemas and pagination
      *
      *     Raises:
      *         HTTPException 404: Agent not found
      */
-    get: operations['list_agent_evaluators_api_v1_agents__agent_name__evaluators_get'];
+    get: operations['list_agent_rules_api_v1_agents__agent_name__rules_get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -282,7 +282,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_name}/evaluators/{evaluator_name}': {
+  '/api/v1/agents/{agent_name}/rules/{rule_name}': {
     parameters: {
       query?: never;
       header?: never;
@@ -290,21 +290,21 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Get specific evaluator schema
-     * @description Get a specific evaluator schema registered with an agent.
+     * Get specific rule schema
+     * @description Get a specific rule schema registered with an agent.
      *
      *     Args:
      *         agent_name: Agent identifier
-     *         evaluator_name: Name of the evaluator
+     *         rule_name: Name of the rule
      *         db: Database session (injected)
      *
      *     Returns:
-     *         EvaluatorSchemaItem with schema details
+     *         RuleSchemaItem with schema details
      *
      *     Raises:
-     *         HTTPException 404: Agent or evaluator not found
+     *         HTTPException 404: Agent or rule not found
      */
-    get: operations['get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get'];
+    get: operations['get_agent_rule_api_v1_agents__agent_name__rules__rule_name__get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -653,7 +653,7 @@ export interface paths {
      *     evaluation engine. Controls are evaluated in parallel with
      *     cancel-on-deny for efficiency.
      *
-     *     Custom evaluators must be deployed as Evaluator classes
+     *     Custom rules must be deployed as Rule classes
      *     with the engine. Their schemas are registered via initAgent.
      *
      *     Optionally accepts X-Trace-Id and X-Span-Id headers for
@@ -666,7 +666,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/evaluators': {
+  '/api/v1/rules': {
     parameters: {
       query?: never;
       header?: never;
@@ -674,21 +674,21 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List available evaluators
-     * @description List all available evaluators.
+     * List available rules
+     * @description List all available rules.
      *
-     *     Returns metadata and JSON Schema for each built-in evaluator.
+     *     Returns metadata and JSON Schema for each built-in rule.
      *
-     *     Built-in evaluators:
+     *     Built-in rules:
      *     - **regex**: Regular expression pattern matching
      *     - **list**: List-based value matching with flexible logic
      *     - **json**: JSON validation with schema, types, constraints
      *     - **sql**: SQL query validation
      *
-     *     Custom evaluators are registered per-agent via initAgent.
-     *     Use GET /agents/{agent_name}/evaluators to list agent-specific schemas.
+     *     Custom rules are registered per-agent via initAgent.
+     *     Use GET /agents/{agent_name}/rules to list agent-specific schemas.
      */
-    get: operations['get_evaluators_api_v1_evaluators_get'];
+    get: operations['get_rules_api_v1_rules_get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1093,11 +1093,11 @@ export interface components {
        */
       created_at?: string | null;
       /**
-       * Evaluator Count
-       * @description Number of evaluators registered with the agent
+       * Rule Count
+       * @description Number of rules registered with the agent
        * @default 0
        */
-      evaluator_count: number;
+      rule_count: number;
       /**
        * Policy Ids
        * @description IDs of policies associated with the agent
@@ -1194,7 +1194,7 @@ export interface components {
      * ConditionNode
      * @description Recursive boolean condition tree for control evaluation.
      * @example {
-     *       "evaluator": {
+     *       "rule": {
      *         "config": {
      *           "pattern": "\\d{3}-\\d{2}-\\d{4}"
      *         },
@@ -1207,7 +1207,7 @@ export interface components {
      * @example {
      *       "and": [
      *         {
-     *           "evaluator": {
+     *           "rule": {
      *             "config": {
      *               "values": [
      *                 "high",
@@ -1222,7 +1222,7 @@ export interface components {
      *         },
      *         {
      *           "not": {
-     *             "evaluator": {
+     *             "rule": {
      *               "config": {
      *                 "values": [
      *                   "admin",
@@ -1245,8 +1245,8 @@ export interface components {
        * @description Logical AND over child conditions.
        */
       and?: components['schemas']['ConditionNode-Input'][] | null;
-      /** @description Leaf evaluator. Must be provided together with selector. */
-      evaluator?: components['schemas']['EvaluatorSpec'] | null;
+      /** @description Leaf rule. Must be provided together with selector. */
+      rule?: components['schemas']['RuleSpec'] | null;
       /** @description Logical NOT over a single child condition. */
       not?: components['schemas']['ConditionNode-Input'] | null;
       /**
@@ -1254,14 +1254,14 @@ export interface components {
        * @description Logical OR over child conditions.
        */
       or?: components['schemas']['ConditionNode-Input'][] | null;
-      /** @description Leaf selector. Must be provided together with evaluator. */
+      /** @description Leaf selector. Must be provided together with rule. */
       selector?: components['schemas']['ControlSelector'] | null;
     };
     /**
      * ConditionNode
      * @description Recursive boolean condition tree for control evaluation.
      * @example {
-     *       "evaluator": {
+     *       "rule": {
      *         "config": {
      *           "pattern": "\\d{3}-\\d{2}-\\d{4}"
      *         },
@@ -1274,7 +1274,7 @@ export interface components {
      * @example {
      *       "and": [
      *         {
-     *           "evaluator": {
+     *           "rule": {
      *             "config": {
      *               "values": [
      *                 "high",
@@ -1289,7 +1289,7 @@ export interface components {
      *         },
      *         {
      *           "not": {
-     *             "evaluator": {
+     *             "rule": {
      *               "config": {
      *                 "values": [
      *                   "admin",
@@ -1312,8 +1312,8 @@ export interface components {
        * @description Logical AND over child conditions.
        */
       and?: components['schemas']['ConditionNode-Output'][] | null;
-      /** @description Leaf evaluator. Must be provided together with selector. */
-      evaluator?: components['schemas']['EvaluatorSpec'] | null;
+      /** @description Leaf rule. Must be provided together with selector. */
+      rule?: components['schemas']['RuleSpec'] | null;
       /** @description Logical NOT over a single child condition. */
       not?: components['schemas']['ConditionNode-Output'] | null;
       /**
@@ -1321,7 +1321,7 @@ export interface components {
        * @description Logical OR over child conditions.
        */
       or?: components['schemas']['ConditionNode-Output'][] | null;
-      /** @description Leaf selector. Must be provided together with evaluator. */
+      /** @description Leaf selector. Must be provided together with rule. */
       selector?: components['schemas']['ControlSelector'] | null;
     };
     /**
@@ -1343,7 +1343,7 @@ export interface components {
      * @description Conflict handling mode for initAgent registration updates.
      *
      *     STRICT preserves compatibility checks and raises conflicts on incompatible changes.
-     *     OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+     *     OVERWRITE applies latest-init-wins replacement for steps and rules.
      * @enum {string}
      */
     ConflictMode: 'strict' | 'overwrite';
@@ -1368,7 +1368,7 @@ export interface components {
     ControlAction: {
       /** @description Action to take when control is triggered */
       decision: components['schemas']['ActionDecision'];
-      /** @description Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback. */
+      /** @description Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the rule result message will be used as fallback. */
       steering_context?: components['schemas']['SteeringContext'] | null;
     };
     /**
@@ -1382,7 +1382,7 @@ export interface components {
      *         "decision": "deny"
      *       },
      *       "condition": {
-     *         "evaluator": {
+     *         "rule": {
      *           "config": {
      *             "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"
      *           },
@@ -1412,7 +1412,7 @@ export interface components {
     'ControlDefinition-Input': {
       /** @description What action to take when control matches */
       action: components['schemas']['ControlAction'];
-      /** @description Recursive boolean condition tree. Leaf nodes contain selector + evaluator; composite nodes contain and/or/not. */
+      /** @description Recursive boolean condition tree. Leaf nodes contain selector + rule; composite nodes contain and/or/not. */
       condition: components['schemas']['ConditionNode-Input'];
       /**
        * Description
@@ -1450,7 +1450,7 @@ export interface components {
      *         "decision": "deny"
      *       },
      *       "condition": {
-     *         "evaluator": {
+     *         "rule": {
      *           "config": {
      *             "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b"
      *           },
@@ -1480,7 +1480,7 @@ export interface components {
     'ControlDefinition-Output': {
       /** @description What action to take when control matches */
       action: components['schemas']['ControlAction'];
-      /** @description Recursive boolean condition tree. Leaf nodes contain selector + evaluator; composite nodes contain and/or/not. */
+      /** @description Recursive boolean condition tree. Leaf nodes contain selector + rule; composite nodes contain and/or/not. */
       condition: components['schemas']['ConditionNode-Output'];
       /**
        * Description
@@ -1516,7 +1516,7 @@ export interface components {
      *     - Context: agent, control, check stage, applies to
      *     - Result: action taken, whether matched, confidence score
      *     - Timing: when it happened, how long it took
-     *     - Optional details: evaluator name, selector path, errors, metadata
+     *     - Optional details: rule name, selector path, errors, metadata
      *
      *     Attributes:
      *         control_execution_id: Unique ID for this specific control execution
@@ -1528,11 +1528,11 @@ export interface components {
      *         check_stage: "pre" (before execution) or "post" (after execution)
      *         applies_to: "llm_call" or "tool_call"
      *         action: The action taken (deny, steer, observe)
-     *         matched: Whether the control evaluator matched
-     *         confidence: Confidence score from the evaluator (0.0-1.0)
+     *         matched: Whether the control rule matched
+     *         confidence: Confidence score from the rule (0.0-1.0)
      *         timestamp: When the control was executed (UTC)
      *         execution_duration_ms: How long the control evaluation took
-     *         evaluator_name: Name of the evaluator used
+     *         rule_name: Name of the rule used
      *         selector_path: The selector path used to extract data
      *         error_message: Error message if evaluation failed
      *         metadata: Additional metadata for extensibility
@@ -1545,7 +1545,7 @@ export interface components {
      *       "control_execution_id": "550e8400-e29b-41d4-a716-446655440000",
      *       "control_id": 123,
      *       "control_name": "sql-injection-check",
-     *       "evaluator_name": "regex",
+     *       "rule_name": "regex",
      *       "execution_duration_ms": 15.3,
      *       "matched": true,
      *       "selector_path": "input",
@@ -1600,10 +1600,10 @@ export interface components {
        */
       error_message?: string | null;
       /**
-       * Evaluator Name
-       * @description Name of the evaluator used
+       * Rule Name
+       * @description Name of the rule used
        */
-      evaluator_name?: string | null;
+      rule_name?: string | null;
       /**
        * Execution Duration Ms
        * @description Execution duration in milliseconds
@@ -1611,7 +1611,7 @@ export interface components {
       execution_duration_ms?: number | null;
       /**
        * Matched
-       * @description Whether the evaluator matched (True) or not (False)
+       * @description Whether the rule matched (True) or not (False)
        */
       matched: boolean;
       /**
@@ -1665,8 +1665,8 @@ export interface components {
        * @description Name of the control
        */
       control_name: string;
-      /** @description Evaluator result (confidence, message, metadata) */
-      result: components['schemas']['EvaluatorResult'];
+      /** @description Rule result (confidence, message, metadata) */
+      result: components['schemas']['RuleResult'];
       /** @description Steering context for steer actions if configured */
       steering_context?: components['schemas']['SteeringContext'] | null;
     };
@@ -1725,7 +1725,7 @@ export interface components {
      * ControlSelector
      * @description Selects data from a Step payload.
      *
-     *     - path: which slice of the Step to feed into the evaluator. Optional, defaults to "*"
+     *     - path: which slice of the Step to feed into the rule. Optional, defaults to "*"
      *       meaning the entire Step object.
      * @example {
      *       "path": "output"
@@ -2124,10 +2124,10 @@ export interface components {
       reason?: string | null;
     };
     /**
-     * EvaluatorInfo
-     * @description Information about a registered evaluator.
+     * RuleInfo
+     * @description Information about a registered rule.
      */
-    EvaluatorInfo: {
+    RuleInfo: {
       /**
        * Config Schema
        * @description JSON Schema for config
@@ -2137,17 +2137,17 @@ export interface components {
       };
       /**
        * Description
-       * @description Evaluator description
+       * @description Rule description
        */
       description: string;
       /**
        * Name
-       * @description Evaluator name
+       * @description Rule name
        */
       name: string;
       /**
        * Requires Api Key
-       * @description Whether evaluator requires API key
+       * @description Whether rule requires API key
        */
       requires_api_key: boolean;
       /**
@@ -2157,26 +2157,26 @@ export interface components {
       timeout_ms: number;
       /**
        * Version
-       * @description Evaluator version
+       * @description Rule version
        */
       version: string;
     };
     /**
-     * EvaluatorResult
-     * @description Result from a control evaluator.
+     * RuleResult
+     * @description Result from a control rule.
      *
-     *     The `error` field indicates evaluator failures, NOT validation failures:
-     *     - Set `error` for: evaluator crashes, timeouts, missing dependencies, external service errors
+     *     The `error` field indicates rule failures, NOT validation failures:
+     *     - Set `error` for: rule crashes, timeouts, missing dependencies, external service errors
      *     - Do NOT set `error` for: invalid input, syntax errors, schema violations, constraint failures
      *
-     *     When `error` is set, `matched` must be False (fail-open on evaluator errors).
+     *     When `error` is set, `matched` must be False (fail-open on rule errors).
      *     When `error` is None, `matched` reflects the actual validation result.
      *
      *     This distinction allows:
-     *     - Clients to distinguish "data violated rules" from "evaluator is broken"
-     *     - Observability systems to monitor evaluator health separately from validation outcomes
+     *     - Clients to distinguish "data violated rules" from "rule is broken"
+     *     - Observability systems to monitor rule health separately from validation outcomes
      */
-    EvaluatorResult: {
+    RuleResult: {
       /**
        * Confidence
        * @description Confidence in the evaluation
@@ -2206,16 +2206,16 @@ export interface components {
       } | null;
     };
     /**
-     * EvaluatorSchema
-     * @description Schema for a custom evaluator registered with an agent.
+     * RuleSchema
+     * @description Schema for a custom rule registered with an agent.
      *
-     *     Custom evaluators are Evaluator classes deployed with the engine.
+     *     Custom rules are Rule classes deployed with the engine.
      *     This schema is registered via initAgent for validation and UI purposes.
      */
-    EvaluatorSchema: {
+    RuleSchema: {
       /**
        * Config Schema
-       * @description JSON Schema for evaluator config validation
+       * @description JSON Schema for rule config validation
        */
       config_schema?: {
         [key: string]: unknown;
@@ -2227,15 +2227,15 @@ export interface components {
       description?: string | null;
       /**
        * Name
-       * @description Unique evaluator name
+       * @description Unique rule name
        */
       name: string;
     };
     /**
-     * EvaluatorSchemaItem
-     * @description Evaluator schema summary for list response.
+     * RuleSchemaItem
+     * @description Rule schema summary for list response.
      */
-    EvaluatorSchemaItem: {
+    RuleSchemaItem: {
       /** Config Schema */
       config_schema: {
         [key: string]: unknown;
@@ -2246,18 +2246,18 @@ export interface components {
       name: string;
     };
     /**
-     * EvaluatorSpec
-     * @description Evaluator specification. See GET /evaluators for available evaluators and schemas.
+     * RuleSpec
+     * @description Rule specification. See GET /rules for available rules and schemas.
      *
-     *     Evaluator reference formats:
+     *     Rule reference formats:
      *     - Built-in: "regex", "list", "json", "sql"
-     *     - External: "galileo.luna" (requires agent-control-evaluators[galileo])
-     *     - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
+     *     - External: "galileo.luna" (requires agent-control-rules[galileo])
+     *     - Agent-scoped: "my-agent:my-rule" (validated in endpoint, not here)
      */
-    EvaluatorSpec: {
+    RuleSpec: {
       /**
        * Config
-       * @description Evaluator-specific configuration
+       * @description Rule-specific configuration
        * @example {
        *       "pattern": "\\d{3}-\\d{2}-\\d{4}"
        *     }
@@ -2273,7 +2273,7 @@ export interface components {
       };
       /**
        * Name
-       * @description Evaluator name or agent-scoped reference (agent:evaluator)
+       * @description Rule name or agent-scoped reference (agent:rule)
        * @example regex
        * @example list
        * @example my-agent:pii-detector
@@ -2430,10 +2430,10 @@ export interface components {
       /** @description Agent metadata */
       agent: components['schemas']['Agent'];
       /**
-       * Evaluators
-       * @description Custom evaluators registered with this agent
+       * Rules
+       * @description Custom rules registered with this agent
        */
-      evaluators?: components['schemas']['EvaluatorSchema'][];
+      rules?: components['schemas']['RuleSchema'][];
       /**
        * Steps
        * @description Steps registered with this agent
@@ -2515,28 +2515,28 @@ export interface components {
       version: string;
     };
     /**
-     * InitAgentEvaluatorRemoval
-     * @description Details for an evaluator removed during overwrite mode.
+     * InitAgentRuleRemoval
+     * @description Details for a rule removed during overwrite mode.
      */
-    InitAgentEvaluatorRemoval: {
+    InitAgentRuleRemoval: {
       /**
        * Control Ids
-       * @description IDs of active controls referencing this evaluator
+       * @description IDs of active controls referencing this rule
        */
       control_ids?: number[];
       /**
        * Control Names
-       * @description Names of active controls referencing this evaluator
+       * @description Names of active controls referencing this rule
        */
       control_names?: string[];
       /**
        * Name
-       * @description Evaluator name removed by overwrite
+       * @description Rule name removed by overwrite
        */
       name: string;
       /**
        * Referenced By Active Controls
-       * @description Whether this evaluator is still referenced by active controls
+       * @description Whether this rule is still referenced by active controls
        * @default false
        */
       referenced_by_active_controls: boolean;
@@ -2547,25 +2547,25 @@ export interface components {
      */
     InitAgentOverwriteChanges: {
       /**
-       * Evaluator Removals
-       * @description Per-evaluator removal details, including active control references
+       * Rule Removals
+       * @description Per-rule removal details, including active control references
        */
-      evaluator_removals?: components['schemas']['InitAgentEvaluatorRemoval'][];
+      rule_removals?: components['schemas']['InitAgentRuleRemoval'][];
       /**
-       * Evaluators Added
-       * @description Evaluator names added by overwrite
+       * Rules Added
+       * @description Rule names added by overwrite
        */
-      evaluators_added?: string[];
+      rules_added?: string[];
       /**
-       * Evaluators Removed
-       * @description Evaluator names removed by overwrite
+       * Rules Removed
+       * @description Rule names removed by overwrite
        */
-      evaluators_removed?: string[];
+      rules_removed?: string[];
       /**
-       * Evaluators Updated
-       * @description Existing evaluator names updated by overwrite
+       * Rules Updated
+       * @description Existing rule names updated by overwrite
        */
-      evaluators_updated?: string[];
+      rules_updated?: string[];
       /**
        * Metadata Changed
        * @description Whether agent metadata changed
@@ -2597,7 +2597,7 @@ export interface components {
      *         "agent_name": "customer-service-bot",
      *         "agent_version": "1.0.0"
      *       },
-     *       "evaluators": [
+     *       "rules": [
      *         {
      *           "config_schema": {
      *             "properties": {
@@ -2633,15 +2633,15 @@ export interface components {
       /** @description Agent metadata including ID, name, and version */
       agent: components['schemas']['Agent'];
       /**
-       * @description Conflict handling mode for init registration updates. 'strict' preserves existing compatibility checks. 'overwrite' applies latest-init-wins replacement for steps and evaluators.
+       * @description Conflict handling mode for init registration updates. 'strict' preserves existing compatibility checks. 'overwrite' applies latest-init-wins replacement for steps and rules.
        * @default strict
        */
       conflict_mode: components['schemas']['ConflictMode'];
       /**
-       * Evaluators
-       * @description Custom evaluator schemas for config validation
+       * Rules
+       * @description Custom rule schemas for config validation
        */
-      evaluators?: components['schemas']['EvaluatorSchema'][];
+      rules?: components['schemas']['RuleSchema'][];
       /**
        * Force Replace
        * @description If true, replace corrupted agent data instead of failing. Use only when agent data is corrupted and cannot be parsed.
@@ -2710,12 +2710,12 @@ export interface components {
       pagination: components['schemas']['PaginationInfo'];
     };
     /**
-     * ListEvaluatorsResponse
-     * @description Response for listing agent's evaluator schemas.
+     * ListRulesResponse
+     * @description Response for listing agent's rule schemas.
      */
-    ListEvaluatorsResponse: {
-      /** Evaluators */
-      evaluators: components['schemas']['EvaluatorSchemaItem'][];
+    ListRulesResponse: {
+      /** Rules */
+      rules: components['schemas']['RuleSchemaItem'][];
       pagination: components['schemas']['PaginationInfo'];
     };
     /**
@@ -2764,14 +2764,14 @@ export interface components {
     };
     /**
      * PatchAgentRequest
-     * @description Request to modify an agent (remove steps/evaluators).
+     * @description Request to modify an agent (remove steps/rules).
      */
     PatchAgentRequest: {
       /**
-       * Remove Evaluators
-       * @description Evaluator names to remove from the agent
+       * Remove Rules
+       * @description Rule names to remove from the agent
        */
-      remove_evaluators?: string[];
+      remove_rules?: string[];
       /**
        * Remove Steps
        * @description Step identifiers to remove from the agent
@@ -2784,10 +2784,10 @@ export interface components {
      */
     PatchAgentResponse: {
       /**
-       * Evaluators Removed
-       * @description Evaluator names that were removed
+       * Rules Removed
+       * @description Rule names that were removed
        */
-      evaluators_removed?: string[];
+      rules_removed?: string[];
       /**
        * Steps Removed
        * @description Step identifiers that were removed
@@ -2926,8 +2926,8 @@ export interface components {
      *
      *     Attributes:
      *         execution_count: Total executions across all controls
-     *         match_count: Total matches across all controls (evaluator matched)
-     *         non_match_count: Total non-matches across all controls (evaluator didn't match)
+     *         match_count: Total matches across all controls (rule matched)
+     *         non_match_count: Total non-matches across all controls (rule didn't match)
      *         error_count: Total errors across all controls (evaluation failed)
      *         action_counts: Breakdown of actions for matched executions
      *         timeseries: Time-series data points (only when include_timeseries=true)
@@ -3503,7 +3503,7 @@ export interface operations {
       };
     };
   };
-  list_agent_evaluators_api_v1_agents__agent_name__evaluators_get: {
+  list_agent_rules_api_v1_agents__agent_name__rules_get: {
     parameters: {
       query?: {
         cursor?: string | null;
@@ -3517,13 +3517,13 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Evaluator schemas registered with this agent */
+      /** @description Rule schemas registered with this agent */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['ListEvaluatorsResponse'];
+          'application/json': components['schemas']['ListRulesResponse'];
         };
       };
       /** @description Validation Error */
@@ -3537,25 +3537,25 @@ export interface operations {
       };
     };
   };
-  get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get: {
+  get_agent_rule_api_v1_agents__agent_name__rules__rule_name__get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
         agent_name: string;
-        evaluator_name: string;
+        rule_name: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Evaluator schema details */
+      /** @description Rule schema details */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['EvaluatorSchemaItem'];
+          'application/json': components['schemas']['RuleSchemaItem'];
         };
       };
       /** @description Validation Error */
@@ -4122,7 +4122,7 @@ export interface operations {
       };
     };
   };
-  get_evaluators_api_v1_evaluators_get: {
+  get_rules_api_v1_rules_get: {
     parameters: {
       query?: never;
       header?: never;
@@ -4131,14 +4131,14 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Dictionary of evaluator name to evaluator info */
+      /** @description Dictionary of rule name to rule info */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           'application/json': {
-            [key: string]: components['schemas']['EvaluatorInfo'];
+            [key: string]: components['schemas']['RuleInfo'];
           };
         };
       };

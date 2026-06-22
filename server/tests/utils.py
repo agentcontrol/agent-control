@@ -13,7 +13,7 @@ VALID_CONTROL_PAYLOAD = {
     "scope": {"step_types": ["llm"], "stages": ["pre"]},
     "condition": {
         "selector": {"path": "input"},
-        "evaluator": {"name": "regex", "config": {"pattern": "x"}},
+        "rule": {"name": "regex", "config": {"pattern": "x"}},
     },
     "action": {"decision": "deny"}
 }

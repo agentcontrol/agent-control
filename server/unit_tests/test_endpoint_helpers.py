@@ -2,9 +2,9 @@
 
 from types import SimpleNamespace
 
-from agent_control_models import ControlDefinition, ControlMatch, EvaluatorResult
+from agent_control_models import ControlDefinition, ControlMatch, RuleResult
 from agent_control_server.endpoints.agents import (
-    _find_referencing_controls_for_removed_evaluators,
+    _find_referencing_controls_for_removed_rules,
 )
 from agent_control_server.endpoints.evaluation import (
     ControlAdapter,
@@ -13,7 +13,7 @@ from agent_control_server.endpoints.evaluation import (
 
 
 def test_find_referencing_controls_dedupes_composite_matches() -> None:
-    # Given: two leaves in the same control reference the same evaluator
+    # Given: two leaves in the same control reference the same rule
     controls = [
         SimpleNamespace(
             name="composite-ctrl",
@@ -23,11 +23,11 @@ def test_find_referencing_controls_dedupes_composite_matches() -> None:
                     "and": [
                         {
                             "selector": {"path": "input"},
-                            "evaluator": {"name": "agent-123456:custom", "config": {}},
+                            "rule": {"name": "agent-123456:custom", "config": {}},
                         },
                         {
                             "selector": {"path": "output"},
-                            "evaluator": {"name": "agent-123456:custom", "config": {}},
+                            "rule": {"name": "agent-123456:custom", "config": {}},
                         },
                     ]
                 },
@@ -36,19 +36,19 @@ def test_find_referencing_controls_dedupes_composite_matches() -> None:
         )
     ]
 
-    # When: scanning for references to the evaluator being removed
-    referencing_controls = _find_referencing_controls_for_removed_evaluators(
+    # When: scanning for references to the rule being removed
+    referencing_controls = _find_referencing_controls_for_removed_rules(
         controls,
         "agent-123456",
         {"custom"},
     )
 
-    # Then: the same control/evaluator pair is reported only once
+    # Then: the same control/rule pair is reported only once
     assert referencing_controls == [("composite-ctrl", "custom")]
 
 
 def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
-    # Given: a composite control whose condition trace includes a raw evaluator error
+    # Given: a composite control whose condition trace includes a raw rule error
     _ = ControlAdapter(
         id=1,
         name="composite-ctrl",
@@ -58,11 +58,11 @@ def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
                 "and": [
                     {
                         "selector": {"path": "input"},
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                     },
                     {
                         "selector": {"path": "output"},
-                        "evaluator": {"name": "list", "config": {"values": ["done"]}},
+                        "rule": {"name": "list", "config": {"values": ["done"]}},
                     },
                 ]
             },
@@ -73,18 +73,18 @@ def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
         control_id=1,
         control_name="composite-ctrl",
         action="observe",
-        result=EvaluatorResult(
+        result=RuleResult(
             matched=False,
             confidence=0.9,
-            error="RuntimeError: secret evaluator failure",
+            error="RuntimeError: secret rule failure",
             metadata={
                 "condition_trace": {
                     "type": "and",
                     "children": [
                         {
                             "type": "leaf",
-                            "error": "RuntimeError: secret evaluator failure",
-                            "message": "Evaluation failed: RuntimeError: secret evaluator failure",
+                            "error": "RuntimeError: secret rule failure",
+                            "message": "Evaluation failed: RuntimeError: secret rule failure",
                         }
                     ],
                 }
@@ -97,7 +97,7 @@ def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
 
     # Then: top-level and nested errors are redacted to the safe public message
     assert sanitized.result.error is not None
-    assert "secret evaluator failure" not in sanitized.result.error
+    assert "secret rule failure" not in sanitized.result.error
     trace = sanitized.result.metadata["condition_trace"]
     child = trace["children"][0]
     assert child["error"] == sanitized.result.error

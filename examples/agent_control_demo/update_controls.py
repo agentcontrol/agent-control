@@ -60,7 +60,7 @@ async def allow_ssn(client: AgentControlClient, control_id: int) -> None:
         "scope": {"step_types": ["llm"], "stages": ["post"]},
         "condition": {
             "selector": {"path": "output"},
-            "evaluator": {
+            "rule": {
                 "name": "regex",
                 "config": {
                     "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
@@ -102,7 +102,7 @@ async def block_ssn(client: AgentControlClient, control_id: int) -> None:
         "scope": {"step_types": ["llm"], "stages": ["post"]},
         "condition": {
             "selector": {"path": "output"},
-            "evaluator": {
+            "rule": {
                 "name": "regex",
                 "config": {
                     "pattern": r"\b\d{3}-\d{2}-\d{4}\b",

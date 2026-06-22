@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Demo agent protected by a direct Galileo Luna evaluator control.
+"""Demo agent protected by a direct Galileo Luna rule control.
 
 Prerequisites:
     1. Start server: make server-run
@@ -94,7 +94,7 @@ async def run_demo() -> None:
     api_secret = os.getenv("GALILEO_API_SECRET_KEY")
     if not api_key and not api_secret:
         print(
-            "Galileo credentials are required for the galileo.luna evaluator. "
+            "Galileo credentials are required for the galileo.luna rule. "
             "Set GALILEO_API_KEY for public mode. Deployments using internal "
             "mode should inject GALILEO_API_SECRET_KEY."
         )
@@ -108,7 +108,7 @@ async def run_demo() -> None:
     auth_mode = "public" if api_key else "internal"
 
     print("=" * 72)
-    print("Direct Galileo Luna Evaluator Demo")
+    print("Direct Galileo Luna Rule Demo")
     print("=" * 72)
     print(f"Server: {SERVER_URL}")
     print(f"Agent:  {AGENT_NAME}")

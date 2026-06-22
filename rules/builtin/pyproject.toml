@@ -1,0 +1,41 @@
+[project]
+name = "agent-control-rules"
+version = "8.1.2"
+description = "Builtin rules for agent-control"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Agent Control Team" }]
+dependencies = [
+    "agent-control-models>=7.5.0",
+    "pydantic>=2.12.4",
+    "google-re2>=1.1",
+    "jsonschema>=4.0.0",
+    "sqlglot[c]>=30.11.0,<30.12.0",
+]
+
+[project.optional-dependencies]
+galileo = ["agent-control-rule-galileo>=7.5.0"]
+budget = ["agent-control-rule-budget>=7.5.0"]
+cisco = ["agent-control-rule-cisco>=7.5.0"]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
+
+[project.entry-points."agent_control.rules"]
+regex = "agent_control_rules.regex:RegexRule"
+list = "agent_control_rules.list:ListRule"
+json = "agent_control_rules.json:JSONRule"
+sql = "agent_control_rules.sql:SQLRule"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_control_rules"]
+
+[tool.uv.sources]
+agent-control-models = { workspace = true }
+# For local dev: use local contrib packages instead of PyPI
+agent-control-rule-galileo = { path = "../contrib/galileo", editable = true }
+agent-control-rule-budget = { path = "../contrib/budget", editable = true }
+agent-control-rule-cisco = { path = "../contrib/cisco", editable = true }

@@ -227,7 +227,7 @@ def test_duplicate_control_names_allowed_across_principal_namespaces(app: FastAP
     assert ns_b.put("/api/v1/controls", json=payload).status_code == 200
 
 
-def test_agent_scoped_evaluator_validation_uses_principal_namespace(app: FastAPI) -> None:
+def test_agent_scoped_rule_validation_uses_principal_namespace(app: FastAPI) -> None:
     set_authorizer(HeaderNamespaceAuthorizer())
 
     ns_a = _client(app, "ns-a")
@@ -238,13 +238,13 @@ def test_agent_scoped_evaluator_validation_uses_principal_namespace(app: FastAPI
         "/api/v1/agents/initAgent",
         json={
             **_agent_payload(agent_name),
-            "evaluators": [{"name": "custom", "config_schema": {"type": "object"}}],
+            "rules": [{"name": "custom", "config_schema": {"type": "object"}}],
         },
     )
     assert register_b.status_code == 200, register_b.text
 
     control_data = deepcopy(VALID_CONTROL_PAYLOAD)
-    control_data["condition"]["evaluator"] = {
+    control_data["condition"]["rule"] = {
         "name": f"{agent_name}:custom",
         "config": {},
     }

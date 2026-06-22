@@ -26,7 +26,7 @@ VALID_TEMPLATE = {
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "condition": {
             "selector": {"path": "input"},
-            "evaluator": {
+            "rule": {
                 "name": "regex",
                 "config": {"pattern": {"$param": "pattern"}},
             },
@@ -56,7 +56,7 @@ def test_control_definition_requires_template_fields_together() -> None:
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": "ok"},
                     },
@@ -81,7 +81,7 @@ def test_control_definition_rejects_template_values_without_template() -> None:
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": "ok"},
                     },
@@ -215,7 +215,7 @@ def test_control_definition_can_round_trip_to_template_control_input() -> None:
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": "hello"},
                 },
@@ -244,7 +244,7 @@ def test_control_definition_to_template_control_input_rejects_raw_control() -> N
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": "hello"},
                 },
@@ -267,7 +267,7 @@ def test_control_definition_runtime_ignores_template_metadata() -> None:
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": "hello"},
                 },

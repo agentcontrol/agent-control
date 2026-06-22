@@ -8,9 +8,9 @@ def test_format_field_path_renders_dot_and_bracket_notation() -> None:
     # When: formatting the field path
     assert (
         format_field_path(
-            ("data", "condition", "and", 0, "evaluator", "config", "logic")
+            ("data", "condition", "and", 0, "rule", "config", "logic")
         )
-        == "data.condition.and[0].evaluator.config.logic"
+        == "data.condition.and[0].rule.config.logic"
     )
     # Then: indices use brackets and object keys use dots
 

@@ -6,34 +6,34 @@ import type {
   ControlActionDecision,
   ControlExecution,
   ControlStage,
-  EvaluatorSchema,
+  RuleSchema,
   ProblemDetail,
   StepSchema,
 } from '@/core/api/types';
 
-// Re-export evaluator form types for convenience
-export type { JsonFormValues } from '@/core/evaluators/json/types';
-export type { ListFormValues } from '@/core/evaluators/list/types';
+// Re-export rule form types for convenience
+export type { JsonFormValues } from '@/core/rules/json/types';
+export type { ListFormValues } from '@/core/rules/list/types';
 export type {
   LunaFormValues,
   LunaOperator,
   LunaPayloadField,
-} from '@/core/evaluators/luna/types';
-export type { RegexFormValues } from '@/core/evaluators/regex/types';
-export type { SqlFormValues } from '@/core/evaluators/sql/types';
+} from '@/core/rules/luna/types';
+export type { RegexFormValues } from '@/core/rules/regex/types';
+export type { SqlFormValues } from '@/core/rules/sql/types';
 
 export type ConfigViewMode = 'form' | 'json';
 export type ControlEditorMode = 'form' | 'json';
-export type JsonEditorMode = 'control' | 'evaluator-config' | 'template';
+export type JsonEditorMode = 'control' | 'rule-config' | 'template';
 
 export type JsonSchema = Record<string, unknown>;
 
-export type JsonEditorEvaluatorOption = {
+export type JsonEditorRuleOption = {
   id: string;
   label: string;
   description?: string | null;
   source: 'global' | 'agent';
-  configSchema?: EvaluatorSchema['config_schema'] | null;
+  configSchema?: RuleSchema['config_schema'] | null;
 };
 
 // Form values type for control definition
@@ -103,10 +103,10 @@ export type JsonEditorViewProps = {
   editorMode?: JsonEditorMode;
   /** Optional JSON schema used for Monaco diagnostics */
   schema?: JsonSchema | null;
-  /** Available evaluators for name/config autocomplete */
-  evaluators?: JsonEditorEvaluatorOption[];
-  /** Active evaluator id for evaluator-config mode */
-  activeEvaluatorId?: string | null;
+  /** Available rules for name/config autocomplete */
+  rules?: JsonEditorRuleOption[];
+  /** Active rule id for rule-config mode */
+  activeRuleId?: string | null;
   /** Agent step schemas used for selector path suggestions */
   steps?: StepSchema[];
   /** Parameter names from the template (for template mode $param completions) */

@@ -22,7 +22,7 @@ def test_validation_invalid_logic_enum(client: TestClient):
     # Given: a control and a payload with invalid 'logic' value
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {
+    payload["condition"]["rule"] = {
         "name": "list",
         "config": {
             "values": ["a", "b"],
@@ -45,14 +45,14 @@ def test_validation_invalid_logic_enum(client: TestClient):
 
 
 def test_validation_discriminator_mismatch(client: TestClient):
-    """Test that config must match the evaluator type."""
-    # Given: a control and type='list' but config has 'pattern' (RegexEvaluatorConfig)
+    """Test that config must match the rule type."""
+    # Given: a control and type='list' but config has 'pattern' (RegexRuleConfig)
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {
+    payload["condition"]["rule"] = {
         "name": "list",
         "config": {
-            "pattern": "some_regex", # Invalid for ListEvaluatorConfig
+            "pattern": "some_regex", # Invalid for ListRuleConfig
             # Missing 'values'
         }
     }
@@ -63,7 +63,7 @@ def test_validation_discriminator_mismatch(client: TestClient):
     # Then: 422 Unprocessable Entity
     assert resp.status_code == 422
 
-    # Then: error mentions missing required field for ListEvaluatorConfig (RFC 7807 format)
+    # Then: error mentions missing required field for ListRuleConfig (RFC 7807 format)
     response_data = resp.json()
     errors = response_data.get("errors", [])
     # Expecting 'values' field missing
@@ -76,7 +76,7 @@ def test_validation_regex_flags_list(client: TestClient):
     # Given: a control and regex config with invalid flags type (string instead of list)
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {
+    payload["condition"]["rule"] = {
         "name": "regex",
         "config": {
             "pattern": "abc",
@@ -95,11 +95,11 @@ def test_validation_regex_flags_list(client: TestClient):
 
 
 def test_validation_list_values_reject_blank_strings(client: TestClient):
-    """Test that list evaluator config rejects empty and whitespace-only entries."""
-    # Given: a control and a list evaluator payload with a whitespace-only value
+    """Test that list rule config rejects empty and whitespace-only entries."""
+    # Given: a control and a list rule payload with a whitespace-only value
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {
+    payload["condition"]["rule"] = {
         "name": "list",
         "config": {
             "values": [" "],
@@ -125,7 +125,7 @@ def test_validation_invalid_regex_pattern(client: TestClient):
     # Given: a control and regex config with invalid pattern (unclosed bracket)
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {
+    payload["condition"]["rule"] = {
         "name": "regex",
         "config": {
             "pattern": "[", # Invalid regex
@@ -166,11 +166,11 @@ def test_validation_empty_string_path_rejected(client: TestClient):
     assert any("empty string" in e.get("message", "") for e in errors)
 
 
-def test_validation_empty_evaluator_name_rejected(client: TestClient):
-    """Test that empty evaluator names are rejected at the request boundary."""
+def test_validation_empty_rule_name_rejected(client: TestClient):
+    """Test that empty rule names are rejected at the request boundary."""
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": "", "config": {"pattern": "x"}}
+    payload["condition"]["rule"] = {"name": "", "config": {"pattern": "x"}}
 
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
@@ -178,7 +178,7 @@ def test_validation_empty_evaluator_name_rejected(client: TestClient):
     body = resp.json()
     assert body["error_code"] == "VALIDATION_ERROR"
     assert any(
-        "evaluator.name" in str(err.get("field", ""))
+        "rule.name" in str(err.get("field", ""))
         for err in body.get("errors", [])
     )
     assert any(
@@ -187,10 +187,10 @@ def test_validation_empty_evaluator_name_rejected(client: TestClient):
     )
 
 
-def test_validate_endpoint_whitespace_evaluator_name_rejected(client: TestClient):
-    """Whitespace-only evaluator names are rejected during validate-without-save too."""
+def test_validate_endpoint_whitespace_rule_name_rejected(client: TestClient):
+    """Whitespace-only rule names are rejected during validate-without-save too."""
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": "   ", "config": {"pattern": "x"}}
+    payload["condition"]["rule"] = {"name": "   ", "config": {"pattern": "x"}}
 
     resp = client.post("/api/v1/controls/validate", json={"data": payload})
 
@@ -198,7 +198,7 @@ def test_validate_endpoint_whitespace_evaluator_name_rejected(client: TestClient
     body = resp.json()
     assert body["error_code"] == "VALIDATION_ERROR"
     assert any(
-        "evaluator.name" in str(err.get("field", ""))
+        "rule.name" in str(err.get("field", ""))
         for err in body.get("errors", [])
     )
     assert any(
@@ -207,7 +207,7 @@ def test_validate_endpoint_whitespace_evaluator_name_rejected(client: TestClient
     )
 
 
-def test_get_control_data_rejects_stored_blank_nested_evaluator_name(client: TestClient):
+def test_get_control_data_rejects_stored_blank_nested_rule_name(client: TestClient):
     """Stored rows are revalidated on read using the same ControlDefinition model."""
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
@@ -216,7 +216,7 @@ def test_get_control_data_rejects_stored_blank_nested_evaluator_name(client: Tes
             deepcopy(VALID_CONTROL_PAYLOAD["condition"]),
             {
                 "selector": {"path": "input"},
-                "evaluator": {"name": "   ", "config": {"pattern": "x"}},
+                "rule": {"name": "   ", "config": {"pattern": "x"}},
             },
         ]
     }
@@ -233,7 +233,7 @@ def test_get_control_data_rejects_stored_blank_nested_evaluator_name(client: Tes
     body = resp.json()
     assert body["error_code"] == "CORRUPTED_DATA"
     assert any(
-        err.get("field") == "condition.or[1].evaluator.name"
+        err.get("field") == "condition.or[1].rule.name"
         for err in body.get("errors", [])
     )
     assert any(
@@ -242,15 +242,15 @@ def test_get_control_data_rejects_stored_blank_nested_evaluator_name(client: Tes
     )
 
 
-def test_list_agent_controls_rejects_stored_blank_nested_evaluator_name(client: TestClient):
-    """Agent control listing rejects persisted blank evaluator names with the same validator."""
+def test_list_agent_controls_rejects_stored_blank_nested_rule_name(client: TestClient):
+    """Agent control listing rejects persisted blank rule names with the same validator."""
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     init_resp = client.post(
         "/api/v1/agents/initAgent",
         json={
             "agent": {"agent_name": agent_name},
             "steps": [],
-            "evaluators": [],
+            "rules": [],
         },
     )
     assert init_resp.status_code == 200
@@ -265,7 +265,7 @@ def test_list_agent_controls_rejects_stored_blank_nested_evaluator_name(client: 
             deepcopy(VALID_CONTROL_PAYLOAD["condition"]),
             {
                 "selector": {"path": "input"},
-                "evaluator": {"name": "", "config": {"pattern": "x"}},
+                "rule": {"name": "", "config": {"pattern": "x"}},
             },
         ]
     }
@@ -282,7 +282,7 @@ def test_list_agent_controls_rejects_stored_blank_nested_evaluator_name(client: 
     body = resp.json()
     assert body["error_code"] == "CORRUPTED_DATA"
     assert any(
-        err.get("field") == "data.condition.or[1].evaluator.name"
+        err.get("field") == "data.condition.or[1].rule.name"
         for err in body.get("errors", [])
     )
     assert any(
@@ -366,14 +366,14 @@ def test_validation_nested_condition_error_uses_bracketed_field_path(
     client: TestClient,
 ):
     """Nested condition leaf errors should report full dot/bracket paths."""
-    # Given: a nested condition whose first leaf has invalid evaluator config
+    # Given: a nested condition whose first leaf has invalid rule config
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
     payload["condition"] = {
         "and": [
             {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "list",
                     "config": {
                         "values": ["a", "b"],
@@ -384,7 +384,7 @@ def test_validation_nested_condition_error_uses_bracketed_field_path(
             },
             {
                 "selector": {"path": "output"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": "ok"},
                 },
@@ -399,23 +399,23 @@ def test_validation_nested_condition_error_uses_bracketed_field_path(
     assert resp.status_code == 422
     errors = resp.json().get("errors", [])
     assert any(
-        err.get("field") == "data.condition.and[0].evaluator.logic"
+        err.get("field") == "data.condition.and[0].rule.logic"
         for err in errors
     )
 
 
-def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_path(
+def test_validation_nested_agent_scoped_rule_error_uses_bracketed_field_path(
     client: TestClient,
 ):
-    """Nested agent-scoped evaluator failures should identify the exact leaf path."""
-    # Given: an agent and a nested condition that references a missing agent evaluator
+    """Nested agent-scoped rule failures should identify the exact leaf path."""
+    # Given: an agent and a nested condition that references a missing agent rule
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     init_resp = client.post(
         "/api/v1/agents/initAgent",
         json={
             "agent": {"agent_name": agent_name},
             "steps": [],
-            "evaluators": [],
+            "rules": [],
         },
     )
     assert init_resp.status_code == 200
@@ -426,8 +426,8 @@ def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_pat
         "or": [
             {
                 "selector": {"path": "input"},
-                "evaluator": {
-                    "name": f"{agent_name}:missing-evaluator",
+                "rule": {
+                    "name": f"{agent_name}:missing-rule",
                     "config": {},
                 },
             }
@@ -437,28 +437,28 @@ def test_validation_nested_agent_scoped_evaluator_error_uses_bracketed_field_pat
     # When: validating the nested control definition through the API
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
 
-    # Then: the error points at the exact nested evaluator name field
+    # Then: the error points at the exact nested rule name field
     assert resp.status_code == 422
     body = resp.json()
-    assert body["error_code"] == "EVALUATOR_NOT_FOUND"
+    assert body["error_code"] == "RULE_NOT_FOUND"
     assert any(
-        err.get("field") == "data.condition.or[0].evaluator.name"
-        and err.get("code") == "evaluator_not_found"
+        err.get("field") == "data.condition.or[0].rule.name"
+        and err.get("code") == "rule_not_found"
         for err in body.get("errors", [])
     )
 
 
-def test_validation_standalone_evaluator_error_uses_bracketed_field_path(
+def test_validation_standalone_rule_error_uses_bracketed_field_path(
     client: TestClient,
 ):
-    """Nested standalone (global) evaluator config errors use bracketed leaf paths."""
+    """Nested standalone (global) rule config errors use bracketed leaf paths."""
     control_id = create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
     payload["condition"] = {
         "or": [
             {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {},
                 },
@@ -472,6 +472,6 @@ def test_validation_standalone_evaluator_error_uses_bracketed_field_path(
     body = resp.json()
     assert body["error_code"] == "VALIDATION_ERROR"
     assert any(
-        err.get("field", "").startswith("data.condition.or[0].evaluator")
+        err.get("field", "").startswith("data.condition.or[0].rule")
         for err in body.get("errors", [])
     )

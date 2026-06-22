@@ -3,7 +3,7 @@ import uuid
 from copy import deepcopy
 from typing import Any
 
-from agent_control_engine import list_evaluators
+from agent_control_engine import list_rules
 from agent_control_models import ControlDefinition, TemplateControlInput, UnrenderedTemplateControl
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from agent_control_models.server import (
@@ -66,8 +66,8 @@ from ..services.control_templates import (
     validate_template_structure,
 )
 from ..services.controls import ControlService
-from ..services.evaluator_utils import (
-    parse_evaluator_ref_full,
+from ..services.rule_utils import (
+    parse_rule_ref_full,
     validate_config_against_schema,
 )
 from ..services.validation_paths import format_field_path
@@ -75,9 +75,9 @@ from ..services.validation_paths import format_field_path
 # Pagination constants
 _DEFAULT_PAGINATION_LIMIT = 20
 _MAX_PAGINATION_LIMIT = 100
-_INVALID_PARAMETERS_MESSAGE = "Invalid config parameters for evaluator."
+_INVALID_PARAMETERS_MESSAGE = "Invalid config parameters for rule."
 _CORRUPTED_CONTROL_DATA_MESSAGE = "Stored control data is corrupted and cannot be parsed."
-_SCHEMA_VALIDATION_FAILED_MESSAGE = "Config does not satisfy the evaluator schema."
+_SCHEMA_VALIDATION_FAILED_MESSAGE = "Config does not satisfy the rule schema."
 
 router = APIRouter(prefix="/controls", tags=["controls"])
 template_router = APIRouter(prefix="/control-templates", tags=["controls"])
@@ -376,7 +376,7 @@ async def _render_and_validate_template_input(
     namespace_key: str,
     enabled: bool = True,
 ) -> ControlDefinition:
-    """Render a template-backed input and validate evaluator config."""
+    """Render a template-backed input and validate rule config."""
     rendered = render_template_control_input(template_input, enabled=enabled)
     try:
         await _validate_control_definition(
@@ -462,12 +462,12 @@ async def _validate_control_definition(
     *,
     namespace_key: str,
 ) -> None:
-    """Validate evaluator config for definitions referencing known global evaluators.
+    """Validate rule config for definitions referencing known global rules.
 
-    Agent-scoped evaluators must exist on the referenced agent. Builtin and external
+    Agent-scoped rules must exist on the referenced agent. Builtin and external
     names that are not loaded in this process are accepted without config checks.
     """
-    available_evaluators = list_evaluators()
+    available_rules = list_rules()
     agent_data_by_name: dict[str, AgentData] = {}
     for field_prefix, leaf in iter_condition_leaves_with_paths(
         control_def.condition,
@@ -476,10 +476,10 @@ async def _validate_control_definition(
         leaf_parts = leaf.leaf_parts()
         if leaf_parts is None:
             continue
-        _, evaluator_spec = leaf_parts
+        _, rule_spec = leaf_parts
 
-        evaluator_ref = evaluator_spec.name
-        parsed = parse_evaluator_ref_full(evaluator_ref)
+        rule_ref = rule_spec.name
+        parsed = parse_rule_ref_full(rule_ref)
 
         if parsed.type == "agent":
             agent_namespace = parsed.namespace
@@ -503,7 +503,7 @@ async def _validate_control_definition(
                         resource_id=agent_namespace,
                         hint=(
                             "Ensure the agent exists before creating controls "
-                            "that reference its evaluators."
+                            "that reference its rules."
                         ),
                     )
 
@@ -526,55 +526,55 @@ async def _validate_control_definition(
                     ) from e
                 agent_data_by_name[agent_namespace] = agent_data
 
-            evaluator = next(
-                (e for e in (agent_data.evaluators or []) if e.name == parsed.local_name),
+            rule = next(
+                (e for e in (agent_data.rules or []) if e.name == parsed.local_name),
                 None,
             )
-            if evaluator is None:
-                available = [e.name for e in (agent_data.evaluators or [])]
+            if rule is None:
+                available = [e.name for e in (agent_data.rules or [])]
                 raise APIValidationError(
-                    error_code=ErrorCode.EVALUATOR_NOT_FOUND,
+                    error_code=ErrorCode.RULE_NOT_FOUND,
                     detail=(
-                        f"Evaluator '{parsed.local_name}' is not registered "
+                        f"Rule '{parsed.local_name}' is not registered "
                         f"with agent '{agent_namespace}'"
                     ),
-                    resource="Evaluator",
+                    resource="Rule",
                     hint=(
                         f"Register it via initAgent first. "
-                        f"Available evaluators: {available or 'none'}."
+                        f"Available rules: {available or 'none'}."
                     ),
                     errors=[
                         ValidationErrorItem(
                             resource="Control",
-                            field=f"{field_prefix}.evaluator.name",
-                            code="evaluator_not_found",
+                            field=f"{field_prefix}.rule.name",
+                            code="rule_not_found",
                             message=(
-                                f"Evaluator '{parsed.local_name}' not found "
+                                f"Rule '{parsed.local_name}' not found "
                                 f"on agent '{agent_namespace}'"
                             ),
-                            value=evaluator_ref,
+                            value=rule_ref,
                         )
                     ],
                 )
 
-            if evaluator.config_schema:
+            if rule.config_schema:
                 try:
                     validate_config_against_schema(
-                        evaluator_spec.config,
-                        evaluator.config_schema,
+                        rule_spec.config,
+                        rule.config_schema,
                     )
                 except JSONSchemaValidationError:
                     raise APIValidationError(
                         error_code=ErrorCode.INVALID_CONFIG,
-                        detail=f"Config validation failed for evaluator '{evaluator_ref}'",
+                        detail=f"Config validation failed for rule '{rule_ref}'",
                         resource="Control",
                         hint=(
-                            "Check the evaluator's config schema for required fields and types."
+                            "Check the rule's config schema for required fields and types."
                         ),
                         errors=[
                             ValidationErrorItem(
                                 resource="Control",
-                                field=f"{field_prefix}.evaluator.config",
+                                field=f"{field_prefix}.rule.config",
                                 code="schema_validation_error",
                                 message=_SCHEMA_VALIDATION_FAILED_MESSAGE,
                             )
@@ -582,26 +582,26 @@ async def _validate_control_definition(
                     )
             continue
 
-        evaluator_cls = available_evaluators.get(parsed.name)
-        if evaluator_cls is None:
-            # Global (builtin / external) evaluators may be absent from this runtime
+        rule_cls = available_rules.get(parsed.name)
+        if rule_cls is None:
+            # Global (builtin / external) rules may be absent from this runtime
             # (optional packages, forward compatibility). Store the definition without
-            # config validation; evaluation will fail later if the evaluator is missing.
+            # config validation; evaluation will fail later if the rule is missing.
             continue
 
         try:
-            evaluator_cls.config_model(**evaluator_spec.config)
+            rule_cls.config_model(**rule_spec.config)
         except ValidationError as e:
             raise APIValidationError(
                 error_code=ErrorCode.INVALID_CONFIG,
-                detail=f"Config validation failed for evaluator '{parsed.name}'",
+                detail=f"Config validation failed for rule '{parsed.name}'",
                 resource="Control",
-                hint="Check the evaluator's config schema for required fields and types.",
+                hint="Check the rule's config schema for required fields and types.",
                 errors=[
                     ValidationErrorItem(
                         resource="Control",
                         field=(
-                            f"{field_prefix}.evaluator.config."
+                            f"{field_prefix}.rule.config."
                             f"{format_field_path(err.get('loc', ())) or ''}"
                         ).rstrip("."),
                         code=err.get("type", "validation_error"),
@@ -612,19 +612,19 @@ async def _validate_control_definition(
             )
         except TypeError:
             _logger.warning(
-                "Config validation raised TypeError for evaluator '%s'",
+                "Config validation raised TypeError for rule '%s'",
                 parsed.name,
                 exc_info=True,
             )
             raise APIValidationError(
                 error_code=ErrorCode.INVALID_CONFIG,
-                detail=f"Invalid config parameters for evaluator '{parsed.name}'",
+                detail=f"Invalid config parameters for rule '{parsed.name}'",
                 resource="Control",
-                hint="Check the evaluator's config schema for valid parameter names.",
+                hint="Check the rule's config schema for valid parameter names.",
                 errors=[
                     ValidationErrorItem(
                         resource="Control",
-                        field=f"{field_prefix}.evaluator.config",
+                        field=f"{field_prefix}.rule.config",
                         code="invalid_parameters",
                         message=_INVALID_PARAMETERS_MESSAGE,
                     )

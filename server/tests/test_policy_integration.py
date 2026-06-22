@@ -43,7 +43,7 @@ def _create_control(client: TestClient, name: str | None = None, data: dict | No
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
     marker = json.dumps(data, sort_keys=True) if data is not None else control_name
     payload["description"] = f"Name: {control_name}, Marker: {marker}"
-    payload["condition"]["evaluator"]["config"]["pattern"] = marker
+    payload["condition"]["rule"]["config"]["pattern"] = marker
     resp = client.put("/api/v1/controls", json={"name": control_name, "data": payload})
     assert resp.status_code == 200
     return resp.json()["control_id"]

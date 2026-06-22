@@ -1,7 +1,7 @@
 export {
   applyTextEdit,
   computeAutoEdit,
-  extractEvaluatorNames,
+  extractRuleNames,
 } from './auto-edits';
 export {
   buildCodeMirrorInlineServerValidationErrorsExtension,
@@ -11,7 +11,7 @@ export {
   canRenderInlineServerValidationError,
   getCodeMirrorCompletionItems,
   setInlineServerValidationErrorsEffect,
-  shouldTriggerEvaluatorNameCompletion,
+  shouldTriggerRuleNameCompletion,
   triggerRefactorActionsDropdown,
 } from './extensions';
 export {

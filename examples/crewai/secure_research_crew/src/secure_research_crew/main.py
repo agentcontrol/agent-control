@@ -4,15 +4,15 @@ Secure Research Crew -- CrewAI multi-agent demo with per-agent Agent Control pol
 A 3-agent sequential crew where each agent has different controls:
 
   1. Researcher  -- queries a simulated database
-     Controls: SQL evaluator (block DROP/DELETE, enforce LIMIT)
-               LIST evaluator (block sensitive tables)
+     Controls: SQL rule (block DROP/DELETE, enforce LIMIT)
+               LIST rule (block sensitive tables)
 
   2. Analyst    -- validates and processes research data
-     Controls: JSON evaluator (require dataset, findings, confidence_score)
+     Controls: JSON rule (require dataset, findings, confidence_score)
                JSON schema steer (add methodology if missing)
 
   3. Writer     -- generates the final report
-     Controls: REGEX evaluator (block PII in output)
+     Controls: REGEX rule (block PII in output)
                Client-side citation check (steer if missing)
 
 Scenarios:
@@ -233,10 +233,10 @@ def main():
     print("policies protect each agent in a CrewAI crew:")
     print()
     print("  1. Happy path         -- all agents pass controls")
-    print("  2. SQL injection      -- researcher blocked by SQL evaluator")
-    print("  3. Restricted table   -- researcher blocked by LIST evaluator")
+    print("  2. SQL injection      -- researcher blocked by SQL rule")
+    print("  3. Restricted table   -- researcher blocked by LIST rule")
     print("  4. Missing methodology-- analyst steered, then succeeds")
-    print("  5. PII in report      -- writer blocked by REGEX evaluator")
+    print("  5. PII in report      -- writer blocked by REGEX rule")
     print()
 
     if not verify_setup():
@@ -254,10 +254,10 @@ def main():
     header("SUMMARY")
     print("""
   Scenario 1 (Happy Path):        All 3 agents passed controls
-  Scenario 2 (SQL Injection):     Researcher BLOCKED by sql evaluator
-  Scenario 3 (Restricted Table):  Researcher BLOCKED by list evaluator
+  Scenario 2 (SQL Injection):     Researcher BLOCKED by sql rule
+  Scenario 3 (Restricted Table):  Researcher BLOCKED by list rule
   Scenario 4 (Missing Method):    Analyst STEERED, then succeeded
-  Scenario 5 (PII in Report):     Writer BLOCKED by regex evaluator
+  Scenario 5 (PII in Report):     Writer BLOCKED by regex rule
 
   Controls are enforced per-agent via policies:
     - data-access-policy       -> query_database tool

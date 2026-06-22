@@ -75,13 +75,13 @@ class TestMergeResults:
         matched=True,
         metadata=None,
     ):
-        from agent_control_models import ControlMatch, EvaluatorResult
+        from agent_control_models import ControlMatch, RuleResult
 
         return ControlMatch(
             control_id=control_id,
             control_name=control_name,
             action=action,
-            result=EvaluatorResult(matched=matched, confidence=0.9, metadata=metadata),
+            result=RuleResult(matched=matched, confidence=0.9, metadata=metadata),
         )
 
     def test_combines_matches_errors_and_non_matches(self):
@@ -107,7 +107,7 @@ class TestEvaluationHelpers:
                     "name": "ctrl-1",
                     "control": {
                         "condition": {
-                            "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                            "rule": {"name": "regex", "config": {"pattern": "test"}},
                             "selector": {"path": "input"},
                         },
                         "action": {"decision": "observe"},
@@ -187,13 +187,13 @@ class TestBuildControlExecutionEvents:
         matched=True,
         metadata=None,
     ):
-        from agent_control_models import ControlMatch, EvaluatorResult
+        from agent_control_models import ControlMatch, RuleResult
 
         return ControlMatch(
             control_id=control_id,
             control_name=control_name,
             action=action,
-            result=EvaluatorResult(matched=matched, confidence=0.9, metadata=metadata),
+            result=RuleResult(matched=matched, confidence=0.9, metadata=metadata),
         )
 
     def _make_response(self, matches=None, errors=None, non_matches=None):
@@ -215,7 +215,7 @@ class TestBuildControlExecutionEvents:
                 1,
                 "ctrl-1",
                 {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "rule": {"name": "regex", "config": {"pattern": "test"}},
                     "selector": {"path": "input"},
                 },
             ).control
@@ -235,7 +235,7 @@ class TestBuildControlExecutionEvents:
         assert event.trace_id == "trace123"
         assert event.span_id == "span456"
         assert event.agent_name == "test-agent"
-        assert event.evaluator_name == "regex"
+        assert event.rule_name == "regex"
         assert event.selector_path == "input"
 
     def test_uses_safe_selected_data_preview_as_event_input(self):
@@ -267,7 +267,7 @@ class TestBuildControlExecutionEvents:
                 1,
                 "ctrl-1",
                 {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "rule": {"name": "regex", "config": {"pattern": "test"}},
                     "selector": {"path": "input"},
                 },
             ).control
@@ -300,11 +300,11 @@ class TestBuildControlExecutionEvents:
                     "and": [
                         {
                             "selector": {"path": "input"},
-                            "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                            "rule": {"name": "regex", "config": {"pattern": "test"}},
                         },
                         {
                             "selector": {"path": "output"},
-                            "evaluator": {"name": "regex", "config": {"pattern": "done"}},
+                            "rule": {"name": "regex", "config": {"pattern": "done"}},
                         },
                     ]
                 },
@@ -322,16 +322,16 @@ class TestBuildControlExecutionEvents:
 
         assert len(events) == 1
         event = events[0]
-        assert event.evaluator_name == "regex"
+        assert event.rule_name == "regex"
         assert event.selector_path == "input"
-        assert event.metadata["primary_evaluator"] == "regex"
+        assert event.metadata["primary_rule"] == "regex"
         assert event.metadata["primary_selector_path"] == "input"
         assert event.metadata["leaf_count"] == 2
-        assert event.metadata["all_evaluators"] == ["regex"]
+        assert event.metadata["all_rules"] == ["regex"]
         assert event.metadata["all_selector_paths"] == ["input", "output"]
 
     def test_preserves_error_message_parity_by_result_category(self):
-        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult
+        from agent_control_models import ControlMatch, EvaluationResponse, RuleResult
 
         request = self._make_request()
         control_lookup = {
@@ -339,7 +339,7 @@ class TestBuildControlExecutionEvents:
                 1,
                 "ctrl-1",
                 {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "rule": {"name": "regex", "config": {"pattern": "test"}},
                     "selector": {"path": "input"},
                 },
             ).control
@@ -352,7 +352,7 @@ class TestBuildControlExecutionEvents:
                     control_id=1,
                     control_name="ctrl-1",
                     action="observe",
-                    result=EvaluatorResult(
+                    result=RuleResult(
                         matched=True,
                         confidence=0.9,
                         metadata={"server_error_message": "match-error"},
@@ -364,7 +364,7 @@ class TestBuildControlExecutionEvents:
                     control_id=1,
                     control_name="ctrl-1",
                     action="observe",
-                    result=EvaluatorResult(matched=False, confidence=0.2, error="eval-error"),
+                    result=RuleResult(matched=False, confidence=0.2, error="eval-error"),
                 )
             ],
             non_matches=[
@@ -372,7 +372,7 @@ class TestBuildControlExecutionEvents:
                     control_id=1,
                     control_name="ctrl-1",
                     action="observe",
-                    result=EvaluatorResult(matched=False, confidence=0.1, error="ignored-error"),
+                    result=RuleResult(matched=False, confidence=0.1, error="ignored-error"),
                 )
             ],
         )
@@ -422,7 +422,7 @@ class TestCheckEvaluationWithLocal:
 
     @pytest.mark.asyncio
     async def test_delivers_local_events_in_oss_mode(self):
-        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+        from agent_control_models import ControlMatch, EvaluationResponse, RuleResult, Step
 
         mock_response = EvaluationResponse(
             is_safe=True,
@@ -432,7 +432,7 @@ class TestCheckEvaluationWithLocal:
                     control_id=1,
                     control_name="test-ctrl",
                     action="observe",
-                    result=EvaluatorResult(matched=False, confidence=0.1),
+                    result=RuleResult(matched=False, confidence=0.1),
                 )
             ],
         )
@@ -444,7 +444,7 @@ class TestCheckEvaluationWithLocal:
             "name": "test-ctrl",
             "control": {
                 "condition": {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "rule": {"name": "regex", "config": {"pattern": "test"}},
                     "selector": {"path": "input"},
                 },
                 "action": {"decision": "observe"},
@@ -457,7 +457,7 @@ class TestCheckEvaluationWithLocal:
         step = Step(type="llm", name="test-step", input="hello")
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
-             patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation.list_rules", return_value=["regex"]), \
              patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(
@@ -480,7 +480,7 @@ class TestCheckEvaluationWithLocal:
 
     @pytest.mark.asyncio
     async def test_external_sink_receives_local_events(self):
-        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+        from agent_control_models import ControlMatch, EvaluationResponse, RuleResult, Step
 
         sink = RecordingSink()
         register_control_event_sink(sink)
@@ -495,7 +495,7 @@ class TestCheckEvaluationWithLocal:
                         control_id=1,
                         control_name="test-ctrl",
                         action="observe",
-                        result=EvaluatorResult(matched=False, confidence=0.1),
+                        result=RuleResult(matched=False, confidence=0.1),
                     )
                 ],
             )
@@ -507,7 +507,7 @@ class TestCheckEvaluationWithLocal:
                 "name": "test-ctrl",
                 "control": {
                     "condition": {
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
                     "action": {"decision": "observe"},
@@ -520,7 +520,7 @@ class TestCheckEvaluationWithLocal:
             step = Step(type="llm", name="test-step", input="hello")
 
             with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), patch(
-                "agent_control.evaluation.list_evaluators", return_value=["regex"]
+                "agent_control.evaluation.list_rules", return_value=["regex"]
             ):
                 await evaluation.check_evaluation_with_local(
                     client=client,
@@ -545,7 +545,7 @@ class TestCheckEvaluationWithLocal:
 
     @pytest.mark.asyncio
     async def test_resolves_provider_trace_context_for_local_events(self):
-        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+        from agent_control_models import ControlMatch, EvaluationResponse, RuleResult, Step
 
         mock_response = EvaluationResponse(
             is_safe=True,
@@ -555,7 +555,7 @@ class TestCheckEvaluationWithLocal:
                     control_id=1,
                     control_name="test-ctrl",
                     action="allow",
-                    result=EvaluatorResult(matched=False, confidence=0.1),
+                    result=RuleResult(matched=False, confidence=0.1),
                 )
             ],
         )
@@ -566,7 +566,7 @@ class TestCheckEvaluationWithLocal:
             "name": "test-ctrl",
             "control": {
                 "condition": {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "rule": {"name": "regex", "config": {"pattern": "test"}},
                     "selector": {"path": "input"},
                 },
                 "action": {"decision": "observe"},
@@ -580,7 +580,7 @@ class TestCheckEvaluationWithLocal:
         set_trace_context_provider(lambda: {"trace_id": "a" * 32, "span_id": "b" * 16})
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
-             patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation.list_rules", return_value=["regex"]), \
              patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             await evaluation.check_evaluation_with_local(
@@ -605,7 +605,7 @@ class TestCheckEvaluationWithLocal:
             "name": "server-ctrl",
             "control": {
                 "condition": {
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "rule": {"name": "regex", "config": {"pattern": "test"}},
                     "selector": {"path": "input"},
                 },
                 "action": {"decision": "deny"},
@@ -634,7 +634,7 @@ class TestCheckEvaluationWithLocal:
             }
         )
 
-        with patch("agent_control.evaluation.list_evaluators", return_value=["regex"]):
+        with patch("agent_control.evaluation.list_rules", return_value=["regex"]):
             await evaluation.check_evaluation_with_local(
                 client=client,
                 agent_name="agent-000000000001",
@@ -758,7 +758,7 @@ class TestCheckEvaluation:
                 "name": "local-ctrl",
                 "control": {
                     "condition": {
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
                     "action": {"decision": "observe"},
@@ -777,7 +777,7 @@ class TestCheckEvaluation:
 
         with (
             patch("agent_control.evaluation.ControlEngine", return_value=mock_engine),
-            patch("agent_control.evaluation.list_evaluators", return_value=["regex"]),
+            patch("agent_control.evaluation.list_rules", return_value=["regex"]),
             patch("agent_control.evaluation.is_observability_enabled", return_value=False),
             patch("agent_control.evaluation.build_control_execution_events") as mock_build,
             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue,
@@ -843,7 +843,7 @@ class TestMergedEventCreation:
 
     @pytest.mark.asyncio
     async def test_merged_event_mode_enqueues_reconstructed_local_and_server_events_once(self):
-        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+        from agent_control_models import ControlMatch, EvaluationResponse, RuleResult, Step
 
         local_response = EvaluationResponse(
             is_safe=True,
@@ -853,7 +853,7 @@ class TestMergedEventCreation:
                     control_id=1,
                     control_name="local-ctrl",
                     action="observe",
-                    result=EvaluatorResult(matched=False, confidence=0.8),
+                    result=RuleResult(matched=False, confidence=0.8),
                 )
             ],
         )
@@ -879,7 +879,7 @@ class TestMergedEventCreation:
                 "name": "local-ctrl",
                 "control": {
                     "condition": {
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
                     "action": {"decision": "observe"},
@@ -891,7 +891,7 @@ class TestMergedEventCreation:
                 "name": "server-ctrl",
                 "control": {
                     "condition": {
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
                     "action": {"decision": "observe"},
@@ -912,7 +912,7 @@ class TestMergedEventCreation:
         step = Step(type="llm", name="test-step", input="hello")
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
-             patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation.list_rules", return_value=["regex"]), \
              patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(
@@ -934,7 +934,7 @@ class TestMergedEventCreation:
 
     @pytest.mark.asyncio
     async def test_external_sink_receives_merged_local_and_server_events(self):
-        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+        from agent_control_models import ControlMatch, EvaluationResponse, RuleResult, Step
 
         sink = RecordingSink()
         register_control_event_sink(sink)
@@ -949,7 +949,7 @@ class TestMergedEventCreation:
                         control_id=1,
                         control_name="local-ctrl",
                         action="observe",
-                        result=EvaluatorResult(matched=False, confidence=0.8),
+                        result=RuleResult(matched=False, confidence=0.8),
                     )
                 ],
             )
@@ -974,7 +974,7 @@ class TestMergedEventCreation:
                     "name": "local-ctrl",
                     "control": {
                         "condition": {
-                            "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                            "rule": {"name": "regex", "config": {"pattern": "test"}},
                             "selector": {"path": "input"},
                         },
                         "action": {"decision": "observe"},
@@ -986,7 +986,7 @@ class TestMergedEventCreation:
                     "name": "server-ctrl",
                     "control": {
                         "condition": {
-                            "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                            "rule": {"name": "regex", "config": {"pattern": "test"}},
                             "selector": {"path": "input"},
                         },
                         "action": {"decision": "observe"},
@@ -1007,7 +1007,7 @@ class TestMergedEventCreation:
             step = Step(type="llm", name="test-step", input="hello")
 
             with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), patch(
-                "agent_control.evaluation.list_evaluators", return_value=["regex"]
+                "agent_control.evaluation.list_rules", return_value=["regex"]
             ):
                 await evaluation.check_evaluation_with_local(
                     client=client,
@@ -1030,7 +1030,7 @@ class TestMergedEventCreation:
 
     @pytest.mark.asyncio
     async def test_merged_event_mode_enqueues_local_events_before_reraising_server_failure(self):
-        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+        from agent_control_models import ControlMatch, EvaluationResponse, RuleResult, Step
 
         local_response = EvaluationResponse(
             is_safe=True,
@@ -1040,7 +1040,7 @@ class TestMergedEventCreation:
                     control_id=1,
                     control_name="local-ctrl",
                     action="observe",
-                    result=EvaluatorResult(matched=False, confidence=0.8),
+                    result=RuleResult(matched=False, confidence=0.8),
                 )
             ],
         )
@@ -1051,7 +1051,7 @@ class TestMergedEventCreation:
                 "name": "local-ctrl",
                 "control": {
                     "condition": {
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
                     "action": {"decision": "observe"},
@@ -1063,7 +1063,7 @@ class TestMergedEventCreation:
                 "name": "server-ctrl",
                 "control": {
                     "condition": {
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
                     "action": {"decision": "observe"},
@@ -1082,7 +1082,7 @@ class TestMergedEventCreation:
 
         with (
             patch("agent_control.evaluation.ControlEngine", return_value=mock_engine),
-            patch("agent_control.evaluation.list_evaluators", return_value=["regex"]),
+            patch("agent_control.evaluation.list_rules", return_value=["regex"]),
             patch("agent_control.evaluation.is_observability_enabled", return_value=True),
             patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue,
         ):
@@ -1107,7 +1107,7 @@ class TestMergedEventCreation:
 
     @pytest.mark.asyncio
     async def test_merged_event_mode_enqueues_only_local_events_when_no_server_controls_apply(self):
-        from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult, Step
+        from agent_control_models import ControlMatch, EvaluationResponse, RuleResult, Step
 
         local_response = EvaluationResponse(
             is_safe=True,
@@ -1117,7 +1117,7 @@ class TestMergedEventCreation:
                     control_id=1,
                     control_name="local-ctrl",
                     action="observe",
-                    result=EvaluatorResult(matched=True, confidence=0.8),
+                    result=RuleResult(matched=True, confidence=0.8),
                 )
             ],
         )
@@ -1127,7 +1127,7 @@ class TestMergedEventCreation:
                 "name": "local-ctrl",
                 "control": {
                     "condition": {
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                         "selector": {"path": "input"},
                     },
                     "action": {"decision": "observe"},
@@ -1143,7 +1143,7 @@ class TestMergedEventCreation:
         step = Step(type="llm", name="test-step", input="hello")
 
         with patch("agent_control.evaluation.ControlEngine", return_value=mock_engine), \
-             patch("agent_control.evaluation.list_evaluators", return_value=["regex"]), \
+             patch("agent_control.evaluation.list_rules", return_value=["regex"]), \
              patch("agent_control.evaluation.is_observability_enabled", return_value=True), \
              patch("agent_control.evaluation.enqueue_observability_events") as mock_enqueue:
             result = await evaluation.check_evaluation_with_local(

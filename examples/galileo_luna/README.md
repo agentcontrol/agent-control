@@ -1,12 +1,12 @@
-# Galileo Luna Direct Evaluator Example
+# Galileo Luna Direct Rule Example
 
-This example shows an Agent Control agent using the direct Galileo Luna evaluator (`galileo.luna`). The evaluator calls Galileo's `/scorers/invoke` API and applies thresholds locally from the control definition.
+This example shows an Agent Control agent using the direct Galileo Luna rule (`galileo.luna`). The rule calls Galileo's `/scorers/invoke` API and applies thresholds locally from the control definition.
 
 ## What It Shows
 
 - `setup_controls.py` registers an agent and attaches controls.
 - `demo_agent.py` runs an agent step protected with `@control`.
-- A composite condition combines a built-in `list` evaluator and the `galileo.luna` evaluator.
+- A composite condition combines a built-in `list` rule and the `galileo.luna` rule.
 - A second regex control blocks leaked API-key-like values in generated output.
 
 ## Setup

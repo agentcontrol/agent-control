@@ -275,7 +275,7 @@ class TestControlExecutionEvent:
             confidence=0.99,
             timestamp=datetime.now(UTC),
             execution_duration_ms=15.5,
-            evaluator_name="regex",
+            rule_name="regex",
             selector_path="input",
             error_message=None,
             metadata={"key": "value"},

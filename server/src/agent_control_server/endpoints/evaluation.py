@@ -25,8 +25,8 @@ router = APIRouter(prefix="/evaluation", tags=["evaluation"])
 
 _logger = get_logger(__name__)
 
-SAFE_EVALUATOR_ERROR = "Evaluation failed due to an internal evaluator error."
-SAFE_EVALUATOR_TIMEOUT_ERROR = "Evaluation timed out before completion."
+SAFE_RULE_ERROR = "Evaluation failed due to an internal rule error."
+SAFE_RULE_TIMEOUT_ERROR = "Evaluation timed out before completion."
 SAFE_INVALID_STEP_REGEX_ERROR = "Control configuration error: invalid step name regex."
 SAFE_ENGINE_VALIDATION_MESSAGE = "Invalid evaluation request or control configuration."
 
@@ -40,17 +40,17 @@ class ControlAdapter:
     control: ControlDefinitionRuntime
 
 
-def _sanitize_evaluator_error(error_message: str) -> str:
-    """Convert evaluator runtime errors into safe client-facing text."""
+def _sanitize_rule_error(error_message: str) -> str:
+    """Convert rule runtime errors into safe client-facing text."""
     if "invalid step_name_regex" in error_message.lower():
         return SAFE_INVALID_STEP_REGEX_ERROR
     if "timeout" in error_message.lower():
-        return SAFE_EVALUATOR_TIMEOUT_ERROR
-    return SAFE_EVALUATOR_ERROR
+        return SAFE_RULE_TIMEOUT_ERROR
+    return SAFE_RULE_ERROR
 
 
 def _sanitize_condition_trace(trace: object) -> object:
-    """Recursively redact internal evaluator errors from condition traces."""
+    """Recursively redact internal rule errors from condition traces."""
     if isinstance(trace, list):
         return [_sanitize_condition_trace(item) for item in trace]
 
@@ -64,7 +64,7 @@ def _sanitize_condition_trace(trace: object) -> object:
 
     raw_error = sanitized.get("error")
     if isinstance(raw_error, str) and raw_error:
-        safe_error = _sanitize_evaluator_error(raw_error)
+        safe_error = _sanitize_rule_error(raw_error)
         sanitized["error"] = safe_error
         raw_message = sanitized.get("message")
         if raw_message is None or isinstance(raw_message, str):
@@ -74,11 +74,11 @@ def _sanitize_condition_trace(trace: object) -> object:
 
 
 def _sanitize_control_match(match: ControlMatch) -> ControlMatch:
-    """Redact internal evaluator error strings from a control match."""
+    """Redact internal rule error strings from a control match."""
     if match.result.error is None:
         return match
 
-    safe_error = _sanitize_evaluator_error(match.result.error)
+    safe_error = _sanitize_rule_error(match.result.error)
     safe_message = safe_error
     metadata = dict(match.result.metadata or {})
     condition_trace = metadata.get("condition_trace")
@@ -139,7 +139,7 @@ async def _load_engine_controls(
     request: EvaluationRequest,
     principal: Principal,
 ) -> list[ControlAdapter]:
-    """Load and materialize controls before evaluator execution starts."""
+    """Load and materialize controls before rule execution starts."""
     namespace_key = principal.namespace_key
 
     async with AsyncSessionLocal() as db:

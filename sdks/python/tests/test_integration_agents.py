@@ -216,7 +216,7 @@ async def test_convenience_agent_association_functions(
         "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "condition": {
             "selector": {"path": "input"},
-            "evaluator": {
+            "rule": {
                 "name": "regex",
                 "config": {"pattern": ".*"},
             },

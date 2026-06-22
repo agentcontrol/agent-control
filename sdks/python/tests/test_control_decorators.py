@@ -957,7 +957,7 @@ class TestSteeringContextHandling:
 
     @pytest.mark.asyncio
     async def test_steering_context_fallback_to_message(self, mock_agent):
-        """Test steering_context falls back to evaluator message when not provided."""
+        """Test steering_context falls back to rule message when not provided."""
         response_without_context = {
             "is_safe": False,
             "confidence": 0.85,
@@ -969,7 +969,7 @@ class TestSteeringContextHandling:
                     "steering_context": None,  # No steering context provided
                     "result": {
                         "matched": True,
-                        "message": "Default evaluator message",
+                        "message": "Default rule message",
                         "metadata": {}
                     }
                 }
@@ -986,8 +986,8 @@ class TestSteeringContextHandling:
             with pytest.raises(ControlSteerError) as exc_info:
                 await test_func()
 
-            # Should fall back to evaluator message
-            assert exc_info.value.steering_context == "Default evaluator message"
+            # Should fall back to rule message
+            assert exc_info.value.steering_context == "Default rule message"
 
 
 # =============================================================================

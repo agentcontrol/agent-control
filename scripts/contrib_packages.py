@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover and verify real contrib evaluator packages."""
+"""Discover and verify real contrib rule packages."""
 
 from __future__ import annotations
 
@@ -11,10 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-
-EVALUATOR_ENTRY_GROUP = "agent_control.evaluators"
+RULE_ENTRY_GROUP = "agent_control.rules"
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CONTRIB_ROOT = REPO_ROOT / "evaluators" / "contrib"
+CONTRIB_ROOT = REPO_ROOT / "rules" / "contrib"
 
 
 class ContribPackagesError(Exception):
@@ -23,13 +22,13 @@ class ContribPackagesError(Exception):
 
 @dataclass(frozen=True)
 class ContribPackage:
-    """Normalized metadata for a real contrib evaluator package."""
+    """Normalized metadata for a real contrib rule package."""
 
     name: str
     directory: str
     package: str
     extra: str
-    entry_group: str = EVALUATOR_ENTRY_GROUP
+    entry_group: str = RULE_ENTRY_GROUP
 
     @property
     def version_toml_entry(self) -> str:
@@ -117,7 +116,7 @@ def dependency_name(requirement: str) -> str:
 
 
 def discover_contrib_packages() -> list[ContribPackage]:
-    """Discover real contrib evaluator packages under evaluators/contrib."""
+    """Discover real contrib rule packages under rules/contrib."""
 
     packages: list[ContribPackage] = []
 
@@ -148,14 +147,14 @@ def discover_contrib_packages() -> list[ContribPackage]:
             path=manifest_path,
             parent_description="project",
         )
-        evaluator_entries = entry_points.get(EVALUATOR_ENTRY_GROUP)
-        if not isinstance(evaluator_entries, dict) or not evaluator_entries:
+        rule_entries = entry_points.get(RULE_ENTRY_GROUP)
+        if not isinstance(rule_entries, dict) or not rule_entries:
             raise ContribPackagesError(
                 f"{display_path(manifest_path)} must define at least one "
-                f'[project.entry-points."{EVALUATOR_ENTRY_GROUP}"] entry.'
+                f'[project.entry-points."{RULE_ENTRY_GROUP}"] entry.'
             )
 
-        expected_package_name = f"agent-control-evaluator-{candidate.name}"
+        expected_package_name = f"agent-control-rule-{candidate.name}"
         if project_name != expected_package_name:
             raise ContribPackagesError(
                 f"{display_path(manifest_path)} declares project.name = {project_name!r}, "
@@ -178,12 +177,17 @@ def verify_contrib_packages(packages: list[ContribPackage]) -> list[str]:
     """Return human-readable verification errors for contrib wiring drift."""
 
     root_pyproject_path = REPO_ROOT / "pyproject.toml"
-    builtin_pyproject_path = REPO_ROOT / "evaluators" / "builtin" / "pyproject.toml"
+    builtin_pyproject_path = REPO_ROOT / "rules" / "builtin" / "pyproject.toml"
 
     root_pyproject = load_toml(root_pyproject_path)
     builtin_pyproject = load_toml(builtin_pyproject_path)
 
-    tool_table = require_table(root_pyproject, "tool", path=root_pyproject_path, parent_description="")
+    tool_table = require_table(
+        root_pyproject,
+        "tool",
+        path=root_pyproject_path,
+        parent_description="",
+    )
     semantic_release = require_table(
         tool_table,
         "semantic_release",
@@ -191,7 +195,9 @@ def verify_contrib_packages(packages: list[ContribPackage]) -> list[str]:
         parent_description="tool",
     )
     version_toml = semantic_release.get("version_toml")
-    if not isinstance(version_toml, list) or not all(isinstance(item, str) for item in version_toml):
+    if not isinstance(version_toml, list) or not all(
+        isinstance(item, str) for item in version_toml
+    ):
         raise ContribPackagesError(
             f"{display_path(root_pyproject_path)} must define [tool.semantic_release].version_toml "
             "as a list of strings."
@@ -243,14 +249,15 @@ def verify_contrib_packages(packages: list[ContribPackage]) -> list[str]:
             errors.append(
                 f"Missing builtin extra for contrib package {package.name!r}: "
                 f"add [project.optional-dependencies].{package.extra} = "
-                f"[\"{package.package}>=<version-floor>\"] in {display_path(builtin_pyproject_path)}."
+                f"[\"{package.package}>=<version-floor>\"] in "
+                f"{display_path(builtin_pyproject_path)}."
             )
         elif not isinstance(extra_dependencies, list) or not all(
             isinstance(item, str) for item in extra_dependencies
         ):
             errors.append(
-                f"Builtin extra {package.extra!r} in {display_path(builtin_pyproject_path)} must be "
-                "a list of dependency strings."
+                f"Builtin extra {package.extra!r} in "
+                f"{display_path(builtin_pyproject_path)} must be a list of dependency strings."
             )
         else:
             dependency_names = {dependency_name(item) for item in extra_dependencies}
@@ -323,7 +330,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser."""
 
     parser = argparse.ArgumentParser(
-        description="Discover and verify real contrib evaluator packages."
+        description="Discover and verify real contrib rule packages."
     )
     parser.add_argument(
         "command",

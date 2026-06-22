@@ -16,7 +16,7 @@ import pytest
 from agent_control_models import (
     ControlMatch,
     EvaluationResponse,
-    EvaluatorResult,
+    RuleResult,
     Step,
 )
 
@@ -98,7 +98,7 @@ def make_control_dict(
     *,
     enabled: bool = True,
     execution: str = "server",
-    evaluator: str = "regex",
+    rule: str = "regex",
     pattern: str = r"test",
     action: str = "deny",
     step_type: str = "llm",
@@ -128,8 +128,8 @@ def make_control_dict(
             "scope": scope,
             "condition": {
                 "selector": {"path": path},
-                "evaluator": {
-                    "name": evaluator,
+                "rule": {
+                    "name": rule,
                     "config": {"pattern": pattern},
                 },
             },
@@ -153,7 +153,7 @@ def add_template_metadata(control: dict[str, Any], *, pattern: str = "test") -> 
             "scope": control["control"]["scope"],
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {"pattern": {"$param": "pattern"}},
                 },
@@ -182,7 +182,7 @@ def make_unrendered_template_control(
                     "scope": {"step_types": ["llm"], "stages": ["pre"]},
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": {"$param": "pattern"}},
                         },
@@ -259,13 +259,13 @@ class TestMergeResults:
             control_id=1,
             control_name="local_ctrl",
             action="deny",
-            result=EvaluatorResult(matched=True, confidence=1.0),
+            result=RuleResult(matched=True, confidence=1.0),
         )
         server_match = ControlMatch(
             control_id=2,
             control_name="server_ctrl",
             action="deny",
-            result=EvaluatorResult(matched=True, confidence=1.0),
+            result=RuleResult(matched=True, confidence=1.0),
         )
 
         local = EvaluationResponse(is_safe=False, confidence=1.0, matches=[local_match])
@@ -284,13 +284,13 @@ class TestMergeResults:
             control_id=1,
             control_name="local_err",
             action="deny",
-            result=EvaluatorResult(matched=False, confidence=0.0, error="local error"),
+            result=RuleResult(matched=False, confidence=0.0, error="local error"),
         )
         server_error = ControlMatch(
             control_id=2,
             control_name="server_err",
             action="deny",
-            result=EvaluatorResult(matched=False, confidence=0.0, error="server error"),
+            result=RuleResult(matched=False, confidence=0.0, error="server error"),
         )
 
         local = EvaluationResponse(is_safe=False, confidence=0.0, errors=[local_error])
@@ -665,7 +665,7 @@ class TestCheckEvaluationWithLocal:
 
     @pytest.mark.asyncio
     async def test_local_legacy_flat_control_executes_locally(self, agent_name, llm_payload):
-        """Legacy flat selector/evaluator controls should still execute in the SDK."""
+        """Legacy flat selector/rule controls should still execute in the SDK."""
         controls = [
             {
                 "id": 1,
@@ -676,7 +676,7 @@ class TestCheckEvaluationWithLocal:
                     "execution": "sdk",
                     "scope": {"step_types": ["llm"], "stages": ["pre"]},
                     "selector": {"path": "input"},
-                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "rule": {"name": "regex", "config": {"pattern": "test"}},
                     "action": {"decision": "deny"},
                 },
             }
@@ -1070,19 +1070,19 @@ class TestCheckEvaluationWithLocal:
         assert result.matches[0].control_name == "local_deny_ctrl"
 
     @pytest.mark.asyncio
-    async def test_local_control_with_missing_evaluator_raises(self, agent_name, llm_payload):
-        """Test that local control with unavailable evaluator raises RuntimeError.
+    async def test_local_control_with_missing_rule_raises(self, agent_name, llm_payload):
+        """Test that local control with unavailable rule raises RuntimeError.
 
-        Given: A local control referencing an evaluator that doesn't exist
+        Given: A local control referencing a rule that doesn't exist
         When: check_evaluation_with_local is called
         Then: RuntimeError is raised with helpful message
         """
         controls = [
             make_control_dict(
                 1,
-                "local_missing_evaluator",
+                "local_missing_rule",
                 execution="sdk",
-                evaluator="nonexistent-evaluator-xyz",
+                rule="nonexistent-rule-xyz",
                 pattern=r"test",
             ),
         ]
@@ -1099,24 +1099,24 @@ class TestCheckEvaluationWithLocal:
                 controls=controls,
             )
 
-        assert "local_missing_evaluator" in str(exc_info.value)
-        assert "nonexistent-evaluator-xyz" in str(exc_info.value)
+        assert "local_missing_rule" in str(exc_info.value)
+        assert "nonexistent-rule-xyz" in str(exc_info.value)
         assert "not available" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_local_control_with_agent_scoped_evaluator_raises(self, agent_name, llm_payload):
-        """Test that local control with agent-scoped evaluator raises RuntimeError.
+    async def test_local_control_with_agent_scoped_rule_raises(self, agent_name, llm_payload):
+        """Test that local control with agent-scoped rule raises RuntimeError.
 
-        Given: A local control referencing an agent-scoped evaluator (agent:evaluator)
+        Given: A local control referencing an agent-scoped rule (agent:rule)
         When: check_evaluation_with_local is called
-        Then: RuntimeError is raised explaining agent-scoped evaluators are server-only
+        Then: RuntimeError is raised explaining agent-scoped rules are server-only
         """
         controls = [
             make_control_dict(
                 1,
                 "local_agent_scoped",
                 execution="sdk",
-                evaluator="my-agent:custom-evaluator",
+                rule="my-agent:custom-rule",
                 pattern=r"test",
             ),
         ]
@@ -1134,14 +1134,14 @@ class TestCheckEvaluationWithLocal:
             )
 
         assert "local_agent_scoped" in str(exc_info.value)
-        assert "my-agent:custom-evaluator" in str(exc_info.value)
+        assert "my-agent:custom-rule" in str(exc_info.value)
         assert "server-only" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_server_control_with_missing_evaluator_allowed(self, agent_name, llm_payload):
-        """Test that server control with unavailable evaluator is allowed (server handles it).
+    async def test_server_control_with_missing_rule_allowed(self, agent_name, llm_payload):
+        """Test that server control with unavailable rule is allowed (server handles it).
 
-        Given: A server control (execution="server") referencing an evaluator that
+        Given: A server control (execution="server") referencing a rule that
         doesn't exist locally
         When: check_evaluation_with_local is called
         Then: No error, server is called to handle it
@@ -1149,9 +1149,9 @@ class TestCheckEvaluationWithLocal:
         controls = [
             make_control_dict(
                 1,
-                "server_custom_evaluator",
+                "server_custom_rule",
                 execution="server",
-                evaluator="server-only-evaluator",
+                rule="server-only-rule",
                 pattern=r"test",
             ),
         ]
@@ -1164,7 +1164,7 @@ class TestCheckEvaluationWithLocal:
         client.http_client = AsyncMock()
         client.http_client.post = AsyncMock(return_value=mock_response)
 
-        # Should not raise - server handles unavailable evaluators
+        # Should not raise - server handles unavailable rules
         result = await check_evaluation_with_local(
             client=client,
             agent_name=agent_name,
@@ -1186,7 +1186,7 @@ class TestCheckEvaluationWithLocal:
         Then: The parse error should appear in result.errors
         """
         controls = [
-            # Invalid control (missing required evaluator field)
+            # Invalid control (missing required rule field)
             {"id": 999, "name": "bad_control", "control": {"execution": "sdk"}},
         ]
 
@@ -1274,7 +1274,7 @@ class TestCheckEvaluationWithLocal:
                     "scope": {"step_types": ["llm"], "stages": ["pre"]},
                     "condition": {
                         "selector": {"path": "input"},
-                        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                        "rule": {"name": "regex", "config": {"pattern": "test"}},
                     },
                     "action": {
                         "decision": "steer",

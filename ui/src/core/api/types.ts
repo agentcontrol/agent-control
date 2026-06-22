@@ -14,7 +14,7 @@ import type { components, operations } from './generated/api-types';
 export type ValidationErrorItem = {
   /** Resource type where error occurred (e.g., 'Control') */
   resource: string;
-  /** Field path that caused the error (e.g., 'data.evaluator.config.pattern') */
+  /** Field path that caused the error (e.g., 'data.rule.config.pattern') */
   field: string | null;
   /** Machine-readable error code (e.g., 'required', 'invalid_format') */
   code: string;
@@ -50,14 +50,14 @@ export type ProblemDetail = {
 
 // Agent types
 export type Agent = components['schemas']['Agent'];
-export type EvaluatorSchema = components['schemas']['EvaluatorSchema'];
+export type RuleSchema = components['schemas']['RuleSchema'];
 export type StepSchema = components['schemas']['StepSchema'];
 export type AgentSummary = components['schemas']['AgentSummary'];
 export type ListAgentsResponse = components['schemas']['ListAgentsResponse'];
 
-// Evaluator types
-export type EvaluatorInfo = components['schemas']['EvaluatorInfo'];
-export type EvaluatorsResponse = Record<string, EvaluatorInfo>;
+// Rule types
+export type RuleInfo = components['schemas']['RuleInfo'];
+export type RulesResponse = Record<string, RuleInfo>;
 // Request/Response types
 export type InitAgentRequest = components['schemas']['InitAgentRequest'];
 export type InitAgentResponse = components['schemas']['InitAgentResponse'];

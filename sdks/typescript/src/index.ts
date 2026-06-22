@@ -9,7 +9,7 @@ export type {
   AgentsApi,
   ControlsApi,
   EvaluationApi,
-  EvaluatorsApi,
+  RulesApi,
   ObservabilityApi,
   PoliciesApi,
   StepSchema,

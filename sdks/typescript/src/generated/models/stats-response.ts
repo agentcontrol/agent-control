@@ -49,8 +49,8 @@ export type StatsResponse = {
    *
    * Attributes:
    *     execution_count: Total executions across all controls
-   *     match_count: Total matches across all controls (evaluator matched)
-   *     non_match_count: Total non-matches across all controls (evaluator didn't match)
+   *     match_count: Total matches across all controls (rule matched)
+   *     non_match_count: Total non-matches across all controls (rule didn't match)
    *     error_count: Total errors across all controls (evaluation failed)
    *     action_counts: Breakdown of actions for matched executions
    *     timeseries: Time-series data points (only when include_timeseries=true)

@@ -120,7 +120,7 @@ describe("AgentControlClient API wiring", () => {
           decision: "deny",
         },
         condition: {
-          evaluator: {
+          rule: {
             name: "regex",
             config: { pattern: "pii" },
           },
@@ -149,7 +149,7 @@ describe("AgentControlClient API wiring", () => {
           decision: "deny",
         },
         condition: {
-          evaluator: {
+          rule: {
             name: "regex",
             config: { pattern: "pii" },
           },

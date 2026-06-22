@@ -1,6 +1,6 @@
 # DeepEval Example
 
-Custom evaluator using DeepEval GEval metrics for quality controls.
+Custom rule using DeepEval GEval metrics for quality controls.
 
 ## What this example shows
 

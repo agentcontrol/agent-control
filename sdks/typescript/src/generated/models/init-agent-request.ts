@@ -7,10 +7,10 @@ import { remap as remap$ } from "../lib/primitives.js";
 import { Agent, Agent$Outbound, Agent$outboundSchema } from "./agent.js";
 import { ConflictMode, ConflictMode$outboundSchema } from "./conflict-mode.js";
 import {
-  EvaluatorSchema,
-  EvaluatorSchema$Outbound,
-  EvaluatorSchema$outboundSchema,
-} from "./evaluator-schema.js";
+  RuleSchema,
+  RuleSchema$Outbound,
+  RuleSchema$outboundSchema,
+} from "./rule-schema.js";
 import {
   StepSchema,
   StepSchema$Outbound,
@@ -36,13 +36,13 @@ export type InitAgentRequest = {
    * @remarks
    *
    * STRICT preserves compatibility checks and raises conflicts on incompatible changes.
-   * OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+   * OVERWRITE applies latest-init-wins replacement for steps and rules.
    */
   conflictMode?: ConflictMode | undefined;
   /**
-   * Custom evaluator schemas for config validation
+   * Custom rule schemas for config validation
    */
-  evaluators?: Array<EvaluatorSchema> | undefined;
+  rules?: Array<RuleSchema> | undefined;
   /**
    * If true, replace corrupted agent data instead of failing. Use only when agent data is corrupted and cannot be parsed.
    */
@@ -65,7 +65,7 @@ export type InitAgentRequest = {
 export type InitAgentRequest$Outbound = {
   agent: Agent$Outbound;
   conflict_mode?: string | undefined;
-  evaluators?: Array<EvaluatorSchema$Outbound> | undefined;
+  rules?: Array<RuleSchema$Outbound> | undefined;
   force_replace: boolean;
   steps?: Array<StepSchema$Outbound> | undefined;
   target_id?: string | null | undefined;
@@ -80,7 +80,7 @@ export const InitAgentRequest$outboundSchema: z.ZodMiniType<
   z.object({
     agent: Agent$outboundSchema,
     conflictMode: z._default(z.optional(ConflictMode$outboundSchema), "overwrite"),
-    evaluators: z.optional(z.array(EvaluatorSchema$outboundSchema)),
+    rules: z.optional(z.array(RuleSchema$outboundSchema)),
     forceReplace: z._default(z.boolean(), false),
     steps: z.optional(z.array(StepSchema$outboundSchema)),
     targetId: z.optional(z.nullable(z.string())),

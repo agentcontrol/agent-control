@@ -5,7 +5,7 @@ import type {
   AgentSummary,
   Control,
   ControlSummary,
-  EvaluatorsResponse,
+  RulesResponse,
   GetAgentResponse,
   GetControlSchemaResponse,
   ListAgentsResponse,
@@ -25,7 +25,7 @@ const agentsList: AgentSummary[] = [
     policy_ids: [1],
     created_at: '2024-01-01T00:00:00Z',
     step_count: 5,
-    evaluator_count: 2,
+    rule_count: 2,
     active_controls_count: 3,
   },
   {
@@ -33,7 +33,7 @@ const agentsList: AgentSummary[] = [
     policy_ids: [2],
     created_at: '2024-01-02T00:00:00Z',
     step_count: 3,
-    evaluator_count: 1,
+    rule_count: 1,
     active_controls_count: 2,
   },
   {
@@ -41,7 +41,7 @@ const agentsList: AgentSummary[] = [
     policy_ids: [3],
     created_at: '2024-01-03T00:00:00Z',
     step_count: 8,
-    evaluator_count: 4,
+    rule_count: 4,
     active_controls_count: 5,
   },
 ];
@@ -66,7 +66,7 @@ const agentResponse: GetAgentResponse = {
     agent_metadata: null,
   },
   steps: [],
-  evaluators: [],
+  rules: [],
 };
 
 /** Agent with populated steps for step dropdown tests */
@@ -142,7 +142,7 @@ const templateBackedControl: Control = {
     scope: { step_names: ['chat-completion'], stages: ['pre'] },
     condition: {
       selector: { path: 'input' },
-      evaluator: {
+      rule: {
         name: 'regex',
         config: { pattern: '\\b(SSN|social.security)\\b' },
       },
@@ -173,7 +173,7 @@ const templateBackedControl: Control = {
         },
         condition: {
           selector: { path: 'input' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: { $param: 'pattern' } },
           },
@@ -203,7 +203,7 @@ const unrenderedTemplateControl = {
         },
         condition: {
           selector: { path: 'input' },
-          evaluator: {
+          rule: {
             name: 'regex',
             config: { pattern: '\\bsecret\\b' },
           },
@@ -225,7 +225,7 @@ const controlsList: Control[] = [
       scope: { step_types: ['llm'], stages: ['post'] },
       condition: {
         selector: { path: 'output' },
-        evaluator: {
+        rule: {
           name: 'regex',
           config: { pattern: '\\b\\d{3}-\\d{2}-\\d{4}\\b' },
         },
@@ -249,7 +249,7 @@ const controlsList: Control[] = [
       },
       condition: {
         selector: { path: 'input.query' },
-        evaluator: {
+        rule: {
           name: 'sql',
           config: { mode: 'safe' },
         },
@@ -268,7 +268,7 @@ const controlsList: Control[] = [
       scope: { step_types: ['llm'], stages: ['pre'] },
       condition: {
         selector: { path: '*' },
-        evaluator: {
+        rule: {
           name: 'list',
           config: { values: [], logic: 'any', match_on: 'match' },
         },
@@ -370,7 +370,7 @@ const listControlsResponse: ListControlsResponse = {
   },
 };
 
-const evaluatorsResponse: EvaluatorsResponse = {
+const rulesResponse: RulesResponse = {
   regex: {
     name: 'Regex',
     version: '1.0.0',
@@ -466,7 +466,7 @@ const controlSchemaResponse: GetControlSchemaResponse = {
           },
         },
       },
-      EvaluatorSpec: {
+      RuleSpec: {
         type: 'object',
         required: ['name', 'config'],
         properties: {
@@ -486,8 +486,8 @@ const controlSchemaResponse: GetControlSchemaResponse = {
           selector: {
             anyOf: [{ $ref: '#/$defs/ControlSelector' }, { type: 'null' }],
           },
-          evaluator: {
-            anyOf: [{ $ref: '#/$defs/EvaluatorSpec' }, { type: 'null' }],
+          rule: {
+            anyOf: [{ $ref: '#/$defs/RuleSpec' }, { type: 'null' }],
           },
           and: {
             anyOf: [
@@ -671,7 +671,7 @@ export const mockData = {
   unrenderedTemplateControl,
   listControls: listControlsResponse,
   templateControlSummary: templateControlSummary,
-  evaluators: evaluatorsResponse,
+  rules: rulesResponse,
   controlSchema: controlSchemaResponse,
   stats: statsResponse,
   emptyStats: emptyStatsResponse,
@@ -847,15 +847,15 @@ export const mockRoutes = {
     });
   },
 
-  /** Mock GET /api/v1/evaluators */
-  evaluators: async (
+  /** Mock GET /api/v1/rules */
+  rules: async (
     page: Page,
-    options: MockResponseOptions<EvaluatorsResponse> = {
-      data: mockData.evaluators,
+    options: MockResponseOptions<RulesResponse> = {
+      data: mockData.rules,
     }
   ) => {
-    await page.route('**/api/v1/evaluators', async (route) => {
-      await fulfillRoute(route, options, mockData.evaluators);
+    await page.route('**/api/v1/rules', async (route) => {
+      await fulfillRoute(route, options, mockData.rules);
     });
   },
 
@@ -1075,7 +1075,7 @@ export async function mockApiRoutes(page: Page) {
   await mockRoutes.config(page);
   await mockRoutes.agents(page);
   await mockRoutes.agent(page);
-  await mockRoutes.evaluators(page);
+  await mockRoutes.rules(page);
   await mockRoutes.controlSchema(page);
   await mockRoutes.controlsList(page);
   await mockRoutes.controlGetData(page);
@@ -1100,7 +1100,7 @@ export async function mockApiRoutesWithAuthRequired(page: Page) {
   });
   await mockRoutes.agents(page);
   await mockRoutes.agent(page);
-  await mockRoutes.evaluators(page);
+  await mockRoutes.rules(page);
   await mockRoutes.controlSchema(page);
   await mockRoutes.controlsList(page);
   await mockRoutes.controlGetData(page);

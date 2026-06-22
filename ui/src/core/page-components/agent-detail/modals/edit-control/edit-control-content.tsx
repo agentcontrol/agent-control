@@ -27,7 +27,7 @@ import type {
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useControlSchema } from '@/core/hooks/query-hooks/use-control-schema';
-import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
+import { useRules } from '@/core/hooks/query-hooks/use-rules';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { useValidateControlData } from '@/core/hooks/query-hooks/use-validate-control-data';
@@ -42,15 +42,15 @@ import {
   getControlConditionState,
 } from './control-condition';
 import { ControlDefinitionForm } from './control-definition-form';
-import { EvaluatorConfigSection } from './evaluator-config-section';
+import { RuleConfigSection } from './rule-config-section';
 import { TemplateEditContent } from './template-edit-content';
 import type {
   ControlDefinitionFormValues,
   ControlEditorMode,
   EditControlMode,
-  JsonEditorEvaluatorOption,
+  JsonEditorRuleOption,
 } from './types';
-import { useEvaluatorConfigState } from './use-evaluator-config-state';
+import { useRuleConfigState } from './use-rule-config-state';
 import { applyApiErrorsToForms } from './utils';
 
 function isTemplateBacked(control: Control): boolean {
@@ -58,7 +58,7 @@ function isTemplateBacked(control: Control): boolean {
   return def?.template != null;
 }
 
-const EVALUATOR_CONFIG_HEIGHT = 450;
+const RULE_CONFIG_HEIGHT = 450;
 const JSON_EDITOR_HEIGHT = 520;
 type ValidationStatus = 'idle' | 'validating' | 'valid' | 'invalid';
 
@@ -73,7 +73,7 @@ const DEFAULT_CONTROL_TEMPLATE = JSON.stringify(
     },
     condition: {
       selector: { path: 'output' },
-      evaluator: {
+      rule: {
         name: 'regex',
         config: { pattern: '\\b\\d{3}-\\d{2}-\\d{4}\\b' },
       },
@@ -134,7 +134,7 @@ const RawEditControlContent = ({
 }: EditControlContentProps) => {
   const { data: agentResponse } = useAgent(agentId);
   const { data: controlSchemaResponse } = useControlSchema();
-  const { data: globalEvaluators } = useEvaluators();
+  const { data: globalRules } = useRules();
   const steps = agentResponse?.steps ?? [];
   const agentName = agentResponse?.agent?.agent_name ?? agentId;
 
@@ -167,43 +167,43 @@ const RawEditControlContent = ({
     : updateControl.isPending || updateControlMetadata.isPending;
 
   const formRef = useRef<HTMLFormElement>(null);
-  const formInitializedForEvaluator = useRef<string>('');
-  const { leafCondition, evaluatorId, evaluator, canEditLeafCondition } =
+  const formInitializedForRule = useRef<string>('');
+  const { leafCondition, ruleId, rule, canEditLeafCondition } =
     useMemo(
       () => getControlConditionState(workingDefinition),
       [workingDefinition]
     );
-  const availableEvaluators = useMemo<JsonEditorEvaluatorOption[]>(() => {
-    const merged = new Map<string, JsonEditorEvaluatorOption>();
+  const availableRules = useMemo<JsonEditorRuleOption[]>(() => {
+    const merged = new Map<string, JsonEditorRuleOption>();
 
-    for (const [id, evaluatorInfo] of Object.entries(globalEvaluators ?? {})) {
+    for (const [id, ruleInfo] of Object.entries(globalRules ?? {})) {
       merged.set(id, {
         id,
-        label: evaluatorInfo.name,
-        description: evaluatorInfo.description,
+        label: ruleInfo.name,
+        description: ruleInfo.description,
         source: 'global',
-        configSchema: evaluatorInfo.config_schema,
+        configSchema: ruleInfo.config_schema,
       });
     }
 
-    for (const evaluatorSchema of agentResponse?.evaluators ?? []) {
-      const id = `${agentName}:${evaluatorSchema.name}`;
+    for (const ruleSchema of agentResponse?.rules ?? []) {
+      const id = `${agentName}:${ruleSchema.name}`;
       merged.set(id, {
         id,
-        label: evaluatorSchema.name,
-        description: evaluatorSchema.description,
+        label: ruleSchema.name,
+        description: ruleSchema.description,
         source: 'agent',
-        configSchema: evaluatorSchema.config_schema,
+        configSchema: ruleSchema.config_schema,
       });
     }
 
     return [...merged.values()];
-  }, [agentName, agentResponse?.evaluators, globalEvaluators]);
-  const activeEvaluatorOption = useMemo(
+  }, [agentName, agentResponse?.rules, globalRules]);
+  const activeRuleOption = useMemo(
     () =>
-      availableEvaluators.find((candidate) => candidate.id === evaluatorId) ??
+      availableRules.find((candidate) => candidate.id === ruleId) ??
       null,
-    [availableEvaluators, evaluatorId]
+    [availableRules, ruleId]
   );
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
@@ -240,31 +240,31 @@ const RawEditControlContent = ({
     },
   });
 
-  const evaluatorForm = useForm({
-    initialValues: evaluator?.initialValues ?? {},
-    validate: evaluator?.validate,
+  const ruleForm = useForm({
+    initialValues: rule?.initialValues ?? {},
+    validate: rule?.validate,
   });
 
-  const getEvaluatorConfig = useCallback(() => {
+  const getRuleConfig = useCallback(() => {
     if (!leafCondition) {
       return {};
     }
-    if (!evaluator) {
-      return leafCondition.evaluatorConfig;
+    if (!rule) {
+      return leafCondition.ruleConfig;
     }
-    if (formInitializedForEvaluator.current !== evaluatorId) {
-      return evaluator.toConfig(evaluator.initialValues);
+    if (formInitializedForRule.current !== ruleId) {
+      return rule.toConfig(rule.initialValues);
     }
-    return evaluator.toConfig(evaluatorForm.values);
-  }, [evaluator, evaluatorForm.values, evaluatorId, leafCondition]);
+    return rule.toConfig(ruleForm.values);
+  }, [rule, ruleForm.values, ruleId, leafCondition]);
 
   const syncJsonToForm = useCallback(
     (config: Record<string, unknown>) => {
-      if (evaluator) {
-        evaluatorForm.setValues(evaluator.fromConfig(config));
+      if (rule) {
+        ruleForm.setValues(rule.fromConfig(config));
       }
     },
-    [evaluator, evaluatorForm]
+    [rule, ruleForm]
   );
 
   const buildLeafCondition = useCallback(
@@ -326,7 +326,7 @@ const RawEditControlContent = ({
     [workingDefinition.tags]
   );
 
-  const validateEvaluatorConfig = useCallback(
+  const validateRuleConfig = useCallback(
     async (
       config: Record<string, unknown>,
       options?: { signal?: AbortSignal }
@@ -345,13 +345,13 @@ const RawEditControlContent = ({
     ]
   );
 
-  const evaluatorConfig = useEvaluatorConfigState({
-    getConfigFromForm: getEvaluatorConfig,
+  const ruleConfig = useRuleConfigState({
+    getConfigFromForm: getRuleConfig,
     onConfigChange: syncJsonToForm,
-    onValidateConfig: validateEvaluatorConfig,
+    onValidateConfig: validateRuleConfig,
   });
 
-  const { reset } = evaluatorConfig;
+  const { reset } = ruleConfig;
 
   const getDefinitionFromFormState =
     useCallback((): ControlDefinition | null => {
@@ -359,14 +359,14 @@ const RawEditControlContent = ({
 
       if (canEditLeafCondition) {
         let finalConfig: Record<string, unknown> =
-          leafCondition?.evaluatorConfig ?? {};
+          leafCondition?.ruleConfig ?? {};
 
-        if (evaluatorConfig.configViewMode === 'json') {
-          const jsonConfig = evaluatorConfig.getJsonConfig();
+        if (ruleConfig.configViewMode === 'json') {
+          const jsonConfig = ruleConfig.getJsonConfig();
           if (!jsonConfig) return null;
           finalConfig = jsonConfig;
         } else {
-          finalConfig = getEvaluatorConfig();
+          finalConfig = getRuleConfig();
         }
 
         condition = buildLeafCondition(definitionForm.values, finalConfig);
@@ -380,9 +380,9 @@ const RawEditControlContent = ({
       buildLeafCondition,
       canEditLeafCondition,
       definitionForm.values,
-      evaluatorConfig,
-      getEvaluatorConfig,
-      leafCondition?.evaluatorConfig,
+      ruleConfig,
+      getRuleConfig,
+      leafCondition?.ruleConfig,
       workingDefinition.condition,
     ]);
 
@@ -519,8 +519,8 @@ const RawEditControlContent = ({
     reset();
     setApiError(null);
     setUnmappedErrors([]);
-    formInitializedForEvaluator.current = '';
-  }, [reset, evaluatorId, control.id, workingDefinition]);
+    formInitializedForRule.current = '';
+  }, [reset, ruleId, control.id, workingDefinition]);
 
   useEffect(() => {
     const scope = workingDefinition.scope ?? {};
@@ -555,20 +555,20 @@ const RawEditControlContent = ({
     definitionForm.setValues(syncedValues);
     definitionForm.resetDirty(syncedValues);
 
-    if (leafCondition && evaluator) {
-      evaluatorForm.setValues(
-        evaluator.fromConfig(leafCondition.evaluatorConfig)
+    if (leafCondition && rule) {
+      ruleForm.setValues(
+        rule.fromConfig(leafCondition.ruleConfig)
       );
-      formInitializedForEvaluator.current = evaluatorId;
+      formInitializedForRule.current = ruleId;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [control.name, evaluator, evaluatorId, leafCondition, workingDefinition]);
+  }, [control.name, rule, ruleId, leafCondition, workingDefinition]);
 
   const handleSubmit = async (values: ControlDefinitionFormValues) => {
     setApiError(null);
     setUnmappedErrors([]);
     definitionForm.clearErrors();
-    evaluatorForm.clearErrors();
+    ruleForm.clearErrors();
 
     // Bug fix #1: Explicitly validate the name before opening the confirm
     // dialog. The HTML5 `required` attribute may silently block submission
@@ -599,8 +599,8 @@ const RawEditControlContent = ({
         return;
       }
     } else {
-      if (canEditLeafCondition && evaluatorConfig.configViewMode === 'form') {
-        const validation = evaluatorForm.validate();
+      if (canEditLeafCondition && ruleConfig.configViewMode === 'form') {
+        const validation = ruleForm.validate();
         if (validation.hasErrors) return;
       }
 
@@ -656,7 +656,7 @@ const RawEditControlContent = ({
                     const unmapped = applyApiErrorsToForms(
                       problemDetail.errors,
                       definitionForm,
-                      canEditLeafCondition ? evaluatorForm : null
+                      canEditLeafCondition ? ruleForm : null
                     );
                     setUnmappedErrors(
                       unmapped.map((e) => ({
@@ -733,11 +733,11 @@ const RawEditControlContent = ({
                   message: e.message,
                 }))
               );
-            } else if (evaluatorConfig.configViewMode === 'form') {
+            } else if (ruleConfig.configViewMode === 'form') {
               const unmapped = applyApiErrorsToForms(
                 problemDetail.errors,
                 definitionForm,
-                canEditLeafCondition ? evaluatorForm : null
+                canEditLeafCondition ? ruleForm : null
               );
               setUnmappedErrors(
                 unmapped.map((e) => ({
@@ -831,7 +831,7 @@ const RawEditControlContent = ({
     };
   }, [handleClose, onCloseRef]);
 
-  const formComponent = evaluator?.FormComponent;
+  const formComponent = rule?.FormComponent;
   const definitionStatusLabel = (() => {
     if (editorMode !== 'json') return null;
     if (definitionValidationStatus === 'validating')
@@ -933,7 +933,7 @@ const RawEditControlContent = ({
               testId="control-json-textarea"
               editorMode="control"
               schema={controlSchemaResponse?.schema ?? null}
-              evaluators={availableEvaluators}
+              rules={availableRules}
               steps={steps}
             />
           </Paper>
@@ -949,15 +949,15 @@ const RawEditControlContent = ({
 
             <Grid.Col span={8}>
               {canEditLeafCondition ? (
-                <EvaluatorConfigSection
-                  config={evaluatorConfig}
-                  evaluatorForm={evaluatorForm}
+                <RuleConfigSection
+                  config={ruleConfig}
+                  ruleForm={ruleForm}
                   formComponent={formComponent}
-                  height={EVALUATOR_CONFIG_HEIGHT}
+                  height={RULE_CONFIG_HEIGHT}
                   onConfigChange={syncJsonToForm}
-                  onValidateConfig={validateEvaluatorConfig}
-                  activeEvaluatorId={evaluatorId}
-                  activeEvaluatorSchema={activeEvaluatorOption?.configSchema}
+                  onValidateConfig={validateRuleConfig}
+                  activeRuleId={ruleId}
+                  activeRuleSchema={activeRuleOption?.configSchema}
                 />
               ) : (
                 <Alert color="blue" variant="light" title="Composite condition">

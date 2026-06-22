@@ -36,7 +36,7 @@ def _make_event(**overrides: object) -> ControlExecutionEvent:
         confidence=0.85,
         timestamp=datetime(2026, 4, 16, 12, 0, tzinfo=UTC),
         execution_duration_ms=12.5,
-        evaluator_name="regex",
+        rule_name="regex",
         selector_path="input",
         error_message=None,
         metadata={

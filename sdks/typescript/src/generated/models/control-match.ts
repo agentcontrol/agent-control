@@ -13,9 +13,9 @@ import {
 } from "./action-decision.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
-  EvaluatorResult,
-  EvaluatorResult$inboundSchema,
-} from "./evaluator-result.js";
+  RuleResult,
+  RuleResult$inboundSchema,
+} from "./rule-result.js";
 import {
   SteeringContext,
   SteeringContext$inboundSchema,
@@ -39,22 +39,22 @@ export type ControlMatch = {
    */
   controlName: string;
   /**
-   * Result from a control evaluator.
+   * Result from a control rule.
    *
    * @remarks
    *
-   * The `error` field indicates evaluator failures, NOT validation failures:
-   * - Set `error` for: evaluator crashes, timeouts, missing dependencies, external service errors
+   * The `error` field indicates rule failures, NOT validation failures:
+   * - Set `error` for: rule crashes, timeouts, missing dependencies, external service errors
    * - Do NOT set `error` for: invalid input, syntax errors, schema violations, constraint failures
    *
-   * When `error` is set, `matched` must be False (fail-open on evaluator errors).
+   * When `error` is set, `matched` must be False (fail-open on rule errors).
    * When `error` is None, `matched` reflects the actual validation result.
    *
    * This distinction allows:
-   * - Clients to distinguish "data violated rules" from "evaluator is broken"
-   * - Observability systems to monitor evaluator health separately from validation outcomes
+   * - Clients to distinguish "data violated rules" from "rule is broken"
+   * - Observability systems to monitor rule health separately from validation outcomes
    */
-  result: EvaluatorResult;
+  result: RuleResult;
   /**
    * Steering context for steer actions if configured
    */
@@ -69,7 +69,7 @@ export const ControlMatch$inboundSchema: z.ZodMiniType<ControlMatch, unknown> =
       control_execution_id: types.optional(types.string()),
       control_id: types.number(),
       control_name: types.string(),
-      result: EvaluatorResult$inboundSchema,
+      result: RuleResult$inboundSchema,
       steering_context: z.optional(z.nullable(SteeringContext$inboundSchema)),
     }),
     z.transform((v) => {

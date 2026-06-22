@@ -5,13 +5,13 @@
 import { agentsAddControl } from "../funcs/agents-add-control.js";
 import { agentsAddPolicy } from "../funcs/agents-add-policy.js";
 import { agentsDeletePolicy } from "../funcs/agents-delete-policy.js";
-import { agentsGetEvaluator } from "../funcs/agents-get-evaluator.js";
+import { agentsGetRule } from "../funcs/agents-get-rule.js";
 import { agentsGetPolicies } from "../funcs/agents-get-policies.js";
 import { agentsGetPolicy } from "../funcs/agents-get-policy.js";
 import { agentsGet } from "../funcs/agents-get.js";
 import { agentsInit } from "../funcs/agents-init.js";
 import { agentsListControls } from "../funcs/agents-list-controls.js";
-import { agentsListEvaluators } from "../funcs/agents-list-evaluators.js";
+import { agentsListRules } from "../funcs/agents-list-rules.js";
 import { agentsList } from "../funcs/agents-list.js";
 import { agentsRemoveAllAgentPolicies } from "../funcs/agents-remove-all-agent-policies.js";
 import { agentsRemoveControl } from "../funcs/agents-remove-control.js";
@@ -31,7 +31,7 @@ export class Agents extends ClientSDK {
    * List all registered agents with cursor-based pagination.
    *
    * Returns a summary of each agent including identifier, policy associations,
-   * and counts of registered steps and evaluators. Results are scoped to
+   * and counts of registered steps and rules. Results are scoped to
    * the request's namespace; agents in other namespaces are not visible.
    *
    * Args:
@@ -67,7 +67,7 @@ export class Agents extends ClientSDK {
    *
    * conflict_mode controls registration conflict handling:
    * - strict (default): preserve compatibility checks and conflict errors
-   * - overwrite: latest init payload replaces steps/evaluators and returns change summary
+   * - overwrite: latest init payload replaces steps/rules and returns change summary
    *
    * The returned ``controls`` list is the de-duplicated union of the agent's
    * direct controls, policy-derived controls, and (when ``target_type`` and
@@ -129,17 +129,17 @@ export class Agents extends ClientSDK {
   }
 
   /**
-   * Modify agent (remove steps/evaluators)
+   * Modify agent (remove steps/rules)
    *
    * @remarks
-   * Remove steps and/or evaluators from an agent.
+   * Remove steps and/or rules from an agent.
    *
    * This is the complement to initAgent which only adds items.
    * Removals are idempotent - attempting to remove non-existent items is not an error.
    *
    * Args:
    *     agent_name: Agent identifier
-   *     request: Lists of step/evaluator identifiers to remove
+   *     request: Lists of step/rule identifiers to remove
    *     db: Database session (injected)
    *     principal: Authorized request principal
    *
@@ -245,34 +245,34 @@ export class Agents extends ClientSDK {
   }
 
   /**
-   * List agent's registered evaluator schemas
+   * List agent's registered rule schemas
    *
    * @remarks
-   * List all evaluator schemas registered with an agent.
+   * List all rule schemas registered with an agent.
    *
-   * Evaluator schemas are registered via initAgent and used for:
+   * Rule schemas are registered via initAgent and used for:
    * - Config validation when creating Controls
    * - UI to display available config options
    *
    * Args:
    *     agent_name: Agent identifier
-   *     cursor: Optional cursor for pagination (name of last evaluator from previous page)
+   *     cursor: Optional cursor for pagination (name of last rule from previous page)
    *     limit: Pagination limit (default 20, max 100)
    *     db: Database session (injected)
    *     principal: Authorized request principal
    *
    * Returns:
-   *     ListEvaluatorsResponse with evaluator schemas and pagination
+   *     ListRulesResponse with rule schemas and pagination
    *
    * Raises:
    *     HTTPException 404: Agent not found
    */
-  async listEvaluators(
+  async listRules(
     request:
-      operations.ListAgentEvaluatorsApiV1AgentsAgentNameEvaluatorsGetRequest,
+      operations.ListAgentRulesApiV1AgentsAgentNameRulesGetRequest,
     options?: RequestOptions,
-  ): Promise<models.ListEvaluatorsResponse> {
-    return unwrapAsync(agentsListEvaluators(
+  ): Promise<models.ListRulesResponse> {
+    return unwrapAsync(agentsListRules(
       this,
       request,
       options,
@@ -280,29 +280,29 @@ export class Agents extends ClientSDK {
   }
 
   /**
-   * Get specific evaluator schema
+   * Get specific rule schema
    *
    * @remarks
-   * Get a specific evaluator schema registered with an agent.
+   * Get a specific rule schema registered with an agent.
    *
    * Args:
    *     agent_name: Agent identifier
-   *     evaluator_name: Name of the evaluator
+   *     rule_name: Name of the rule
    *     db: Database session (injected)
    *     principal: Authorized request principal
    *
    * Returns:
-   *     EvaluatorSchemaItem with schema details
+   *     RuleSchemaItem with schema details
    *
    * Raises:
-   *     HTTPException 404: Agent or evaluator not found
+   *     HTTPException 404: Agent or rule not found
    */
-  async getEvaluator(
+  async getRule(
     request:
-      operations.GetAgentEvaluatorApiV1AgentsAgentNameEvaluatorsEvaluatorNameGetRequest,
+      operations.GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
     options?: RequestOptions,
-  ): Promise<models.EvaluatorSchemaItem> {
-    return unwrapAsync(agentsGetEvaluator(
+  ): Promise<models.RuleSchemaItem> {
+    return unwrapAsync(agentsGetRule(
       this,
       request,
       options,

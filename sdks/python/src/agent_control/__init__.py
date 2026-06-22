@@ -63,9 +63,9 @@ from agent_control_models import (
     ControlSelector,
     EvaluationRequest,
     EvaluationResult,
-    EvaluatorResult,
-    EvaluatorSpec,
     JSONObject,
+    RuleResult,
+    RuleSpec,
     Step,
     StepSchema,
     TemplateControlInput,
@@ -79,7 +79,7 @@ from agent_control_telemetry.trace_context import (
     set_trace_context_provider,
 )
 
-from . import agents, control_bindings, controls, evaluation, evaluators, policies
+from . import agents, control_bindings, controls, evaluation, policies, rules
 from ._control_registry import (
     StepSchemaDict,
     get_registered_steps,
@@ -867,7 +867,7 @@ async def list_agents(
     Returns:
         Dictionary containing:
             - agents: List of agent summaries with agent_name,
-                      policy_id, created_at, step_count, evaluator_count
+                      policy_id, created_at, step_count, rule_count
             - pagination: Object with limit, total, next_cursor, has_more
 
     Raises:
@@ -1137,7 +1137,7 @@ async def create_control(
                     "scope": {"step_types": ["llm"], "stages": ["post"]},
                     "condition": {
                         "selector": {"path": "output"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {"pattern": r"\\d{3}-\\d{2}-\\d{4}"}
                         }
@@ -1578,7 +1578,7 @@ __all__ = [
     "controls",
     "control_bindings",
     "evaluation",
-    "evaluators",
+    "rules",
     # Policy-Control management
     "add_control_to_policy",
     "remove_control_from_policy",
@@ -1628,7 +1628,7 @@ __all__ = [
     "ControlScope",
     "ControlAction",
     "ControlMatch",
-    "EvaluatorSpec",
-    "EvaluatorResult",
+    "RuleSpec",
+    "RuleResult",
     "TemplateValue",
 ]

@@ -17,21 +17,21 @@ import { type ColumnDef } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
-import type { EvaluatorInfo } from '@/core/api/types';
+import type { RuleInfo } from '@/core/api/types';
 import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
-import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
+import { useRules } from '@/core/hooks/query-hooks/use-rules';
 import { useModalRoute } from '@/core/hooks/use-modal-route';
 
 import { EditControlContent } from '../edit-control/edit-control-content';
 import { sanitizeControlNamePart } from '../edit-control/utils';
 
-type EvaluatorWithId = EvaluatorInfo & { id: string };
+type RuleWithId = RuleInfo & { id: string };
 
 /**
- * Default evaluator configs for each evaluator type
+ * Default rule configs for each rule type
  * Based on backend models in agent_control_models/controls.py
  */
-const DEFAULT_EVALUATOR_CONFIGS: Record<string, Record<string, unknown>> = {
+const DEFAULT_RULE_CONFIGS: Record<string, Record<string, unknown>> = {
   regex: {
     pattern: '^.*$',
   },
@@ -54,10 +54,10 @@ const DEFAULT_EVALUATOR_CONFIGS: Record<string, Record<string, unknown>> = {
   },
 };
 
-function getDefaultConfigForEvaluator(
-  evaluatorId: string
+function getDefaultConfigForRule(
+  ruleId: string
 ): Record<string, unknown> {
-  return DEFAULT_EVALUATOR_CONFIGS[evaluatorId] ?? {};
+  return DEFAULT_RULE_CONFIGS[ruleId] ?? {};
 }
 
 function buildJsonDraftControl() {
@@ -76,9 +76,9 @@ function buildJsonDraftControl() {
         selector: {
           path: '*',
         },
-        evaluator: {
+        rule: {
           name: 'regex',
-          config: getDefaultConfigForEvaluator('regex'),
+          config: getDefaultConfigForRule('regex'),
         },
       },
       action: { decision: 'deny' as const },
@@ -99,28 +99,28 @@ export function AddNewControlModal({
   agentId,
 }: AddNewControlModalProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const { submodal, evaluator, openModal, closeSubmodal, closeModal } =
+  const { submodal, rule, openModal, closeSubmodal, closeModal } =
     useModalRoute();
-  const { data: evaluatorsData, isLoading, error } = useEvaluators();
+  const { data: rulesData, isLoading, error } = useRules();
 
   // Derive submodal open state from URL
   const editModalOpened = submodal === SUBMODAL_NAMES.CREATE;
 
-  // Find selected evaluator from URL or state
-  const selectedEvaluator = useMemo(() => {
-    if (evaluator && evaluatorsData) {
-      const evaluatorData = evaluatorsData[evaluator];
-      if (evaluatorData) {
-        return { ...evaluatorData, id: evaluator };
+  // Find selected rule from URL or state
+  const selectedRule = useMemo(() => {
+    if (rule && rulesData) {
+      const ruleData = rulesData[rule];
+      if (ruleData) {
+        return { ...ruleData, id: rule };
       }
     }
     return null;
-  }, [evaluator, evaluatorsData]);
+  }, [rule, rulesData]);
 
-  const handleAddClick = (evaluator: EvaluatorWithId) => {
+  const handleAddClick = (rule: RuleWithId) => {
     openModal(MODAL_NAMES.CONTROL_STORE, {
       submodal: SUBMODAL_NAMES.CREATE,
-      evaluator: evaluator.id,
+      rule: rule.id,
     });
   };
 
@@ -140,23 +140,23 @@ export function AddNewControlModal({
     closeModal();
   };
 
-  // Transform evaluators record to array for table display
-  const evaluators = useMemo(() => {
-    if (!evaluatorsData) return [];
-    return Object.entries(evaluatorsData).map(([key, evaluator]) => ({
-      ...evaluator,
+  // Transform rules record to array for table display
+  const rules = useMemo(() => {
+    if (!rulesData) return [];
+    return Object.entries(rulesData).map(([key, rule]) => ({
+      ...rule,
       id: key,
     }));
-  }, [evaluatorsData]);
+  }, [rulesData]);
 
   const draftControl = useMemo(() => {
-    if (selectedEvaluator) {
-      const name = `new-${sanitizeControlNamePart(selectedEvaluator.name)}-control`;
+    if (selectedRule) {
+      const name = `new-${sanitizeControlNamePart(selectedRule.name)}-control`;
       return {
         id: 0,
         name,
         control: {
-          description: selectedEvaluator.description,
+          description: selectedRule.description,
           enabled: true,
           execution: 'server' as const,
           scope: {
@@ -167,9 +167,9 @@ export function AddNewControlModal({
             selector: {
               path: '*',
             },
-            evaluator: {
-              name: selectedEvaluator.id,
-              config: getDefaultConfigForEvaluator(selectedEvaluator.id),
+            rule: {
+              name: selectedRule.id,
+              config: getDefaultConfigForRule(selectedRule.id),
             },
           },
           action: { decision: 'deny' as const },
@@ -178,9 +178,9 @@ export function AddNewControlModal({
     }
 
     return buildJsonDraftControl();
-  }, [selectedEvaluator]);
+  }, [selectedRule]);
 
-  const columns: ColumnDef<EvaluatorInfo & { id: string }>[] = [
+  const columns: ColumnDef<RuleInfo & { id: string }>[] = [
     {
       id: 'name',
       header: 'Name',
@@ -228,8 +228,8 @@ export function AddNewControlModal({
     },
   ];
 
-  const filteredEvaluators = evaluators.filter((evaluator) =>
-    evaluator.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredRules = rules.filter((rule) =>
+    rule.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -263,7 +263,7 @@ export function AddNewControlModal({
             </Button>
           </Group>
           <Text size="sm" c="dimmed">
-            Select an evaluator to create a new control or start from JSON
+            Select a rule to create a new control or start from JSON
           </Text>
         </Box>
         <Divider />
@@ -277,7 +277,7 @@ export function AddNewControlModal({
             {/* Search and Docs Link */}
             <Group justify="space-between">
               <TextInput
-                placeholder="Search evaluators..."
+                placeholder="Search rules..."
                 leftSection={<IconSearch size={16} />}
                 flex={1}
                 maw={250}
@@ -294,7 +294,7 @@ export function AddNewControlModal({
                   Write your own
                 </Button>
                 <Text size="sm" c="dimmed">
-                  Learn here on how to add new type of evaluator.{' '}
+                  Learn here on how to add new type of rule.{' '}
                   <Text
                     component="a"
                     href="https://github.com/agentcontrol/agent-control/blob/main/README.md"
@@ -322,21 +322,21 @@ export function AddNewControlModal({
                     size={48}
                     color="var(--mantine-color-red-5)"
                   />
-                  <Text c="red">Failed to load evaluators</Text>
+                  <Text c="red">Failed to load rules</Text>
                 </Stack>
               </Paper>
-            ) : filteredEvaluators.length > 0 ? (
+            ) : filteredRules.length > 0 ? (
               <Box style={{ flex: 1, minHeight: 0 }}>
                 <Table
                   columns={columns}
-                  data={filteredEvaluators}
+                  data={filteredRules}
                   highlightOnHover
                   maxHeight="100%"
                 />
               </Box>
             ) : (
               <Paper p="xl" withBorder radius="sm" ta="center">
-                <Text c="dimmed">No evaluators found</Text>
+                <Text c="dimmed">No rules found</Text>
               </Paper>
             )}
           </Stack>
@@ -362,7 +362,7 @@ export function AddNewControlModal({
               control={draftControl}
               agentId={agentId}
               mode="create"
-              initialEditorMode={selectedEvaluator ? 'form' : 'json'}
+              initialEditorMode={selectedRule ? 'form' : 'json'}
               onClose={handleEditModalClose}
               onSuccess={handleEditModalSuccess}
             />

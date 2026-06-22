@@ -19,7 +19,7 @@ from .base import BaseModel
 class ControlSelector(BaseModel):
     """Selects data from a Step payload.
 
-    - path: which slice of the Step to feed into the evaluator. Optional, defaults to "*"
+    - path: which slice of the Step to feed into the rule. Optional, defaults to "*"
       meaning the entire Step object.
     """
 
@@ -160,28 +160,28 @@ class ControlScope(BaseModel):
 
 
 # =============================================================================
-# Unified Evaluator Spec (used in API)
+# Unified Rule Spec (used in API)
 # =============================================================================
 
 
-class EvaluatorSpec(BaseModel):
-    """Evaluator specification. See GET /evaluators for available evaluators and schemas.
+class RuleSpec(BaseModel):
+    """Rule specification. See GET /rules for available rules and schemas.
 
-    Evaluator reference formats:
+    Rule reference formats:
     - Built-in: "regex", "list", "json", "sql"
-    - External: "galileo.luna" (requires agent-control-evaluators[galileo])
-    - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
+    - External: "galileo.luna" (requires agent-control-rules[galileo])
+    - Agent-scoped: "my-agent:my-rule" (validated in endpoint, not here)
     """
 
     name: str = Field(
         ...,
         min_length=1,
-        description="Evaluator name or agent-scoped reference (agent:evaluator)",
+        description="Rule name or agent-scoped reference (agent:rule)",
         examples=["regex", "list", "my-agent:pii-detector"],
     )
     config: dict[str, Any] = Field(
         ...,
-        description="Evaluator-specific configuration",
+        description="Rule-specific configuration",
         examples=[
             {"pattern": r"\d{3}-\d{2}-\d{4}"},
             {"values": ["admin"], "logic": "any"},
@@ -196,49 +196,49 @@ class EvaluatorSpec(BaseModel):
 
         normalized = value.strip()
         if not normalized:
-            raise ValueError("Evaluator name cannot be empty or whitespace-only.")
+            raise ValueError("Rule name cannot be empty or whitespace-only.")
         return normalized
 
     @model_validator(mode="after")
-    def validate_evaluator_config(self) -> Self:
-        """Validate config against evaluator's schema if evaluator is registered.
+    def validate_rule_config(self) -> Self:
+        """Validate config against rule's schema if rule is registered.
 
-        Agent-scoped evaluators (format: agent:evaluator) are validated in the
+        Agent-scoped rules (format: agent:rule) are validated in the
         endpoint where we have database access to look up the agent's schema.
         """
-        # Agent-scoped evaluators: defer validation to endpoint (needs DB access)
+        # Agent-scoped rules: defer validation to endpoint (needs DB access)
         if ":" in self.name:
             return self
 
-        # Built-in evaluators: validate config against evaluator's config_model
-        # This import is optional - evaluators package may not be installed
+        # Built-in rules: validate config against rule's config_model
+        # This import is optional - rules package may not be installed
         try:
-            from agent_control_evaluators import ensure_evaluators_discovered, get_evaluator
+            from agent_control_rules import ensure_rules_discovered, get_rule
 
-            # Ensure entry points are loaded before looking up evaluator
-            ensure_evaluators_discovered()
-            evaluator_cls = get_evaluator(self.name)
-            if evaluator_cls:
-                evaluator_cls.config_model(**self.config)
+            # Ensure entry points are loaded before looking up rule
+            ensure_rules_discovered()
+            rule_cls = get_rule(self.name)
+            if rule_cls:
+                rule_cls.config_model(**self.config)
         except ImportError:
-            # Evaluators package not installed - skip validation
+            # Rules package not installed - skip validation
             pass
 
-        # If evaluator not found, allow it (might be a server-side registered evaluator)
+        # If rule not found, allow it (might be a server-side registered rule)
         return self
 
 
-type ConditionLeafParts = tuple[ControlSelector, EvaluatorSpec]
+type ConditionLeafParts = tuple[ControlSelector, RuleSpec]
 
 
 @dataclass(frozen=True)
 class ControlObservabilityIdentity:
-    """Stable selector/evaluator identity derived from a condition tree."""
+    """Stable selector/rule identity derived from a condition tree."""
 
     selector_path: str | None
-    evaluator_name: str | None
+    rule_name: str | None
     leaf_count: int
-    all_evaluators: list[str]
+    all_rules: list[str]
     all_selector_paths: list[str]
 
 
@@ -515,7 +515,7 @@ class ControlAction(BaseModel):
         description=(
             "Steering context object for steer actions. Strongly recommended when "
             "decision='steer' to provide correction suggestions. If not provided, the "
-            "evaluator result message will be used as fallback."
+            "rule result message will be used as fallback."
         )
     )
 
@@ -548,11 +548,11 @@ class ConditionNode(BaseModel):
 
     selector: ControlSelector | None = Field(
         default=None,
-        description="Leaf selector. Must be provided together with evaluator.",
+        description="Leaf selector. Must be provided together with rule.",
     )
-    evaluator: EvaluatorSpec | None = Field(
+    rule: RuleSpec | None = Field(
         default=None,
-        description="Leaf evaluator. Must be provided together with selector.",
+        description="Leaf rule. Must be provided together with selector.",
     )
     and_: list[ConditionNode] | None = Field(
         default=None,
@@ -585,10 +585,10 @@ class ConditionNode(BaseModel):
     def validate_shape(self) -> Self:
         """Ensure each node is exactly one of leaf/and/or/not."""
         has_selector = self.selector is not None
-        has_evaluator = self.evaluator is not None
-        has_leaf = has_selector and has_evaluator
-        if has_selector != has_evaluator:
-            raise ValueError("Leaf condition requires both selector and evaluator")
+        has_rule = self.rule is not None
+        has_leaf = has_selector and has_rule
+        if has_selector != has_rule:
+            raise ValueError("Leaf condition requires both selector and rule")
 
         populated = sum(
             1
@@ -621,8 +621,8 @@ class ConditionNode(BaseModel):
         return "not"
 
     def is_leaf(self) -> bool:
-        """Return True when this node is a leaf selector/evaluator pair."""
-        return self.selector is not None and self.evaluator is not None
+        """Return True when this node is a leaf selector/rule pair."""
+        return self.selector is not None and self.rule is not None
 
     def children_in_order(self) -> list[ConditionNode]:
         """Return child conditions in evaluation order."""
@@ -644,7 +644,7 @@ class ConditionNode(BaseModel):
             yield from child.iter_leaves()
 
     def iter_leaf_parts(self) -> Iterator[ConditionLeafParts]:
-        """Yield leaf selector/evaluator pairs in left-to-right traversal order."""
+        """Yield leaf selector/rule pairs in left-to-right traversal order."""
         leaf_parts = self.leaf_parts()
         if leaf_parts is not None:
             yield leaf_parts
@@ -661,26 +661,26 @@ class ConditionNode(BaseModel):
         return 1 + max(child.max_depth() for child in children)
 
     def leaf_parts(self) -> ConditionLeafParts | None:
-        """Return the selector/evaluator pair for leaf nodes."""
+        """Return the selector/rule pair for leaf nodes."""
         if not self.is_leaf():
             return None
         selector = self.selector
-        evaluator = self.evaluator
-        if selector is None or evaluator is None:
+        rule = self.rule
+        if selector is None or rule is None:
             return None
-        return selector, evaluator
+        return selector, rule
 
     model_config["json_schema_extra"] = {
         "examples": [
             {
                 "selector": {"path": "output"},
-                "evaluator": {"name": "regex", "config": {"pattern": r"\d{3}-\d{2}-\d{4}"}},
+                "rule": {"name": "regex", "config": {"pattern": r"\d{3}-\d{2}-\d{4}"}},
             },
             {
                 "and": [
                     {
                         "selector": {"path": "context.risk_level"},
-                        "evaluator": {
+                        "rule": {
                             "name": "list",
                             "config": {"values": ["high", "critical"]},
                         },
@@ -688,7 +688,7 @@ class ConditionNode(BaseModel):
                     {
                         "not": {
                             "selector": {"path": "context.user_role"},
-                            "evaluator": {
+                            "rule": {
                                 "name": "list",
                                 "config": {"values": ["admin", "security"]},
                             },
@@ -706,20 +706,20 @@ ConditionNode.model_rebuild()
 def _build_observability_identity(
     condition: ConditionNode,
 ) -> ControlObservabilityIdentity:
-    """Build a stable selector/evaluator identity for a condition tree."""
-    all_evaluators: list[str] = []
+    """Build a stable selector/rule identity for a condition tree."""
+    all_rules: list[str] = []
     all_selector_paths: list[str] = []
-    seen_evaluators: set[str] = set()
+    seen_rules: set[str] = set()
     seen_selector_paths: set[str] = set()
     leaf_count = 0
 
-    for selector, evaluator in condition.iter_leaf_parts():
+    for selector, rule in condition.iter_leaf_parts():
         leaf_count += 1
         selector_path = selector.path or "*"
 
-        if evaluator.name not in seen_evaluators:
-            seen_evaluators.add(evaluator.name)
-            all_evaluators.append(evaluator.name)
+        if rule.name not in seen_rules:
+            seen_rules.add(rule.name)
+            all_rules.append(rule.name)
 
         if selector_path not in seen_selector_paths:
             seen_selector_paths.add(selector_path)
@@ -727,9 +727,9 @@ def _build_observability_identity(
 
     return ControlObservabilityIdentity(
         selector_path=all_selector_paths[0] if all_selector_paths else None,
-        evaluator_name=all_evaluators[0] if all_evaluators else None,
+        rule_name=all_rules[0] if all_rules else None,
         leaf_count=leaf_count,
-        all_evaluators=all_evaluators,
+        all_rules=all_rules,
         all_selector_paths=all_selector_paths,
     )
 
@@ -744,7 +744,7 @@ class _ConditionBackedControlMixin:
         yield from self.condition.iter_leaves()
 
     def iter_condition_leaf_parts(self) -> Iterator[ConditionLeafParts]:
-        """Yield leaf selector/evaluator pairs in evaluation order."""
+        """Yield leaf selector/rule pairs in evaluation order."""
         yield from self.condition.iter_leaf_parts()
 
     def observability_identity(self) -> ControlObservabilityIdentity:
@@ -753,30 +753,30 @@ class _ConditionBackedControlMixin:
 
 
 def canonicalize_control_payload(data: Any) -> Any:
-    """Rewrite legacy selector/evaluator payloads into canonical condition shape."""
+    """Rewrite legacy selector/rule payloads into canonical condition shape."""
     if not isinstance(data, dict):
         return data
 
     has_condition = "condition" in data
     has_selector = "selector" in data
-    has_evaluator = "evaluator" in data
+    has_rule = "rule" in data
 
-    if has_condition and (has_selector or has_evaluator):
+    if has_condition and (has_selector or has_rule):
         raise ValueError(
             "Control definition mixes canonical condition fields "
-            "with legacy selector/evaluator fields."
+            "with legacy selector/rule fields."
         )
-    if has_selector != has_evaluator:
+    if has_selector != has_rule:
         raise ValueError(
-            "Legacy control definition must include both selector and evaluator."
+            "Legacy control definition must include both selector and rule."
         )
     if not has_condition and has_selector:
         canonical = dict(data)
         selector = canonical.pop("selector")
-        evaluator = canonical.pop("evaluator")
+        rule = canonical.pop("rule")
         canonical["condition"] = {
             "selector": selector,
-            "evaluator": evaluator,
+            "rule": rule,
         }
         return canonical
     return data
@@ -801,7 +801,7 @@ class ControlDefinitionBase(_ConditionBackedControlMixin, BaseModel):
     condition: ConditionNode = Field(
         ...,
         description=(
-            "Recursive boolean condition tree. Leaf nodes contain selector + evaluator; "
+            "Recursive boolean condition tree. Leaf nodes contain selector + rule; "
             "composite nodes contain and/or/not."
         ),
     )
@@ -814,7 +814,7 @@ class ControlDefinitionBase(_ConditionBackedControlMixin, BaseModel):
 
     @classmethod
     def canonicalize_payload(cls, data: Any) -> Any:
-        """Rewrite legacy selector/evaluator payloads into canonical condition shape."""
+        """Rewrite legacy selector/rule payloads into canonical condition shape."""
         return canonicalize_control_payload(data)
 
     @model_validator(mode="before")
@@ -882,7 +882,7 @@ class ControlDefinition(ControlDefinitionBase):
                     "scope": {"step_types": ["llm"], "stages": ["post"]},
                     "condition": {
                         "selector": {"path": "output"},
-                        "evaluator": {
+                        "rule": {
                             "name": "regex",
                             "config": {
                                 "pattern": r"\b\d{3}-\d{2}-\d{4}\b",
@@ -905,19 +905,19 @@ class ControlDefinitionRuntime(ControlDefinitionBase):
     model_config = ConfigDict(extra="ignore")
 
 
-class EvaluatorResult(BaseModel):
-    """Result from a control evaluator.
+class RuleResult(BaseModel):
+    """Result from a control rule.
 
-    The `error` field indicates evaluator failures, NOT validation failures:
-    - Set `error` for: evaluator crashes, timeouts, missing dependencies, external service errors
+    The `error` field indicates rule failures, NOT validation failures:
+    - Set `error` for: rule crashes, timeouts, missing dependencies, external service errors
     - Do NOT set `error` for: invalid input, syntax errors, schema violations, constraint failures
 
-    When `error` is set, `matched` must be False (fail-open on evaluator errors).
+    When `error` is set, `matched` must be False (fail-open on rule errors).
     When `error` is None, `matched` reflects the actual validation result.
 
     This distinction allows:
-    - Clients to distinguish "data violated rules" from "evaluator is broken"
-    - Observability systems to monitor evaluator health separately from validation outcomes
+    - Clients to distinguish "data violated rules" from "rule is broken"
+    - Observability systems to monitor rule health separately from validation outcomes
     """
 
     matched: bool = Field(..., description="Whether the pattern matched")
@@ -954,8 +954,8 @@ class ControlMatch(BaseModel):
     action: ActionDecision = Field(
         ..., description="Action configured for this control"
     )
-    result: EvaluatorResult = Field(
-        ..., description="Evaluator result (confidence, message, metadata)"
+    result: RuleResult = Field(
+        ..., description="Rule result (confidence, message, metadata)"
     )
     steering_context: SteeringContext | None = Field(
         None,

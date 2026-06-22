@@ -232,7 +232,7 @@ export function CreateFromTemplate({
     "scope": { "stages": ["pre"] },
     "condition": {
       "selector": { "path": "input" },
-      "evaluator": {
+      "rule": {
         "name": "regex",
         "config": { "pattern": { "$param": "pattern" } }
       }

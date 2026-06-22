@@ -3,7 +3,7 @@ from typing import Any
 
 from agent_control_models.agent import StepSchema, normalize_agent_name
 from agent_control_models.base import BaseModel
-from agent_control_models.server import EvaluatorSchema
+from agent_control_models.server import RuleSchema
 from pydantic import Field
 from sqlalchemy import (
     Boolean,
@@ -35,7 +35,7 @@ class AgentData(BaseModel):
 
     agent_metadata: dict[str, Any]
     steps: list[StepSchema] = Field(default_factory=list)
-    evaluators: list[EvaluatorSchema] = Field(default_factory=list)
+    rules: list[RuleSchema] = Field(default_factory=list)
 
 
 # Association table for Policy <> Control many-to-many relationship.

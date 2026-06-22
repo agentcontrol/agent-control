@@ -23,7 +23,7 @@ CONTROL_SPECS: list[tuple[str, dict[str, Any]]] = [
             "scope": {"step_types": ["llm"], "stages": ["pre"]},
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": (
@@ -49,7 +49,7 @@ CONTROL_SPECS: list[tuple[str, dict[str, Any]]] = [
             },
             "condition": {
                 "selector": {"path": "input.city"},
-                "evaluator": {
+                "rule": {
                     "name": "list",
                     "config": {
                         "values": ["Pyongyang", "Tehran", "Damascus"],
@@ -76,7 +76,7 @@ CONTROL_SPECS: list[tuple[str, dict[str, Any]]] = [
             },
             "condition": {
                 "selector": {"path": "output.note"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": r"support@internal\.example|123-45-6789",

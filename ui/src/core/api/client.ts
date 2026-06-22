@@ -152,8 +152,8 @@ export const api = {
         params: { path: { agent_name: agentName, control_id: controlId } },
       }),
   },
-  evaluators: {
-    list: () => apiClient.GET('/api/v1/evaluators'),
+  rules: {
+    list: () => apiClient.GET('/api/v1/rules'),
   },
   controls: {
     list: (params?: {

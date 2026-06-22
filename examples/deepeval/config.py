@@ -1,4 +1,4 @@
-"""Configuration models for DeepEval GEval evaluator.
+"""Configuration models for DeepEval GEval rule.
 
 Based on DeepEval's GEval metric: https://deepeval.com/docs/metrics-llm-evals
 """
@@ -24,8 +24,8 @@ DeepEvalTestCaseParam = Literal[
 ]
 
 
-class DeepEvalEvaluatorConfig(BaseModel):
-    """Configuration for DeepEval GEval evaluator.
+class DeepEvalRuleConfig(BaseModel):
+    """Configuration for DeepEval GEval rule.
 
     DeepEval's GEval uses LLM-as-a-judge with chain-of-thoughts (CoT) to evaluate
     LLM outputs based on custom criteria. It's capable of evaluating almost any
@@ -33,7 +33,7 @@ class DeepEvalEvaluatorConfig(BaseModel):
 
     Example (with criteria):
         ```python
-        config = DeepEvalEvaluatorConfig(
+        config = DeepEvalRuleConfig(
             name="Correctness",
             criteria="Determine if the actual output is correct based on the expected output.",
             evaluation_params=["actual_output", "expected_output"],
@@ -43,7 +43,7 @@ class DeepEvalEvaluatorConfig(BaseModel):
 
     Example (with evaluation_steps):
         ```python
-        config = DeepEvalEvaluatorConfig(
+        config = DeepEvalRuleConfig(
             name="Correctness",
             evaluation_steps=[
                 "Check whether facts in actual output contradict expected output",
@@ -119,7 +119,7 @@ class DeepEvalEvaluatorConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_criteria_or_steps(self) -> "DeepEvalEvaluatorConfig":
+    def validate_criteria_or_steps(self) -> "DeepEvalRuleConfig":
         """Validate that either criteria or evaluation_steps is provided, but not both."""
         has_criteria = self.criteria is not None
         has_steps = self.evaluation_steps is not None and len(self.evaluation_steps) > 0

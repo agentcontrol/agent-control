@@ -10,7 +10,7 @@ export * from "./delete-agent-policy-api-v1-agents-agent-name-policy-delete.js";
 export * from "./delete-control-api-v1-controls-control-id-delete.js";
 export * from "./delete-control-binding-api-v1-control-bindings-binding-id-delete.js";
 export * from "./get-agent-api-v1-agents-agent-name-get.js";
-export * from "./get-agent-evaluator-api-v1-agents-agent-name-evaluators-evaluator-name-get.js";
+export * from "./get-agent-rule-api-v1-agents-agent-name-rules-rule-name-get.js";
 export * from "./get-agent-policies-api-v1-agents-agent-name-policies-get.js";
 export * from "./get-agent-policy-api-v1-agents-agent-name-policy-get.js";
 export * from "./get-control-api-v1-controls-control-id-get.js";
@@ -20,7 +20,7 @@ export * from "./get-control-stats-api-v1-observability-stats-controls-control-i
 export * from "./get-control-version-api-v1-controls-control-id-versions-version-num-get.js";
 export * from "./get-stats-api-v1-observability-stats-get.js";
 export * from "./list-agent-controls-api-v1-agents-agent-name-controls-get.js";
-export * from "./list-agent-evaluators-api-v1-agents-agent-name-evaluators-get.js";
+export * from "./list-agent-rules-api-v1-agents-agent-name-rules-get.js";
 export * from "./list-agents-api-v1-agents-get.js";
 export * from "./list-control-bindings-api-v1-control-bindings-get.js";
 export * from "./list-control-versions-api-v1-controls-control-id-versions-get.js";

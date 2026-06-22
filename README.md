@@ -36,7 +36,7 @@ Enforce runtime guardrails through a centralized control layer—configure once 
 
 - **Centralized safety** - define controls once, apply across agents, update without redeploying
 - **Runtime configuration** - manage controls via API or UI, no code changes needed
-- **Pluggable evaluators** - built-in (regex, list, JSON, SQL) or bring your own
+- **Pluggable rules** - built-in (regex, list, JSON, SQL) or bring your own
 - **Framework support** - works with LangChain, CrewAI, Google ADK, AWS Strands, and more
 
 ## Quick Start
@@ -242,7 +242,7 @@ async def setup():
                 "scope": {"stages": ["post"]},
                 "condition": {
                     "selector": {"path": "output"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": r"\b\d{3}-\d{2}-\d{4}\b"},
                     },
@@ -264,7 +264,7 @@ async def setup():
 asyncio.run(setup())
 ```
 
-Controls now store leaf `selector` and `evaluator` definitions under `condition`, which also enables composite `and`, `or`, and `not` trees.
+Controls now store leaf `selector` and `rule` definitions under `condition`, which also enables composite `and`, `or`, and `not` trees.
 
 **Tip**: If you prefer a visual flow, use the UI instead - see the [UI Quickstart](https://docs.agentcontrol.dev/core/ui-quickstart).
 
@@ -298,7 +298,7 @@ Explore working examples for popular frameworks.
 
 Agent Control evaluates agent inputs and outputs against controls you configure at runtime. That keeps guardrail logic out of prompt code and tool code, while still letting teams update protections centrally.
 
-Read more about [Controls](https://docs.agentcontrol.dev/concepts/controls) and Learn how controls, selectors, and evaluators work
+Read more about [Controls](https://docs.agentcontrol.dev/concepts/controls) and Learn how controls, selectors, and rules work
 
 ## Performance
 

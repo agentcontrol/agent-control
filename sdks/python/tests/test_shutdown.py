@@ -292,7 +292,7 @@ class TestAtexitShutdownFallback:
                 "scope": {"stages": ["post"]},
                 "condition": {
                     "selector": {"path": "output"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": r"\b123-45-6789\b"},
                     },

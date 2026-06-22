@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from agent_control_engine import list_evaluators
+from agent_control_engine import list_rules
 from agent_control_models.agent import Agent as APIAgent
 from agent_control_models.agent import StepSchema
 from agent_control_models.controls import ControlDefinition, ControlDefinitionRuntime
@@ -13,19 +13,19 @@ from agent_control_models.server import (
     AssocResponse,
     ConflictMode,
     DeletePolicyResponse,
-    EvaluatorSchema,
     GetAgentPoliciesResponse,
     GetAgentResponse,
     GetPolicyResponse,
-    InitAgentEvaluatorRemoval,
     InitAgentOverwriteChanges,
     InitAgentRequest,
     InitAgentResponse,
+    InitAgentRuleRemoval,
     ListAgentsResponse,
     PaginationInfo,
     PatchAgentRequest,
     PatchAgentResponse,
     RemoveAgentControlResponse,
+    RuleSchema,
     SetPolicyResponse,
     StepKey,
 )
@@ -60,11 +60,11 @@ from ..services.controls import (
     AgentControlRenderedState,
     ControlService,
 )
-from ..services.evaluator_utils import (
-    parse_evaluator_ref_full,
+from ..services.query_utils import escape_like_pattern
+from ..services.rule_utils import (
+    parse_rule_ref_full,
     validate_config_against_schema,
 )
-from ..services.query_utils import escape_like_pattern
 from ..services.schema_compat import (
     check_schema_compatibility,
     format_compatibility_error,
@@ -74,8 +74,8 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 
 _logger = get_logger(__name__)
 
-# Cache for built-in evaluator names (populated on first use)
-_BUILTIN_EVALUATOR_NAMES: set[str] | None = None
+# Cache for built-in rule names (populated on first use)
+_BUILTIN_RULE_NAMES: set[str] | None = None
 
 # Pagination constants
 _DEFAULT_PAGINATION_OFFSET = 0
@@ -196,28 +196,28 @@ async def _authorize_existing_agent_overwrite(
 # =============================================================================
 
 
-def _get_builtin_evaluator_names() -> set[str]:
-    """Get built-in evaluator names (cached)."""
-    global _BUILTIN_EVALUATOR_NAMES
-    if _BUILTIN_EVALUATOR_NAMES is None:
-        _BUILTIN_EVALUATOR_NAMES = set(list_evaluators().keys())
-    return _BUILTIN_EVALUATOR_NAMES
+def _get_builtin_rule_names() -> set[str]:
+    """Get built-in rule names (cached)."""
+    global _BUILTIN_RULE_NAMES
+    if _BUILTIN_RULE_NAMES is None:
+        _BUILTIN_RULE_NAMES = set(list_rules().keys())
+    return _BUILTIN_RULE_NAMES
 
 
 def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[str]:
     """Validate controls can run on this agent."""
     errors: list[str] = []
 
-    # Parse agent's registered evaluators
+    # Parse agent's registered rules
     try:
         agent_data = AgentData.model_validate(agent.data)
     except ValidationError:
         return [f"Agent '{agent.name}' has corrupted data"]
 
-    agent_evaluators = {e.name: e for e in (agent_data.evaluators or [])}
+    agent_rules = {e.name: e for e in (agent_data.rules or [])}
 
     for control in controls:
-        # Skip unrendered template controls - they have no evaluators to validate.
+        # Skip unrendered template controls - they have no rules to validate.
         if (
             isinstance(control.data, dict)
             and control.data.get("template") is not None
@@ -231,36 +231,36 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
             errors.append(f"Control '{control.name}' has corrupted data")
             continue
 
-        for _, evaluator_cfg in control_definition.iter_condition_leaf_parts():
-            evaluator_name = evaluator_cfg.name
-            parsed = parse_evaluator_ref_full(evaluator_name)
+        for _, rule_cfg in control_definition.iter_condition_leaf_parts():
+            rule_name = rule_cfg.name
+            parsed = parse_rule_ref_full(rule_name)
             if parsed.type != "agent":
-                continue  # Built-in/external evaluator, already validated at control creation
+                continue  # Built-in/external rule, already validated at control creation
 
-            # Agent-scoped evaluator - check if target matches this agent
+            # Agent-scoped rule - check if target matches this agent
             if parsed.namespace != agent.name:
                 errors.append(
-                    f"Control '{control.name}' references evaluator '{evaluator_name}' "
+                    f"Control '{control.name}' references rule '{rule_name}' "
                     f"which belongs to agent '{parsed.namespace}', not '{agent.name}'"
                 )
                 continue
 
-            # Check if evaluator exists on this agent
-            if parsed.local_name not in agent_evaluators:
+            # Check if rule exists on this agent
+            if parsed.local_name not in agent_rules:
                 errors.append(
-                    f"Control '{control.name}' references evaluator '{parsed.local_name}' "
+                    f"Control '{control.name}' references rule '{parsed.local_name}' "
                     f"which is not registered with agent '{agent.name}'. "
-                    f"Register it via initAgent or use a different evaluator."
+                    f"Register it via initAgent or use a different rule."
                 )
                 continue
 
             # Validate config against schema
-            registered_ev = agent_evaluators[parsed.local_name]
-            if registered_ev.config_schema:
+            registered_rule = agent_rules[parsed.local_name]
+            if registered_rule.config_schema:
                 try:
                     validate_config_against_schema(
-                        evaluator_cfg.config,
-                        registered_ev.config_schema,
+                        rule_cfg.config,
+                        registered_rule.config_schema,
                     )
                 except JSONSchemaValidationError as e:
                     errors.append(
@@ -271,23 +271,23 @@ def _validate_controls_for_agent(agent: Agent, controls: list[Control]) -> list[
     return errors
 
 
-def _find_referencing_controls_for_removed_evaluators(
+def _find_referencing_controls_for_removed_rules(
     controls: Sequence[APIControl],
     agent_name: str,
-    remove_evaluator_set: set[str],
+    remove_rule_set: set[str],
 ) -> list[tuple[str, str]]:
-    """Return sorted unique control/evaluator pairs blocking evaluator removal."""
+    """Return sorted unique control/rule pairs blocking rule removal."""
     referencing_control_set: set[tuple[str, str]] = set()
 
     for ctrl in controls:
         if not isinstance(ctrl.control, ControlDefinition):
             continue  # Skip unrendered template controls
-        for _, evaluator_spec in ctrl.control.iter_condition_leaf_parts():
-            evaluator_ref = evaluator_spec.name
-            if ":" not in evaluator_ref:
+        for _, rule_spec in ctrl.control.iter_condition_leaf_parts():
+            rule_ref = rule_spec.name
+            if ":" not in rule_ref:
                 continue
-            ref_agent, ref_eval = evaluator_ref.split(":", 1)
-            if ref_agent == agent_name and ref_eval in remove_evaluator_set:
+            ref_agent, ref_eval = rule_ref.split(":", 1)
+            if ref_agent == agent_name and ref_eval in remove_rule_set:
                 referencing_control_set.add((ctrl.name, ref_eval))
 
     return sorted(referencing_control_set, key=lambda item: (item[0], item[1]))
@@ -319,15 +319,15 @@ def _step_key_model(step_key: StepKeyTuple) -> StepKey:
     return StepKey(type=step_type, name=step_name)
 
 
-async def _build_overwrite_evaluator_removals(
+async def _build_overwrite_rule_removals(
     agent: Agent,
-    removed_evaluators: set[str],
+    removed_rules: set[str],
     db: AsyncSession,
     *,
     namespace_key: str,
-) -> list[InitAgentEvaluatorRemoval]:
-    """Build evaluator removal details, including active-control references."""
-    if not removed_evaluators:
+) -> list[InitAgentRuleRemoval]:
+    """Build rule removal details, including active-control references."""
+    if not removed_rules:
         return []
 
     try:
@@ -338,40 +338,40 @@ async def _build_overwrite_evaluator_removals(
         )
     except APIValidationError:
         _logger.warning(
-            "Skipping evaluator removal reference checks for agent '%s' "
+            "Skipping rule removal reference checks for agent '%s' "
             "due to invalid control data",
             agent.name,
             exc_info=True,
         )
-        return [InitAgentEvaluatorRemoval(name=name) for name in sorted(removed_evaluators)]
+        return [InitAgentRuleRemoval(name=name) for name in sorted(removed_rules)]
 
-    references_by_evaluator: dict[str, set[tuple[int, str]]] = {}
+    references_by_rule: dict[str, set[tuple[int, str]]] = {}
     for control in controls:
         if not isinstance(control.control, ControlDefinition):
             continue  # Skip unrendered template controls
-        for _, evaluator_spec in control.control.iter_condition_leaf_parts():
-            evaluator_ref = evaluator_spec.name
-            parsed = parse_evaluator_ref_full(evaluator_ref)
+        for _, rule_spec in control.control.iter_condition_leaf_parts():
+            rule_ref = rule_spec.name
+            parsed = parse_rule_ref_full(rule_ref)
             if parsed.type != "agent":
                 continue
             if parsed.namespace != agent.name:
                 continue
-            if parsed.local_name not in removed_evaluators:
+            if parsed.local_name not in removed_rules:
                 continue
-            references_by_evaluator.setdefault(parsed.local_name, set()).add(
+            references_by_rule.setdefault(parsed.local_name, set()).add(
                 (control.id, control.name)
             )
 
-    removals: list[InitAgentEvaluatorRemoval] = []
-    for evaluator_name in sorted(removed_evaluators):
-        references = references_by_evaluator.get(evaluator_name)
+    removals: list[InitAgentRuleRemoval] = []
+    for rule_name in sorted(removed_rules):
+        references = references_by_rule.get(rule_name)
         if references is None:
-            removals.append(InitAgentEvaluatorRemoval(name=evaluator_name))
+            removals.append(InitAgentRuleRemoval(name=rule_name))
             continue
         sorted_references = sorted(references, key=lambda item: (item[1], item[0]))
         removals.append(
-            InitAgentEvaluatorRemoval(
-                name=evaluator_name,
+            InitAgentRuleRemoval(
+                name=rule_name,
                 referenced_by_active_controls=True,
                 control_ids=[control_id for control_id, _ in sorted_references],
                 control_names=[control_name for _, control_name in sorted_references],
@@ -397,7 +397,7 @@ async def list_agents(
     List all registered agents with cursor-based pagination.
 
     Returns a summary of each agent including identifier, policy associations,
-    and counts of registered steps and evaluators. Results are scoped to
+    and counts of registered steps and rules. Results are scoped to
     the request's namespace; agents in other namespaces are not visible.
 
     Args:
@@ -503,13 +503,13 @@ async def list_agents(
     summaries: list[AgentSummary] = []
     for agent in agents:
         step_count = 0
-        evaluator_count = 0
+        rule_count = 0
 
         # Parse agent data to get counts
         try:
             data_model = AgentData.model_validate(agent.data)
             step_count = len(data_model.steps or [])
-            evaluator_count = len(data_model.evaluators or [])
+            rule_count = len(data_model.rules or [])
         except ValidationError:
             # If data is corrupted, log and use zero counts
             _logger.warning("Agent '%s' has invalid data, using zero counts", agent.name)
@@ -525,7 +525,7 @@ async def list_agents(
                 policy_ids=policy_ids,
                 created_at=agent.created_at.isoformat() if agent.created_at else None,
                 step_count=step_count,
-                evaluator_count=evaluator_count,
+                rule_count=rule_count,
                 active_controls_count=active_controls,
             )
         )
@@ -563,7 +563,7 @@ async def init_agent(
 
     conflict_mode controls registration conflict handling:
     - strict (default): preserve compatibility checks and conflict errors
-    - overwrite: latest init payload replaces steps/evaluators and returns change summary
+    - overwrite: latest init payload replaces steps/rules and returns change summary
 
     The returned ``controls`` list is the de-duplicated union of the agent's
     direct controls, policy-derived controls, and (when ``target_type`` and
@@ -585,23 +585,23 @@ async def init_agent(
     namespace_key = principal.namespace_key
     _ensure_target_principal_matches_namespace(principal, target_principal)
 
-    # Check for evaluator name collisions with built-in evaluators
-    builtin_names = _get_builtin_evaluator_names()
-    for ev in request.evaluators:
-        if ev.name in builtin_names:
+    # Check for rule name collisions with built-in rules
+    builtin_names = _get_builtin_rule_names()
+    for rule in request.rules:
+        if rule.name in builtin_names:
             raise ConflictError(
-                error_code=ErrorCode.EVALUATOR_NAME_CONFLICT,
-                detail=f"Evaluator name '{ev.name}' conflicts with built-in evaluator.",
-                resource="Evaluator",
-                resource_id=ev.name,
-                hint="Choose a different name that does not conflict with built-in evaluators.",
+                error_code=ErrorCode.RULE_NAME_CONFLICT,
+                detail=f"Rule name '{rule.name}' conflicts with built-in rule.",
+                resource="Rule",
+                resource_id=rule.name,
+                hint="Choose a different name that does not conflict with built-in rules.",
                 errors=[
                     ValidationErrorItem(
-                        resource="Evaluator",
+                        resource="Rule",
                         field="name",
                         code="name_conflict",
-                        message=f"Name '{ev.name}' conflicts with a built-in evaluator",
-                        value=ev.name,
+                        message=f"Name '{rule.name}' conflicts with a built-in rule",
+                        value=rule.name,
                     )
                 ],
             )
@@ -645,7 +645,7 @@ async def init_agent(
         data_model = AgentData(
             agent_metadata=request.agent.model_dump(mode="json"),
             steps=list(request.steps),
-            evaluators=list(request.evaluators),
+            rules=list(request.rules),
         )
 
         new_agent = Agent(
@@ -658,7 +658,7 @@ async def init_agent(
             await db.commit()
             _logger.info(
                 f"Created agent '{request.agent.agent_name}' with {len(request.steps)} steps, "
-                f"{len(request.evaluators)} evaluators"
+                f"{len(request.rules)} rules"
             )
         except Exception:
             await db.rollback()
@@ -716,10 +716,10 @@ async def init_agent(
             "due to force_replace=true.",
             exc_info=True,
         )
-        data_model = AgentData(agent_metadata={}, steps=[], evaluators=[])
+        data_model = AgentData(agent_metadata={}, steps=[], rules=[])
 
     steps_changed = False
-    evaluators_changed = False
+    rules_changed = False
     force_write = request.force_replace  # Always persist when force_replace=true
     overwrite_applied = False
     overwrite_changes = InitAgentOverwriteChanges()
@@ -731,10 +731,10 @@ async def init_agent(
         data_model.agent_metadata = new_metadata
 
     new_steps: list[StepSchema]
-    new_evaluators: list[EvaluatorSchema]
+    new_rules: list[RuleSchema]
 
     if request.conflict_mode == ConflictMode.OVERWRITE:
-        # Latest-init-wins: overwrite steps/evaluators exactly with incoming payload.
+        # Latest-init-wins: overwrite steps/rules exactly with incoming payload.
         existing_steps = list(data_model.steps or [])
         existing_steps_by_key = {(step.type, step.name): step for step in existing_steps}
         existing_step_keys = set(existing_steps_by_key)
@@ -748,34 +748,34 @@ async def init_agent(
             if _step_registration_changed(existing_steps_by_key[key], incoming_steps_by_key[key])
         )
 
-        existing_evaluators = list(data_model.evaluators or [])
-        existing_evals_by_name: dict[str, EvaluatorSchema] = {
-            evaluator.name: evaluator for evaluator in existing_evaluators
+        existing_rules = list(data_model.rules or [])
+        existing_rules_by_name: dict[str, RuleSchema] = {
+            rule.name: rule for rule in existing_rules
         }
-        incoming_evals_by_name: dict[str, EvaluatorSchema] = {
-            evaluator.name: evaluator for evaluator in request.evaluators
+        incoming_rules_by_name: dict[str, RuleSchema] = {
+            rule.name: rule for rule in request.rules
         }
-        existing_eval_names = set(existing_evals_by_name)
-        incoming_eval_names = set(incoming_evals_by_name)
+        existing_rule_names = set(existing_rules_by_name)
+        incoming_rule_names = set(incoming_rules_by_name)
 
-        evaluators_added_names = sorted(incoming_eval_names - existing_eval_names)
-        evaluators_removed_names = sorted(existing_eval_names - incoming_eval_names)
-        evaluators_updated_names = sorted(
+        rules_added_names = sorted(incoming_rule_names - existing_rule_names)
+        rules_removed_names = sorted(existing_rule_names - incoming_rule_names)
+        rules_updated_names = sorted(
             name
-            for name in (existing_eval_names & incoming_eval_names)
+            for name in (existing_rule_names & incoming_rule_names)
             if (
-                existing_evals_by_name[name].config_schema
-                != incoming_evals_by_name[name].config_schema
-                or existing_evals_by_name[name].description
-                != incoming_evals_by_name[name].description
+                existing_rules_by_name[name].config_schema
+                != incoming_rules_by_name[name].config_schema
+                or existing_rules_by_name[name].description
+                != incoming_rules_by_name[name].description
             )
         )
 
-        evaluator_removals: list[InitAgentEvaluatorRemoval] = []
-        if evaluators_removed_names:
-            evaluator_removals = await _build_overwrite_evaluator_removals(
+        rule_removals: list[InitAgentRuleRemoval] = []
+        if rules_removed_names:
+            rule_removals = await _build_overwrite_rule_removals(
                 existing,
-                set(evaluators_removed_names),
+                set(rules_removed_names),
                 db,
                 namespace_key=namespace_key,
             )
@@ -785,22 +785,22 @@ async def init_agent(
             steps_added=[_step_key_model(step_key) for step_key in steps_added_keys],
             steps_updated=[_step_key_model(step_key) for step_key in steps_updated_keys],
             steps_removed=[_step_key_model(step_key) for step_key in steps_removed_keys],
-            evaluators_added=evaluators_added_names,
-            evaluators_updated=evaluators_updated_names,
-            evaluators_removed=evaluators_removed_names,
-            evaluator_removals=evaluator_removals,
+            rules_added=rules_added_names,
+            rules_updated=rules_updated_names,
+            rules_removed=rules_removed_names,
+            rule_removals=rule_removals,
         )
 
         steps_changed = bool(steps_added_keys or steps_updated_keys or steps_removed_keys)
-        evaluators_changed = bool(
-            evaluators_added_names or evaluators_updated_names or evaluators_removed_names
+        rules_changed = bool(
+            rules_added_names or rules_updated_names or rules_removed_names
         )
-        overwrite_applied = bool(metadata_changed or steps_changed or evaluators_changed)
+        overwrite_applied = bool(metadata_changed or steps_changed or rules_changed)
 
         new_steps = list(request.steps)
-        new_evaluators = list(request.evaluators)
+        new_rules = list(request.rules)
         data_model.steps = new_steps
-        data_model.evaluators = new_evaluators
+        data_model.rules = new_rules
     else:
         # --- Process steps ---
         # Note: incoming_steps_by_key already built during validation above
@@ -856,19 +856,19 @@ async def init_agent(
 
         data_model.steps = new_steps
 
-        # --- Process evaluators with schema compatibility check ---
-        incoming_evals_by_name = {evaluator.name: evaluator for evaluator in request.evaluators}
-        existing_evals_by_name = {
-            evaluator.name: evaluator for evaluator in (data_model.evaluators or [])
+        # --- Process rules with schema compatibility check ---
+        incoming_rules_by_name = {rule.name: rule for rule in request.rules}
+        existing_rules_by_name = {
+            rule.name: rule for rule in (data_model.rules or [])
         }
-        new_evaluators = []
+        new_rules = []
 
-        # Check existing evaluators for compatibility
-        for name, existing_ev in existing_evals_by_name.items():
-            if name in incoming_evals_by_name:
-                incoming_ev = incoming_evals_by_name[name]
-                old_schema = existing_ev.config_schema
-                new_schema = incoming_ev.config_schema
+        # Check existing rules for compatibility
+        for name, existing_rule in existing_rules_by_name.items():
+            if name in incoming_rules_by_name:
+                incoming_rule = incoming_rules_by_name[name]
+                old_schema = existing_rule.config_schema
+                new_schema = incoming_rule.config_schema
 
                 # Short-circuit: only check compatibility if schemas differ
                 if old_schema != new_schema:
@@ -879,12 +879,12 @@ async def init_agent(
                         raise ConflictError(
                             error_code=ErrorCode.SCHEMA_INCOMPATIBLE,
                             detail=format_compatibility_error(name, compat_errors),
-                            resource="Evaluator",
+                            resource="Rule",
                             resource_id=name,
-                            hint="Ensure backward compatibility or use a new evaluator name.",
+                            hint="Ensure backward compatibility or use a new rule name.",
                             errors=[
                                 ValidationErrorItem(
-                                    resource="Evaluator",
+                                    resource="Rule",
                                     field="config_schema",
                                     code="schema_incompatible",
                                     message=err,
@@ -893,40 +893,40 @@ async def init_agent(
                             ],
                         )
 
-                # Check if evaluator changed (compare fields directly, avoid model_dump())
+                # Check if rule changed (compare fields directly, avoid model_dump())
                 if (
-                    existing_ev.config_schema != incoming_ev.config_schema
-                    or existing_ev.description != incoming_ev.description
+                    existing_rule.config_schema != incoming_rule.config_schema
+                    or existing_rule.description != incoming_rule.description
                 ):
-                    evaluators_changed = True
-                new_evaluators.append(incoming_ev)
+                    rules_changed = True
+                new_rules.append(incoming_rule)
             else:
-                # Keep existing evaluator not in incoming request
-                new_evaluators.append(existing_ev)
+                # Keep existing rule not in incoming request
+                new_rules.append(existing_rule)
 
-        # Add new evaluators
-        for name, evaluator in incoming_evals_by_name.items():
-            if name not in existing_evals_by_name:
-                new_evaluators.append(evaluator)
-                evaluators_changed = True
+        # Add new rules
+        for name, rule in incoming_rules_by_name.items():
+            if name not in existing_rules_by_name:
+                new_rules.append(rule)
+                rules_changed = True
 
-        data_model.evaluators = new_evaluators
+        data_model.rules = new_rules
 
     if (
         not request.force_replace
         and request.conflict_mode != ConflictMode.OVERWRITE
-        and (steps_changed or evaluators_changed or metadata_changed)
+        and (steps_changed or rules_changed or metadata_changed)
     ):
         await _authorize_existing_agent_overwrite(http_request, principal)
 
-    if steps_changed or evaluators_changed or metadata_changed or force_write:
+    if steps_changed or rules_changed or metadata_changed or force_write:
         existing.data = data_model.model_dump(mode="json")
 
         try:
             await db.commit()
             _logger.info(
                 f"Updated agent '{request.agent.agent_name}' with {len(new_steps)} steps, "
-                f"{len(new_evaluators)} evaluators"
+                f"{len(new_rules)} rules"
             )
         except Exception:
             await db.rollback()
@@ -1033,7 +1033,7 @@ async def get_agent(
             hint="The agent's metadata is invalid. Re-register the agent with initAgent.",
         )
 
-    return GetAgentResponse(agent=agent_meta, steps=latest_steps, evaluators=data_model.evaluators)
+    return GetAgentResponse(agent=agent_meta, steps=latest_steps, rules=data_model.rules)
 
 
 async def _get_agent_or_404(
@@ -1103,11 +1103,11 @@ async def add_agent_policy(
         raise BadRequestError(
             error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
             detail="Policy contains controls incompatible with this agent",
-            hint="Ensure all controls in the policy are compatible with this agent's evaluators.",
+            hint="Ensure all controls in the policy are compatible with this agent's rules.",
             errors=[
                 ValidationErrorItem(
                     resource="Control",
-                    field="evaluator",
+                    field="rule",
                     code="incompatible",
                     message=err,
                 )
@@ -1180,11 +1180,11 @@ async def set_agent_policy(
         raise BadRequestError(
             error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
             detail="Policy contains controls incompatible with this agent",
-            hint="Ensure all controls in the policy are compatible with this agent's evaluators.",
+            hint="Ensure all controls in the policy are compatible with this agent's rules.",
             errors=[
                 ValidationErrorItem(
                     resource="Control",
-                    field="evaluator",
+                    field="rule",
                     code="incompatible",
                     message=err,
                 )
@@ -1482,11 +1482,11 @@ async def add_agent_control(
         raise BadRequestError(
             error_code=ErrorCode.POLICY_CONTROL_INCOMPATIBLE,
             detail="Control is incompatible with this agent",
-            hint="Ensure the control is compatible with this agent's evaluators.",
+            hint="Ensure the control is compatible with this agent's rules.",
             errors=[
                 ValidationErrorItem(
                     resource="Control",
-                    field="evaluator",
+                    field="rule",
                     code="incompatible",
                     message=err,
                 )
@@ -1678,54 +1678,54 @@ async def list_agent_controls(
 
 
 # =============================================================================
-# Evaluator Schema Endpoints
+# Rule Schema Endpoints
 # =============================================================================
 
 
-class EvaluatorSchemaItem(BaseModel):
-    """Evaluator schema summary for list response."""
+class RuleSchemaItem(BaseModel):
+    """Rule schema summary for list response."""
 
     name: str
     description: str | None
     config_schema: dict[str, Any]
 
 
-class ListEvaluatorsResponse(BaseModel):
-    """Response for listing agent's evaluator schemas."""
+class ListRulesResponse(BaseModel):
+    """Response for listing agent's rule schemas."""
 
-    evaluators: list[EvaluatorSchemaItem]
+    rules: list[RuleSchemaItem]
     pagination: PaginationInfo
 
 
 @router.get(
-    "/{agent_name}/evaluators",
-    response_model=ListEvaluatorsResponse,
-    summary="List agent's registered evaluator schemas",
-    response_description="Evaluator schemas registered with this agent",
+    "/{agent_name}/rules",
+    response_model=ListRulesResponse,
+    summary="List agent's registered rule schemas",
+    response_description="Rule schemas registered with this agent",
 )
-async def list_agent_evaluators(
+async def list_agent_rules(
     agent_name: str,
     cursor: str | None = None,
     limit: int = _DEFAULT_PAGINATION_LIMIT,
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.AGENTS_READ)),
-) -> ListEvaluatorsResponse:
+) -> ListRulesResponse:
     """
-    List all evaluator schemas registered with an agent.
+    List all rule schemas registered with an agent.
 
-    Evaluator schemas are registered via initAgent and used for:
+    Rule schemas are registered via initAgent and used for:
     - Config validation when creating Controls
     - UI to display available config options
 
     Args:
         agent_name: Agent identifier
-        cursor: Optional cursor for pagination (name of last evaluator from previous page)
+        cursor: Optional cursor for pagination (name of last rule from previous page)
         limit: Pagination limit (default 20, max 100)
         db: Database session (injected)
         principal: Authorized request principal
 
     Returns:
-        ListEvaluatorsResponse with evaluator schemas and pagination
+        ListRulesResponse with rule schemas and pagination
 
     Raises:
         HTTPException 404: Agent not found
@@ -1751,43 +1751,43 @@ async def list_agent_evaluators(
     try:
         data_model = AgentData.model_validate(agent.data)
     except ValidationError:
-        data_model = AgentData(agent_metadata={}, steps=[], evaluators=[])
+        data_model = AgentData(agent_metadata={}, steps=[], rules=[])
 
-    all_evaluators = data_model.evaluators or []
-    total = len(all_evaluators)
+    all_rules = data_model.rules or []
+    total = len(all_rules)
 
     # Apply cursor-based pagination
-    # For evaluators, we use name as cursor (simple string comparison)
+    # For rules, we use name as cursor (simple string comparison)
     start_idx = 0
     if cursor:
-        # Find the index of the cursor evaluator
-        for idx, ev in enumerate(all_evaluators):
-            if ev.name == cursor:
+        # Find the index of the cursor rule
+        for idx, rule in enumerate(all_rules):
+            if rule.name == cursor:
                 start_idx = idx + 1
                 break
 
     # Fetch limit + 1 to check if there are more pages
     end_idx = start_idx + limit + 1
-    paginated = all_evaluators[start_idx:end_idx]
+    paginated = all_rules[start_idx:end_idx]
 
     # Check if there are more pages
     has_more = len(paginated) > limit
     if has_more:
         paginated = paginated[:-1]  # Remove the extra item
 
-    # Determine next cursor (name of last evaluator in this page)
+    # Determine next cursor (name of last rule in this page)
     next_cursor: str | None = None
     if has_more and paginated:
         next_cursor = paginated[-1].name
 
-    return ListEvaluatorsResponse(
-        evaluators=[
-            EvaluatorSchemaItem(
-                name=ev.name,
-                description=ev.description,
-                config_schema=ev.config_schema,
+    return ListRulesResponse(
+        rules=[
+            RuleSchemaItem(
+                name=rule.name,
+                description=rule.description,
+                config_schema=rule.config_schema,
             )
-            for ev in paginated
+            for rule in paginated
         ],
         pagination=PaginationInfo(
             limit=limit,
@@ -1799,31 +1799,31 @@ async def list_agent_evaluators(
 
 
 @router.get(
-    "/{agent_name}/evaluators/{evaluator_name}",
-    response_model=EvaluatorSchemaItem,
-    summary="Get specific evaluator schema",
-    response_description="Evaluator schema details",
+    "/{agent_name}/rules/{rule_name}",
+    response_model=RuleSchemaItem,
+    summary="Get specific rule schema",
+    response_description="Rule schema details",
 )
-async def get_agent_evaluator(
+async def get_agent_rule(
     agent_name: str,
-    evaluator_name: str,
+    rule_name: str,
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.AGENTS_READ)),
-) -> EvaluatorSchemaItem:
+) -> RuleSchemaItem:
     """
-    Get a specific evaluator schema registered with an agent.
+    Get a specific rule schema registered with an agent.
 
     Args:
         agent_name: Agent identifier
-        evaluator_name: Name of the evaluator
+        rule_name: Name of the rule
         db: Database session (injected)
         principal: Authorized request principal
 
     Returns:
-        EvaluatorSchemaItem with schema details
+        RuleSchemaItem with schema details
 
     Raises:
-        HTTPException 404: Agent or evaluator not found
+        HTTPException 404: Agent or rule not found
     """
     namespace_key = principal.namespace_key
     agent_name = normalize_agent_name_or_422(agent_name)
@@ -1844,34 +1844,34 @@ async def get_agent_evaluator(
         data_model = AgentData.model_validate(agent.data)
     except ValidationError:
         raise NotFoundError(
-            error_code=ErrorCode.EVALUATOR_NOT_FOUND,
-            detail=f"Evaluator '{evaluator_name}' not found",
-            resource="Evaluator",
-            resource_id=evaluator_name,
+            error_code=ErrorCode.RULE_NOT_FOUND,
+            detail=f"Rule '{rule_name}' not found",
+            resource="Rule",
+            resource_id=rule_name,
             hint="The agent's data may be corrupted. Re-register the agent with initAgent.",
         )
 
-    for ev in data_model.evaluators or []:
-        if ev.name == evaluator_name:
-            return EvaluatorSchemaItem(
-                name=ev.name,
-                description=ev.description,
-                config_schema=ev.config_schema,
+    for rule in data_model.rules or []:
+        if rule.name == rule_name:
+            return RuleSchemaItem(
+                name=rule.name,
+                description=rule.description,
+                config_schema=rule.config_schema,
             )
 
     raise NotFoundError(
-        error_code=ErrorCode.EVALUATOR_NOT_FOUND,
-        detail=f"Evaluator '{evaluator_name}' not found on agent '{agent.name}'",
-        resource="Evaluator",
-        resource_id=evaluator_name,
-        hint="Register the evaluator with this agent via initAgent.",
+        error_code=ErrorCode.RULE_NOT_FOUND,
+        detail=f"Rule '{rule_name}' not found on agent '{agent.name}'",
+        resource="Rule",
+        resource_id=rule_name,
+        hint="Register the rule with this agent via initAgent.",
     )
 
 
 @router.patch(
     "/{agent_name}",
     response_model=PatchAgentResponse,
-    summary="Modify agent (remove steps/evaluators)",
+    summary="Modify agent (remove steps/rules)",
     response_description="Lists of removed items",
 )
 async def patch_agent(
@@ -1881,14 +1881,14 @@ async def patch_agent(
     principal: Principal = Depends(require_operation(Operation.AGENTS_UPDATE)),
 ) -> PatchAgentResponse:
     """
-    Remove steps and/or evaluators from an agent.
+    Remove steps and/or rules from an agent.
 
     This is the complement to initAgent which only adds items.
     Removals are idempotent - attempting to remove non-existent items is not an error.
 
     Args:
         agent_name: Agent identifier
-        request: Lists of step/evaluator identifiers to remove
+        request: Lists of step/rule identifiers to remove
         db: Database session (injected)
         principal: Authorized request principal
 
@@ -1928,7 +1928,7 @@ async def patch_agent(
         )
 
     steps_removed: list[StepKey] = []
-    evaluators_removed: list[str] = []
+    rules_removed: list[str] = []
 
     # Remove steps
     if request.remove_steps:
@@ -1942,52 +1942,52 @@ async def patch_agent(
                 new_steps.append(step)
         data_model.steps = new_steps
 
-    # Remove evaluators (with dependency check)
-    if request.remove_evaluators:
-        remove_evaluator_set = set(request.remove_evaluators)
+    # Remove rules (with dependency check)
+    if request.remove_rules:
+        remove_rule_set = set(request.remove_rules)
 
-        # Check if any active controls reference evaluators being removed.
+        # Check if any active controls reference rules being removed.
         controls = await ControlService(db).list_controls_for_agent(
             agent.name,
             namespace_key=namespace_key,
         )
-        referencing_controls = _find_referencing_controls_for_removed_evaluators(
-            controls, agent.name, remove_evaluator_set
+        referencing_controls = _find_referencing_controls_for_removed_rules(
+            controls, agent.name, remove_rule_set
         )
 
         if referencing_controls:
             raise ConflictError(
-                error_code=ErrorCode.EVALUATOR_IN_USE,
-                detail="Cannot remove evaluators: active controls reference them",
-                resource="Evaluator",
-                hint="Remove or update the controls that reference these evaluators first.",
+                error_code=ErrorCode.RULE_IN_USE,
+                detail="Cannot remove rules: active controls reference them",
+                resource="Rule",
+                hint="Remove or update the controls that reference these rules first.",
                 errors=[
                     ValidationErrorItem(
                         resource="Control",
-                        field="evaluator.name",
+                        field="rule.name",
                         code="in_use",
-                        message=f"Control '{ctrl}' uses evaluator '{ev}'",
+                        message=f"Control '{ctrl}' uses rule '{rule}'",
                     )
-                    for ctrl, ev in referencing_controls
+                    for ctrl, rule in referencing_controls
                 ],
             )
 
-        new_evaluators = []
-        for ev in data_model.evaluators or []:
-            if ev.name in remove_evaluator_set:
-                evaluators_removed.append(ev.name)
+        new_rules = []
+        for rule in data_model.rules or []:
+            if rule.name in remove_rule_set:
+                rules_removed.append(rule.name)
             else:
-                new_evaluators.append(ev)
-        data_model.evaluators = new_evaluators
+                new_rules.append(rule)
+        data_model.rules = new_rules
 
     # Only update if something changed
-    if steps_removed or evaluators_removed:
+    if steps_removed or rules_removed:
         agent.data = data_model.model_dump(mode="json")
         try:
             await db.commit()
             _logger.info(
                 f"Patched agent '{agent.name}': removed {len(steps_removed)} steps, "
-                f"{len(evaluators_removed)} evaluators"
+                f"{len(rules_removed)} rules"
             )
         except Exception:
             await db.rollback()
@@ -2003,5 +2003,5 @@ async def patch_agent(
 
     return PatchAgentResponse(
         steps_removed=steps_removed,
-        evaluators_removed=evaluators_removed,
+        rules_removed=rules_removed,
     )

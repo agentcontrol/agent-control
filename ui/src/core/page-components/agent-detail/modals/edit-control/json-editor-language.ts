@@ -10,7 +10,7 @@ import {
 import type { StepSchema } from '@/core/api/types';
 
 import type {
-  JsonEditorEvaluatorOption,
+  JsonEditorRuleOption,
   JsonEditorMode,
   JsonSchema,
 } from './types';
@@ -22,8 +22,8 @@ type JsonEditorAutocompleteContext = {
   mode: JsonEditorMode;
   modelUri: string;
   schema?: JsonSchema | null;
-  evaluators?: JsonEditorEvaluatorOption[];
-  activeEvaluatorId?: string | null;
+  rules?: JsonEditorRuleOption[];
+  activeRuleId?: string | null;
   steps?: StepSchema[];
 };
 
@@ -485,11 +485,11 @@ function isSelectorPathLocation(path: JsonPath): boolean {
   );
 }
 
-function isEvaluatorNameLocation(path: JsonPath): boolean {
+function isRuleNameLocation(path: JsonPath): boolean {
   return (
     path.length >= 2 &&
     path[path.length - 1] === 'name' &&
-    path[path.length - 2] === 'evaluator'
+    path[path.length - 2] === 'rule'
   );
 }
 
@@ -575,7 +575,7 @@ function buildSchemaValueSnippet(
   }
 
   if (
-    schemaTitle === 'EvaluatorSpec' ||
+    schemaTitle === 'RuleSpec' ||
     isSchemaWithProperties(normalized, ['name', 'config'])
   ) {
     return '{\n  "name": "",\n  "config": {}\n}';
@@ -599,7 +599,7 @@ function buildSchemaValueSnippet(
     schemaTitle === 'ConditionNode' ||
     isSchemaWithProperties(normalized, [
       'selector',
-      'evaluator',
+      'rule',
       'and',
       'or',
       'not',
@@ -797,51 +797,51 @@ function buildSelectorPathSuggestions(
   });
 }
 
-function findEvaluatorById(
-  evaluators: JsonEditorEvaluatorOption[] | undefined,
+function findRuleById(
+  rules: JsonEditorRuleOption[] | undefined,
   id: string | null | undefined
-): JsonEditorEvaluatorOption | null {
-  if (!evaluators || !id) {
+): JsonEditorRuleOption | null {
+  if (!rules || !id) {
     return null;
   }
 
-  return evaluators.find((candidate) => candidate.id === id) ?? null;
+  return rules.find((candidate) => candidate.id === id) ?? null;
 }
 
-function resolveActiveEvaluator(
+function resolveActiveRule(
   context: JsonEditorAutocompleteContext,
   tree: JsonNode | undefined,
   path: JsonPath
-): JsonEditorEvaluatorOption | null {
-  if (context.mode === 'evaluator-config') {
-    return findEvaluatorById(context.evaluators, context.activeEvaluatorId);
+): JsonEditorRuleOption | null {
+  if (context.mode === 'rule-config') {
+    return findRuleById(context.rules, context.activeRuleId);
   }
 
-  const evaluatorIndex = getJsonPathFieldIndex(path, 'evaluator');
-  if (!tree || evaluatorIndex < 0) {
+  const ruleIndex = getJsonPathFieldIndex(path, 'rule');
+  if (!tree || ruleIndex < 0) {
     return null;
   }
 
-  const evaluatorNamePath = [
-    ...path.slice(0, evaluatorIndex),
-    'evaluator',
+  const ruleNamePath = [
+    ...path.slice(0, ruleIndex),
+    'rule',
     'name',
   ];
-  const evaluatorNameNode = findNodeAtLocation(tree, evaluatorNamePath);
-  const evaluatorName =
-    typeof evaluatorNameNode?.value === 'string'
-      ? evaluatorNameNode.value
+  const ruleNameNode = findNodeAtLocation(tree, ruleNamePath);
+  const ruleName =
+    typeof ruleNameNode?.value === 'string'
+      ? ruleNameNode.value
       : null;
 
-  return findEvaluatorById(context.evaluators, evaluatorName);
+  return findRuleById(context.rules, ruleName);
 }
 
 function getInitialSchemaCursor(
   context: JsonEditorAutocompleteContext,
-  activeEvaluator: JsonEditorEvaluatorOption | null
+  activeRule: JsonEditorRuleOption | null
 ): SchemaCursor {
-  if (context.mode === 'evaluator-config') {
-    const rootSchema = asSchema(activeEvaluator?.configSchema ?? null);
+  if (context.mode === 'rule-config') {
+    const rootSchema = asSchema(activeRule?.configSchema ?? null);
     return {
       schema: normalizeSchema(rootSchema, rootSchema),
       rootSchema,
@@ -855,21 +855,21 @@ function getInitialSchemaCursor(
   };
 }
 
-function isEvaluatorConfigSegment(path: JsonPath, index: number): boolean {
+function isRuleConfigSegment(path: JsonPath, index: number): boolean {
   return (
     typeof path[index] === 'string' &&
     path[index] === 'config' &&
     index > 0 &&
-    path[index - 1] === 'evaluator'
+    path[index - 1] === 'rule'
   );
 }
 
 function resolveSchemaAtJsonPath(
   context: JsonEditorAutocompleteContext,
-  activeEvaluator: JsonEditorEvaluatorOption | null,
+  activeRule: JsonEditorRuleOption | null,
   path: JsonPath
 ): SchemaCursor {
-  let cursor = getInitialSchemaCursor(context, activeEvaluator);
+  let cursor = getInitialSchemaCursor(context, activeRule);
 
   for (let index = 0; index < path.length; index += 1) {
     const segment = path[index];
@@ -877,8 +877,8 @@ function resolveSchemaAtJsonPath(
       return cursor;
     }
 
-    if (context.mode === 'control' && isEvaluatorConfigSegment(path, index)) {
-      const rootSchema = asSchema(activeEvaluator?.configSchema ?? null);
+    if (context.mode === 'control' && isRuleConfigSegment(path, index)) {
+      const rootSchema = asSchema(activeRule?.configSchema ?? null);
       cursor = {
         schema: normalizeSchema(rootSchema, rootSchema),
         rootSchema,
@@ -903,21 +903,21 @@ function resolveSchemaAtJsonPath(
   return cursor;
 }
 
-function buildEvaluatorNameSuggestions(
+function buildRuleNameSuggestions(
   monaco: MonacoModule,
   range: import('monaco-editor').IRange,
-  evaluators: JsonEditorEvaluatorOption[] | undefined,
+  rules: JsonEditorRuleOption[] | undefined,
   isStringValueContext: boolean
 ) {
-  return (evaluators ?? []).map((evaluator, index) => ({
-    label: evaluator.id,
+  return (rules ?? []).map((rule, index) => ({
+    label: rule.id,
     kind: monaco.languages.CompletionItemKind.Value,
     detail:
-      evaluator.source === 'agent'
-        ? `${evaluator.label} (agent evaluator)`
-        : evaluator.label,
-    documentation: evaluator.description ?? undefined,
-    insertText: buildValueInsertText(evaluator.id, isStringValueContext),
+      rule.source === 'agent'
+        ? `${rule.label} (agent rule)`
+        : rule.label,
+    documentation: rule.description ?? undefined,
+    insertText: buildValueInsertText(rule.id, isStringValueContext),
     range,
     sortText: `!0${index.toString().padStart(3, '0')}`,
   }));
@@ -1120,14 +1120,14 @@ function buildCompletionSuggestions(
     node?.type === 'string' && !location.isAtPropertyKey;
   const suggestions: import('monaco-editor').languages.CompletionItem[] = [];
 
-  const activeEvaluator = resolveActiveEvaluator(context, tree, location.path);
+  const activeRule = resolveActiveRule(context, tree, location.path);
 
-  if (isEvaluatorNameLocation(location.path)) {
+  if (isRuleNameLocation(location.path)) {
     suggestions.push(
-      ...buildEvaluatorNameSuggestions(
+      ...buildRuleNameSuggestions(
         monaco,
         valueRange,
-        context.evaluators,
+        context.rules,
         isStringValueContext
       )
     );
@@ -1162,7 +1162,7 @@ function buildCompletionSuggestions(
         : null) ?? getDefaultRange(monaco, model, position);
     const schemaCursor = resolveSchemaAtJsonPath(
       context,
-      activeEvaluator,
+      activeRule,
       propertyKeyContext.objectPath
     );
     const currentPropertyName =
@@ -1190,7 +1190,7 @@ function buildCompletionSuggestions(
   if (isValuePosition) {
     const valueSchemaCursor = resolveSchemaAtJsonPath(
       context,
-      activeEvaluator,
+      activeRule,
       location.path
     );
 
@@ -1241,29 +1241,29 @@ export function getJsonEditorCompletionItems(
   return buildCompletionSuggestions(monaco, model, position, context);
 }
 
-type EvaluatorNodeInfo = {
+type RuleNodeInfo = {
   name: string;
   nameNode: JsonNode;
   configNode: JsonNode | undefined;
-  evaluatorNode: JsonNode;
+  ruleNode: JsonNode;
 };
 
-function collectEvaluatorNames(
+function collectRuleNames(
   node: JsonNode | undefined,
-  result: Map<string, EvaluatorNodeInfo>
+  result: Map<string, RuleNodeInfo>
 ) {
   if (!node || node.type !== 'object' || !node.children) return;
 
-  const evaluatorNode = findNodeAtLocation(node, ['evaluator']);
-  if (evaluatorNode?.type === 'object') {
-    const nameNode = findNodeAtLocation(evaluatorNode, ['name']);
-    const configNode = findNodeAtLocation(evaluatorNode, ['config']);
+  const ruleNode = findNodeAtLocation(node, ['rule']);
+  if (ruleNode?.type === 'object') {
+    const nameNode = findNodeAtLocation(ruleNode, ['name']);
+    const configNode = findNodeAtLocation(ruleNode, ['config']);
     if (nameNode && typeof nameNode.value === 'string') {
       result.set(`${nameNode.offset}`, {
         name: nameNode.value,
         nameNode,
         configNode,
-        evaluatorNode,
+        ruleNode,
       });
     }
   }
@@ -1272,24 +1272,24 @@ function collectEvaluatorNames(
     const arrayNode = findNodeAtLocation(node, [key]);
     if (arrayNode?.type === 'array' && arrayNode.children) {
       for (const child of arrayNode.children) {
-        collectEvaluatorNames(child, result);
+        collectRuleNames(child, result);
       }
     }
   }
 
   const notNode = findNodeAtLocation(node, ['not']);
   if (notNode?.type === 'object') {
-    collectEvaluatorNames(notNode, result);
+    collectRuleNames(notNode, result);
   }
 }
 
-export function extractEvaluatorNames(text: string): Map<string, string> {
+export function extractRuleNames(text: string): Map<string, string> {
   const tree = parseTree(text);
   if (!tree) return new Map();
 
   const conditionNode = findNodeAtLocation(tree, ['condition']);
-  const result = new Map<string, EvaluatorNodeInfo>();
-  collectEvaluatorNames(conditionNode, result);
+  const result = new Map<string, RuleNodeInfo>();
+  collectRuleNames(conditionNode, result);
 
   const names = new Map<string, string>();
   for (const [key, info] of result) {
@@ -1350,26 +1350,26 @@ export function buildDefaultConfig(
   return config;
 }
 
-export function findEvaluatorConfigEdit(
+export function findRuleConfigEdit(
   text: string,
   previousNames: Map<string, string>,
-  evaluators: JsonEditorEvaluatorOption[] | undefined
+  rules: JsonEditorRuleOption[] | undefined
 ): { offset: number; length: number; newText: string } | null {
   const tree = parseTree(text);
   if (!tree) return null;
 
   const conditionNode = findNodeAtLocation(tree, ['condition']);
-  const result = new Map<string, EvaluatorNodeInfo>();
-  collectEvaluatorNames(conditionNode, result);
+  const result = new Map<string, RuleNodeInfo>();
+  collectRuleNames(conditionNode, result);
 
   for (const [key, { name, configNode, nameNode }] of result) {
     const prevName = previousNames.get(key);
     if (prevName === undefined || prevName === name) continue;
 
-    const evaluator = evaluators?.find((e) => e.id === name);
-    if (!evaluator) continue;
+    const rule = rules?.find((e) => e.id === name);
+    if (!rule) continue;
 
-    const defaultConfig = buildDefaultConfig(evaluator.configSchema);
+    const defaultConfig = buildDefaultConfig(rule.configSchema);
     const configJson = JSON.stringify(defaultConfig, null, 2);
 
     if (configNode) {
@@ -1477,14 +1477,14 @@ export function getEmptyValueHints(
       pos.column
     );
 
-    const activeEvaluator = resolveActiveEvaluator(
+    const activeRule = resolveActiveRule(
       context,
       tree,
       location.path
     );
 
-    if (isEvaluatorNameLocation(location.path) && context.evaluators?.length) {
-      const names = context.evaluators.map((e) => e.id);
+    if (isRuleNameLocation(location.path) && context.rules?.length) {
+      const names = context.rules.map((e) => e.id);
       const display = names.slice(0, MAX_HINT_VALUES);
       const hint =
         display.join('  |  ') +
@@ -1503,7 +1503,7 @@ export function getEmptyValueHints(
 
     const schemaCursor = resolveSchemaAtJsonPath(
       context,
-      activeEvaluator,
+      activeRule,
       location.path
     );
     if (!schemaCursor.schema) continue;
@@ -1580,14 +1580,14 @@ export function setupJsonEditorLanguageSupport(
       const location = getLocation(text, offset);
       if (!location.path.length) return null;
 
-      const activeEvaluator = resolveActiveEvaluator(
+      const activeRule = resolveActiveRule(
         context,
         tree,
         location.path
       );
       const cursor = resolveSchemaAtJsonPath(
         context,
-        activeEvaluator,
+        activeRule,
         location.isAtPropertyKey ? location.path.slice(0, -1) : location.path
       );
 
@@ -1690,7 +1690,7 @@ export function setupJsonEditorLanguageSupport(
 
 const LEAF_CONDITION_TEMPLATE = {
   selector: { path: '*' },
-  evaluator: { name: '', config: {} },
+  rule: { name: '', config: {} },
 };
 
 function findConditionNodeAtOffset(
@@ -1752,11 +1752,11 @@ function findConditionAtOffset(
 
     // We're on this object node itself
     const hasSelector = !!findNodeAtLocation(node, ['selector']);
-    const hasEvaluator = !!findNodeAtLocation(node, ['evaluator']);
+    const hasRule = !!findNodeAtLocation(node, ['rule']);
     const hasAnd = !!findNodeAtLocation(node, ['and']);
     const hasOr = !!findNodeAtLocation(node, ['or']);
     const hasNot = !!findNodeAtLocation(node, ['not']);
-    const isLeaf = (hasSelector || hasEvaluator) && !hasAnd && !hasOr;
+    const isLeaf = (hasSelector || hasRule) && !hasAnd && !hasOr;
 
     return {
       node,

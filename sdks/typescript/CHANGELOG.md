@@ -7,25 +7,25 @@
 
 ### Bug Fixes
 
-* **evaluators:** configure Luna scorer API URL ([#237](https://github.com/agentcontrol/agent-control/issues/237)) ([fc516f0](https://github.com/agentcontrol/agent-control/commit/fc516f05dc8fbb71a35db2831e617e0a222e5f87))
+* **rules:** configure Luna scorer API URL ([#237](https://github.com/agentcontrol/agent-control/issues/237)) ([fc516f0](https://github.com/agentcontrol/agent-control/commit/fc516f05dc8fbb71a35db2831e617e0a222e5f87))
 * **server:** use plain psycopg with OS libpq ([#241](https://github.com/agentcontrol/agent-control/issues/241)) ([45a33a5](https://github.com/agentcontrol/agent-control/commit/45a33a5528cdf480bb0510488fd9312f38760d5e))
 
 ## [3.0.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.6.0...ts-sdk-v3.0.0) (2026-06-05)
 
 ### ⚠ BREAKING CHANGES
 
-* **evaluators:** remove Luna2 evaluator (#234)
+* **rules:** remove Luna2 rule (#234)
 
 ### Bug Fixes
 
-* **evaluators:** remove Luna2 evaluator ([#234](https://github.com/agentcontrol/agent-control/issues/234)) ([ccc4fc6](https://github.com/agentcontrol/agent-control/commit/ccc4fc6d4dc3228169d9db0178d14596349739f1))
+* **rules:** remove Luna2 rule ([#234](https://github.com/agentcontrol/agent-control/issues/234)) ([ccc4fc6](https://github.com/agentcontrol/agent-control/commit/ccc4fc6d4dc3228169d9db0178d14596349739f1))
 * **server:** harden auth upstream connection handling ([#235](https://github.com/agentcontrol/agent-control/issues/235)) ([16d0115](https://github.com/agentcontrol/agent-control/commit/16d0115a53289d34b92952210abe7b704ac9b10b))
 
 ## [2.6.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v2.5.0...ts-sdk-v2.6.0) (2026-05-28)
 
 ### Features
 
-* **evaluators:** add new lluna client ([#213](https://github.com/agentcontrol/agent-control/issues/213)) ([f65beb9](https://github.com/agentcontrol/agent-control/commit/f65beb9d14dca8248c35a620d47af3298f1fe5e7))
+* **rules:** add new lluna client ([#213](https://github.com/agentcontrol/agent-control/issues/213)) ([f65beb9](https://github.com/agentcontrol/agent-control/commit/f65beb9d14dca8248c35a620d47af3298f1fe5e7))
 * **sdk:** add otel support ([#177](https://github.com/agentcontrol/agent-control/issues/177)) ([9530368](https://github.com/agentcontrol/agent-control/commit/9530368ff7d609106db600715724ba9ee1dbcaff))
 * **sdk:** add runtime token auth ([#215](https://github.com/agentcontrol/agent-control/issues/215)) ([6cc0f38](https://github.com/agentcontrol/agent-control/commit/6cc0f38b89e3870f44aa46e508e29431f8713e0d))
 * **server:** add control clone-and-bind endpoint ([#229](https://github.com/agentcontrol/agent-control/issues/229)) ([1728bf9](https://github.com/agentcontrol/agent-control/commit/1728bf9a89d76cdb19732c3b87ce2c9a4382df4e))
@@ -61,7 +61,7 @@
 
 ### Features
 
-* **evaluators:** add built-in budget evaluator for per-agent cost tracking ([#144](https://github.com/agentcontrol/agent-control/issues/144)) ([d4ce113](https://github.com/agentcontrol/agent-control/commit/d4ce113488c42e47cbba9364f47a2905e4cc5b35)), closes [#130](https://github.com/agentcontrol/agent-control/issues/130)
+* **rules:** add built-in budget rule for per-agent cost tracking ([#144](https://github.com/agentcontrol/agent-control/issues/144)) ([d4ce113](https://github.com/agentcontrol/agent-control/commit/d4ce113488c42e47cbba9364f47a2905e4cc5b35)), closes [#130](https://github.com/agentcontrol/agent-control/issues/130)
 * **sdk:** add external sink ([#175](https://github.com/agentcontrol/agent-control/issues/175)) ([45f3645](https://github.com/agentcontrol/agent-control/commit/45f3645ae3a7815d2c59cfa6629f7d65906d093b))
 * **server:** Align condition and template depth limits ([#166](https://github.com/agentcontrol/agent-control/issues/166)) ([03f402e](https://github.com/agentcontrol/agent-control/commit/03f402e4ddf36697579f2e6a4d4a9d279cb39ce1))
 * **server:** Phase 0: add control version history and soft-delete unusable legacy controls ([#172](https://github.com/agentcontrol/agent-control/issues/172)) ([e5b2b33](https://github.com/agentcontrol/agent-control/commit/e5b2b33ce86cdfbd395d5ee03652ba4baabe23a2))
@@ -84,7 +84,7 @@
 
 ### Features
 
-* **evaluators:** add starts_with/ends_with mode to list evaluator ([#154](https://github.com/agentcontrol/agent-control/issues/154)) ([bf1f7d7](https://github.com/agentcontrol/agent-control/commit/bf1f7d7cf271a231a165699d44f726467b49bd50))
+* **rules:** add starts_with/ends_with mode to list rule ([#154](https://github.com/agentcontrol/agent-control/issues/154)) ([bf1f7d7](https://github.com/agentcontrol/agent-control/commit/bf1f7d7cf271a231a165699d44f726467b49bd50))
 * **sdk:** [Enterprise Integration]: Add provider agnostic traceing ([#145](https://github.com/agentcontrol/agent-control/issues/145)) ([f1ca27c](https://github.com/agentcontrol/agent-control/commit/f1ca27ccac5f6666f997c876598ef1bcbbae0b6d))
 * **sdk:** Add telemetry package to support sinks ([#164](https://github.com/agentcontrol/agent-control/issues/164)) ([2186ba1](https://github.com/agentcontrol/agent-control/commit/2186ba18bfd7f61d96d2af455f34a29addc7b125))
 * **sdk:** default merge events in SDK ([#155](https://github.com/agentcontrol/agent-control/issues/155)) ([5984a60](https://github.com/agentcontrol/agent-control/commit/5984a6065ebf63c638ab9249b15b20bdc43464cf))
@@ -99,7 +99,7 @@
 
 * **docs:** add explicit shutdown to quickstart example ([#149](https://github.com/agentcontrol/agent-control/issues/149)) ([b76014f](https://github.com/agentcontrol/agent-control/commit/b76014f1132218448b93169b3c6350f62bac49ac))
 * **sdk:** use sync shutdown flush fallback ([#150](https://github.com/agentcontrol/agent-control/issues/150)) ([90265ba](https://github.com/agentcontrol/agent-control/commit/90265ba79132d8a8669f92948cf73568eb38fd5a))
-* **server:**  remove unused evaluator config store ([#152](https://github.com/agentcontrol/agent-control/issues/152)) ([dea2873](https://github.com/agentcontrol/agent-control/commit/dea2873241004c9398909609d4b665808270290e))
+* **server:**  remove unused rule config store ([#152](https://github.com/agentcontrol/agent-control/issues/152)) ([dea2873](https://github.com/agentcontrol/agent-control/commit/dea2873241004c9398909609d4b665808270290e))
 * **server:** Omit null fields in control JSON editor ([#157](https://github.com/agentcontrol/agent-control/issues/157)) ([0aa2f3c](https://github.com/agentcontrol/agent-control/commit/0aa2f3c83fa8b74947a516025995ba1c49855e4e))
 * **server:** Update docker-compose.dev.yml to use different container name ([14d4c87](https://github.com/agentcontrol/agent-control/commit/14d4c87130bbfceac0576b383abbd67fd3b63ac2))
 * **ui:** improve edit control ux, no layout shift, consistent spacing ([#122](https://github.com/agentcontrol/agent-control/issues/122)) ([76d67b9](https://github.com/agentcontrol/agent-control/commit/76d67b9c99ff34497ccd38ec3b7a78f9c09f41d4))
@@ -125,7 +125,7 @@
 
 * **docs:** simplify main README quick start v2 ([#100](https://github.com/agentcontrol/agent-control/issues/100)) ([7701c65](https://github.com/agentcontrol/agent-control/commit/7701c65a49ad2a927b965122224e286784feb554))
 * **docs:** Update README.md to accurately mention Strands Agents SDK ([#105](https://github.com/agentcontrol/agent-control/issues/105)) ([84dfa57](https://github.com/agentcontrol/agent-control/commit/84dfa57edd0020da147942e06bff065384bdcead))
-* **evaluators:** add Cisco AI Defense evaluator and examples ([#60](https://github.com/agentcontrol/agent-control/issues/60)) ([52e2416](https://github.com/agentcontrol/agent-control/commit/52e241657103f90ba4a6a54fefd68836db36fd16))
+* **rules:** add Cisco AI Defense rule and examples ([#60](https://github.com/agentcontrol/agent-control/issues/60)) ([52e2416](https://github.com/agentcontrol/agent-control/commit/52e241657103f90ba4a6a54fefd68836db36fd16))
 * **sdk:** add Google ADK framework integration ([#83](https://github.com/agentcontrol/agent-control/issues/83)) ([f2b53ee](https://github.com/agentcontrol/agent-control/commit/f2b53eeb115bd9f178b00728604ec9f90211e283))
 * **server:** implement recursive control condition trees ([#115](https://github.com/agentcontrol/agent-control/issues/115)) ([2ff4c12](https://github.com/agentcontrol/agent-control/commit/2ff4c121723c1a304fecfd2e179e4b6f4c71af2b))
 
@@ -134,12 +134,12 @@
 * **docs:** clarify README quickstart flow ([#119](https://github.com/agentcontrol/agent-control/issues/119)) ([317c626](https://github.com/agentcontrol/agent-control/commit/317c6267812f4887bad8ca8742365c235809f60d))
 * **docs:** cleanup readme ([#66](https://github.com/agentcontrol/agent-control/issues/66)) ([eca0d6b](https://github.com/agentcontrol/agent-control/commit/eca0d6b621f29f61cb6a87d04aae95f6e51ec454))
 * **docs:** promote Google ADK plugin in README ([#99](https://github.com/agentcontrol/agent-control/issues/99)) ([f038aa4](https://github.com/agentcontrol/agent-control/commit/f038aa4cc048e331f59fa4bcc6df0c266f14953e))
-* **evaluators:** address Cisco AI Defense review issues ([#103](https://github.com/agentcontrol/agent-control/issues/103)) ([81da81b](https://github.com/agentcontrol/agent-control/commit/81da81bdab5b1a8d3ca4904b8cd9e4ed4843a5ba))
+* **rules:** address Cisco AI Defense review issues ([#103](https://github.com/agentcontrol/agent-control/issues/103)) ([81da81b](https://github.com/agentcontrol/agent-control/commit/81da81bdab5b1a8d3ca4904b8cd9e4ed4843a5ba))
 * **examples:** shut down SDK in short-lived demos ([#85](https://github.com/agentcontrol/agent-control/issues/85)) ([df43264](https://github.com/agentcontrol/agent-control/commit/df432644ac14d27d10442779532ed98a0263ea88))
 * **sdk:** fail closed on post-hook evaluation errors ([#114](https://github.com/agentcontrol/agent-control/issues/114)) ([67f8fc1](https://github.com/agentcontrol/agent-control/commit/67f8fc1a3dd81d7516f8961a2af7372bfd137681)), closes [#112](https://github.com/agentcontrol/agent-control/issues/112)
 * **sdk:** skip evaluation when no controls apply ([#124](https://github.com/agentcontrol/agent-control/issues/124)) ([d2cd9f9](https://github.com/agentcontrol/agent-control/commit/d2cd9f9aaa8a20df79e6b2bdd9a20263f510946e))
-* **server:** escape ILIKE pattern in evaluator-configs list endpoint ([#108](https://github.com/agentcontrol/agent-control/issues/108)) ([cb6e89f](https://github.com/agentcontrol/agent-control/commit/cb6e89f134bd8cea944bbb99419b3d4a26f98d50))
-* **server:** reject empty string list evaluator values ([#121](https://github.com/agentcontrol/agent-control/issues/121)) ([2c55d27](https://github.com/agentcontrol/agent-control/commit/2c55d27fc4e1b2b3235a2b672226e77f3365c1bf))
+* **server:** escape ILIKE pattern in rule-configs list endpoint ([#108](https://github.com/agentcontrol/agent-control/issues/108)) ([cb6e89f](https://github.com/agentcontrol/agent-control/commit/cb6e89f134bd8cea944bbb99419b3d4a26f98d50))
+* **server:** reject empty string list rule values ([#121](https://github.com/agentcontrol/agent-control/issues/121)) ([2c55d27](https://github.com/agentcontrol/agent-control/commit/2c55d27fc4e1b2b3235a2b672226e77f3365c1bf))
 * **server:** revert unwanted changes in server config ([#117](https://github.com/agentcontrol/agent-control/issues/117)) ([d92e168](https://github.com/agentcontrol/agent-control/commit/d92e168fe1c771f7f9824dc29d8d4b1a71501d8e))
 * **ui:** create flow - name trimming issue ([#93](https://github.com/agentcontrol/agent-control/issues/93)) ([1a9759d](https://github.com/agentcontrol/agent-control/commit/1a9759d0b187cf5ac3e846a61cb5b82ec9d5e2e0))
 
@@ -159,11 +159,11 @@
 
 * **docs:** add centered logo, header, and badges to README ([#92](https://github.com/agentcontrol/agent-control/issues/92)) ([39c3cbf](https://github.com/agentcontrol/agent-control/commit/39c3cbf02dc84770284463d3e8c755e2b511306c))
 * **docs:** Test all examples ([#16](https://github.com/agentcontrol/agent-control/issues/16)) ([39e95c2](https://github.com/agentcontrol/agent-control/commit/39e95c20dff4275fae9a44f305b0d1b354b3f24e))
-* **evaluators:** migrate sqlglot rs extra to sqlglot c ([#86](https://github.com/agentcontrol/agent-control/issues/86)) ([5e3e48c](https://github.com/agentcontrol/agent-control/commit/5e3e48cb67b80e6035c074fba6e42cc652194813))
+* **rules:** migrate sqlglot rs extra to sqlglot c ([#86](https://github.com/agentcontrol/agent-control/issues/86)) ([5e3e48c](https://github.com/agentcontrol/agent-control/commit/5e3e48cb67b80e6035c074fba6e42cc652194813))
 * **infra:** fix docker compose to make ui work ([#82](https://github.com/agentcontrol/agent-control/issues/82)) ([5edbb6b](https://github.com/agentcontrol/agent-control/commit/5edbb6b89801a8d4a9c333f5de93081a9ce0c593))
 * **infra:** Remove UI service from docker-compose.yml ([#91](https://github.com/agentcontrol/agent-control/issues/91)) ([330ef55](https://github.com/agentcontrol/agent-control/commit/330ef55b5e369a647476ead4456b1331c6e683c9))
-* **sdk): Revert "fix(sdk:** bundle evaluators in sdk wheel" ([#90](https://github.com/agentcontrol/agent-control/issues/90)) ([b516ea6](https://github.com/agentcontrol/agent-control/commit/b516ea6375257b2116dc68f5974ffd833fd0f783)), closes [agentcontrol/agent-control#89](https://github.com/agentcontrol/agent-control/issues/89)
-* **sdk:** bundle evaluators in sdk wheel ([#89](https://github.com/agentcontrol/agent-control/issues/89)) ([ea5889a](https://github.com/agentcontrol/agent-control/commit/ea5889a1de5cd79b7b4fd59b2a914ffb7294c158))
+* **sdk): Revert "fix(sdk:** bundle rules in sdk wheel" ([#90](https://github.com/agentcontrol/agent-control/issues/90)) ([b516ea6](https://github.com/agentcontrol/agent-control/commit/b516ea6375257b2116dc68f5974ffd833fd0f783)), closes [agentcontrol/agent-control#89](https://github.com/agentcontrol/agent-control/issues/89)
+* **sdk:** bundle rules in sdk wheel ([#89](https://github.com/agentcontrol/agent-control/issues/89)) ([ea5889a](https://github.com/agentcontrol/agent-control/commit/ea5889a1de5cd79b7b4fd59b2a914ffb7294c158))
 * **sdk:** fix observability events not reaching the server ([#63](https://github.com/agentcontrol/agent-control/issues/63)) ([70016db](https://github.com/agentcontrol/agent-control/commit/70016db3089b65a970d81f16b2ef01556857ce2e))
 * **ui:** name update being saved now ([#87](https://github.com/agentcontrol/agent-control/issues/87)) ([919672d](https://github.com/agentcontrol/agent-control/commit/919672dc882df4f68cc54bbea08094ee0bf0d7dd))
 * **ui:** Step name not getting saved ([#68](https://github.com/agentcontrol/agent-control/issues/68)) ([13abef9](https://github.com/agentcontrol/agent-control/commit/13abef990a6cff0b6cd4c705651a9d12f87de517))
@@ -181,43 +181,43 @@
 * **server:** Feature/56688 fix image bug (#48)
 * **sdk:** a bug in docker file (#46)
 * **server:** Feature/56688 fix docker and create bash (#45)
-* **evaluators:** Evaluator reorganization with new package structure
+* **rules:** Rule reorganization with new package structure
 
 Package Structure:
-- agent-control-evaluators (v3.0.0): core + regex, list, json, sql
-- agent-control-evaluator-galileo (v3.0.0): Luna2 evaluator
+- agent-control-rules (v3.0.0): core + regex, list, json, sql
+- agent-control-rule-galileo (v3.0.0): Luna2 rule
 
 Key Changes:
-- Entry points for evaluator discovery (agent_control.evaluators)
-- Dot notation for external evaluators (galileo.luna2 not galileo/luna2)
+- Entry points for rule discovery (agent_control.rules)
+- Dot notation for external rules (galileo.luna2 not galileo/luna2)
 - Dynamic __version__ via importlib.metadata
-- Server uses evaluators as runtime dep (no longer vendored)
+- Server uses rules as runtime dep (no longer vendored)
 - Release workflow publishes both packages to PyPI
 
 Bug Fixes:
-- JSON evaluator: field_constraints/field_patterns in extra-fields allow-list
-- SQL evaluator: LIMIT/OFFSET bypass fix
+- JSON rule: field_constraints/field_patterns in extra-fields allow-list
+- SQL rule: LIMIT/OFFSET bypass fix
 
 Migration:
-- Import: agent_control_evaluator_galileo.luna2 (not agent_control_evaluators.galileo_luna2)
-- DB: UPDATE controls SET evaluator.name replace('/', '.')
+- Import: agent_control_rule_galileo.luna2 (not agent_control_rules.galileo_luna2)
+- DB: UPDATE controls SET rule.name replace('/', '.')
 * **server:** add time-series stats and split API endpoints (#6)
-* **evaluators:** rename plugin to evaluator throughout  (#81)
+* **rules:** rename plugin to rule throughout  (#81)
 * **models:** simplify step model and schema (#70)
 
 ### Features
 
 * Add plugin auto-discovery via Python entry points ([#49](https://github.com/agentcontrol/agent-control/issues/49)) ([1521182](https://github.com/agentcontrol/agent-control/commit/1521182c3adbad9cd160c465bdc8fc7ebb6e14ae))
 * **docs:** add GitHub badges and CI coverage reporting ([#90](https://github.com/agentcontrol/agent-control/issues/90)) ([be1fa14](https://github.com/agentcontrol/agent-control/commit/be1fa140e4208993886f0afaef29b4a45fd27253))
-* **evaluators:** add required_column_values for multi-tenant SQL validation ([#30](https://github.com/agentcontrol/agent-control/issues/30)) ([532386c](https://github.com/agentcontrol/agent-control/commit/532386cb933e5d3f07c0939f41701500ef4f4007))
+* **rules:** add required_column_values for multi-tenant SQL validation ([#30](https://github.com/agentcontrol/agent-control/issues/30)) ([532386c](https://github.com/agentcontrol/agent-control/commit/532386cb933e5d3f07c0939f41701500ef4f4007))
 * **sdk-ts:** automate semantic-release for npm publishing ([#52](https://github.com/agentcontrol/agent-control/issues/52)) ([2b43958](https://github.com/agentcontrol/agent-control/commit/2b43958b6b2e850a044869f6f417194e1cb79d43))
 * **sdk:** Add PyPI packaging with semantic release ([#52](https://github.com/agentcontrol/agent-control/issues/52)) ([7c24f7f](https://github.com/agentcontrol/agent-control/commit/7c24f7f1ceee94b31098b3e3dd5ada1c16aa0f68))
 * **sdk:** Auto-populate init() steps from [@control](https://github.com/control)() decorators ([#23](https://github.com/agentcontrol/agent-control/issues/23)) ([dc0f2a4](https://github.com/agentcontrol/agent-control/commit/dc0f2a4061143a8e6de6a4a35677d229f14d03f9))
-* **sdk:** export ControlScope, ControlMatch, and EvaluatorResult models ([#18](https://github.com/agentcontrol/agent-control/issues/18)) ([0d49cad](https://github.com/agentcontrol/agent-control/commit/0d49cad9da5c9e76c32d652fadbc69cec698a611))
+* **sdk:** export ControlScope, ControlMatch, and RuleResult models ([#18](https://github.com/agentcontrol/agent-control/issues/18)) ([0d49cad](https://github.com/agentcontrol/agent-control/commit/0d49cad9da5c9e76c32d652fadbc69cec698a611))
 * **sdk:** Get Agent Controls from SDK Init ([#15](https://github.com/agentcontrol/agent-control/issues/15)) ([a485f93](https://github.com/agentcontrol/agent-control/commit/a485f93e15e49ddb975dee4bf4e24dfa3310d976))
 * **sdk:** Refresh controls in a background loop ([#43](https://github.com/agentcontrol/agent-control/issues/43)) ([03f826d](https://github.com/agentcontrol/agent-control/commit/03f826d3e02f844d81c1a70ae4ea621a1788f9c7))
 * **sdk:** ship TypeScript SDK with deterministic method naming ([#32](https://github.com/agentcontrol/agent-control/issues/32)) ([a76e9b0](https://github.com/agentcontrol/agent-control/commit/a76e9b005a99b3d23eca9d77e498c3c6f0476559))
-* **server:** add evaluator config store ([#78](https://github.com/agentcontrol/agent-control/issues/78)) ([cc14aa6](https://github.com/agentcontrol/agent-control/commit/cc14aa68391fd7fd4a187364a0a9a9fe712129fe))
+* **server:** add rule config store ([#78](https://github.com/agentcontrol/agent-control/issues/78)) ([cc14aa6](https://github.com/agentcontrol/agent-control/commit/cc14aa68391fd7fd4a187364a0a9a9fe712129fe))
 * **server:** add initAgent conflict_mode overwrite mode with SDK defaults ([#40](https://github.com/agentcontrol/agent-control/issues/40)) ([f3ed2b8](https://github.com/agentcontrol/agent-control/commit/f3ed2b8a3207ff8fca324e0d01bdc33d768ce137))
 * **server:** Add observability system for control execution tracking ([#44](https://github.com/agentcontrol/agent-control/issues/44)) ([fd0bddc](https://github.com/agentcontrol/agent-control/commit/fd0bddce3a9aa53472edb13e1c8fee6305571e98))
 * **server:** add prometheus metrics for endpoints ([#68](https://github.com/agentcontrol/agent-control/issues/68)) ([775612c](https://github.com/agentcontrol/agent-control/commit/775612c2ebe4895760c326bb8e23ee29a5101247))
@@ -239,7 +239,7 @@ Migration:
 * **ci:** Enable pr title on prs ([#56](https://github.com/agentcontrol/agent-control/issues/56)) ([3d8b5fe](https://github.com/agentcontrol/agent-control/commit/3d8b5fe8c21f1ffd7fd6f6bf4d4f4eaebbad9106))
 * **ci:** Fix release ([#11](https://github.com/agentcontrol/agent-control/issues/11)) ([9dd3dd7](https://github.com/agentcontrol/agent-control/commit/9dd3dd795227f1d1db62e5ce2e8b336fe1c909f1))
 * **ci:** Use galileo-automation bot for releases ([#57](https://github.com/agentcontrol/agent-control/issues/57)) ([bc8eea0](https://github.com/agentcontrol/agent-control/commit/bc8eea088c7e347daf8bc34eee528129ddb61d7f))
-* **docs:** Add Example for Evaluator Extension ([#3](https://github.com/agentcontrol/agent-control/issues/3)) ([c2a70b3](https://github.com/agentcontrol/agent-control/commit/c2a70b335fb55481ad63b367ca87ba46de085343))
+* **docs:** Add Example for Rule Extension ([#3](https://github.com/agentcontrol/agent-control/issues/3)) ([c2a70b3](https://github.com/agentcontrol/agent-control/commit/c2a70b335fb55481ad63b367ca87ba46de085343))
 * **docs:** add setup script ([#49](https://github.com/agentcontrol/agent-control/issues/49)) ([7a212c3](https://github.com/agentcontrol/agent-control/commit/7a212c3d182ba3e07e56b0131957315b788f553a))
 * **docs:** Clean up Protect  ([#76](https://github.com/agentcontrol/agent-control/issues/76)) ([99c16fd](https://github.com/agentcontrol/agent-control/commit/99c16fd8ed6620363f919818ebe4083f1489ba1c))
 * **docs:** Fix Examples for LangGraph ([#64](https://github.com/agentcontrol/agent-control/issues/64)) ([23b30ae](https://github.com/agentcontrol/agent-control/commit/23b30ae1ddc5b878d8375b4f39a6617e7a0ae604))
@@ -249,9 +249,9 @@ Migration:
 * **docs:** Update readme  ([#37](https://github.com/agentcontrol/agent-control/issues/37)) ([7531d83](https://github.com/agentcontrol/agent-control/commit/7531d8309d4755d9ceddf4a2d840c147b36a6e14))
 * **docs:** Update README ([#2](https://github.com/agentcontrol/agent-control/issues/2)) ([379bb15](https://github.com/agentcontrol/agent-control/commit/379bb158700b93aa549ef00eda57ccc2f88cb71f))
 * **examples:** Control sets cleanup with signed ([#65](https://github.com/agentcontrol/agent-control/issues/65)) ([af7b5fb](https://github.com/agentcontrol/agent-control/commit/af7b5fb44fe800a98c617ee70ae258576e146115))
-* **examples:** Update crew ai example to use evaluator ([#93](https://github.com/agentcontrol/agent-control/issues/93)) ([1c65084](https://github.com/agentcontrol/agent-control/commit/1c6508434860ed5bb56c622a721197c5a8f7ad4e))
+* **examples:** Update crew ai example to use rule ([#93](https://github.com/agentcontrol/agent-control/issues/93)) ([1c65084](https://github.com/agentcontrol/agent-control/commit/1c6508434860ed5bb56c622a721197c5a8f7ad4e))
 * **infra:** Add plugins directory to Dockerfile ([#58](https://github.com/agentcontrol/agent-control/issues/58)) ([171d459](https://github.com/agentcontrol/agent-control/commit/171d459377aa294087f0af1561345a5e010120cb))
-* **infra:** install engine/evaluators in server image ([#14](https://github.com/agentcontrol/agent-control/issues/14)) ([d5ae157](https://github.com/agentcontrol/agent-control/commit/d5ae1571071afd34a00b376e650d9e1ce02f0b2d))
+* **infra:** install engine/rules in server image ([#14](https://github.com/agentcontrol/agent-control/issues/14)) ([d5ae157](https://github.com/agentcontrol/agent-control/commit/d5ae1571071afd34a00b376e650d9e1ce02f0b2d))
 * **models:** use StrEnum for error enums ([#12](https://github.com/agentcontrol/agent-control/issues/12)) ([3f41c9f](https://github.com/agentcontrol/agent-control/commit/3f41c9f974ba5afe873f30197aba7f2ff142f616))
 * **sdk-ts:** add conventional commits preset dependency ([#55](https://github.com/agentcontrol/agent-control/issues/55)) ([540fe9d](https://github.com/agentcontrol/agent-control/commit/540fe9df8fc69f223218ef2defbcc662ab3a902a))
 * **sdk-ts:** export npm token for semantic-release npm auth ([#54](https://github.com/agentcontrol/agent-control/issues/54)) ([1b6b993](https://github.com/agentcontrol/agent-control/commit/1b6b993eaed8c63ea4e61b21bc4fb27accaa2a49))
@@ -261,7 +261,7 @@ Migration:
 * **sdk:** emit observability events for SDK-evaluated controls and fix non_matches propagation ([#24](https://github.com/agentcontrol/agent-control/issues/24)) ([6a9da69](https://github.com/agentcontrol/agent-control/commit/6a9da69aeb89a0a0a207f05fcbb03f1260faa40e))
 * **sdk:** enforce UUID agent IDs ([#9](https://github.com/agentcontrol/agent-control/issues/9)) ([5ccdbd0](https://github.com/agentcontrol/agent-control/commit/5ccdbd04c73b50e86362ca3e4204cb0e84fa1b5c))
 * **sdk:** Fix logging  ([#77](https://github.com/agentcontrol/agent-control/issues/77)) ([b1f078c](https://github.com/agentcontrol/agent-control/commit/b1f078c52c29ac048a9bcbea09252786e842acbd))
-* **sdk:** plugin to evaluator.. agent_protect to agent_control ([#88](https://github.com/agentcontrol/agent-control/issues/88)) ([fc9b088](https://github.com/agentcontrol/agent-control/commit/fc9b088fcd091132a1e38deae372b73fc2834beb))
+* **sdk:** plugin to rule.. agent_protect to agent_control ([#88](https://github.com/agentcontrol/agent-control/issues/88)) ([fc9b088](https://github.com/agentcontrol/agent-control/commit/fc9b088fcd091132a1e38deae372b73fc2834beb))
 * **server:** enforce public-safe API error responses ([#20](https://github.com/agentcontrol/agent-control/issues/20)) ([e50d817](https://github.com/agentcontrol/agent-control/commit/e50d817e2b81347c9143dcae8d461e7e3e581fd9))
 * **server:** Feature/56688 fix docker and create bash ([#45](https://github.com/agentcontrol/agent-control/issues/45)) ([7277e27](https://github.com/agentcontrol/agent-control/commit/7277e2730c16e717ad5ba8248b946252b22e69cb))
 * **server:** Feature/56688 fix image bug ([#48](https://github.com/agentcontrol/agent-control/issues/48)) ([71e6b44](https://github.com/agentcontrol/agent-control/commit/71e6b44f3cdee26c7a97a2cfc0ef6223e52bdb3a))
@@ -275,8 +275,8 @@ Migration:
 
 ### Code Refactoring
 
-* **evaluators:** rename plugin to evaluator throughout  ([#81](https://github.com/agentcontrol/agent-control/issues/81)) ([0134682](https://github.com/agentcontrol/agent-control/commit/0134682c1d0f167528d7267507dbcf3a1e7b3192))
-* **evaluators:** split into builtin + extra packages for PyPI ([#5](https://github.com/agentcontrol/agent-control/issues/5)) ([0e0a78a](https://github.com/agentcontrol/agent-control/commit/0e0a78a9fa9c39a5709299c2e3d77c0609110280))
+* **rules:** rename plugin to rule throughout  ([#81](https://github.com/agentcontrol/agent-control/issues/81)) ([0134682](https://github.com/agentcontrol/agent-control/commit/0134682c1d0f167528d7267507dbcf3a1e7b3192))
+* **rules:** split into builtin + extra packages for PyPI ([#5](https://github.com/agentcontrol/agent-control/issues/5)) ([0e0a78a](https://github.com/agentcontrol/agent-control/commit/0e0a78a9fa9c39a5709299c2e3d77c0609110280))
 * **models:** simplify step model and schema ([#70](https://github.com/agentcontrol/agent-control/issues/70)) ([4c1d637](https://github.com/agentcontrol/agent-control/commit/4c1d6378a4a05edc44f02fa78c1698b9203da81b))
 
 # Changelog

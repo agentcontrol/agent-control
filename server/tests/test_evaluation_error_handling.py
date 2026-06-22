@@ -1,4 +1,4 @@
-"""End-to-end tests for evaluator error handling."""
+"""End-to-end tests for rule error handling."""
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -6,13 +6,13 @@ from agent_control_models import (
     ControlMatch,
     EvaluationRequest,
     EvaluationResponse,
-    EvaluatorResult,
+    RuleResult,
     Step,
 )
 from agent_control_server.db import async_engine
 from agent_control_server.endpoints.evaluation import (
-    SAFE_EVALUATOR_ERROR,
-    SAFE_EVALUATOR_TIMEOUT_ERROR,
+    SAFE_RULE_ERROR,
+    SAFE_RULE_TIMEOUT_ERROR,
     _sanitize_control_match,
 )
 from fastapi.testclient import TestClient
@@ -20,52 +20,52 @@ from fastapi.testclient import TestClient
 from .utils import create_and_assign_policy
 
 
-def test_evaluation_with_agent_scoped_evaluator_missing(client: TestClient):
-    """Test that referencing a missing agent evaluator fails during control creation.
+def test_evaluation_with_agent_scoped_rule_missing(client: TestClient):
+    """Test that referencing a missing agent rule fails during control creation.
 
-    Given: A control referencing agent:evaluator that doesn't exist
+    Given: A control referencing agent:rule that doesn't exist
     When: Creating the control
-    Then: Returns 422 EVALUATOR_NOT_FOUND
+    Then: Returns 422 RULE_NOT_FOUND
     """
-    # Given: an agent without evaluators
+    # Given: an agent without rules
     agent_name = f"testagent-{uuid.uuid4().hex[:12]}"
     client.post("/api/v1/agents/initAgent", json={
         "agent": {
             "agent_name": agent_name
         },
         "steps": [],
-        "evaluators": []
+        "rules": []
     })
 
-    # And: a control referencing a non-existent agent evaluator
+    # And: a control referencing a non-existent agent rule
     control_data = {
         "description": "Test control",
         "enabled": True,
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {
-            "name": f"{agent_name}:missing-evaluator",
+        "rule": {
+            "name": f"{agent_name}:missing-rule",
             "config": {}
         },
         "action": {"decision": "deny"}
     }
 
-    # When: creating the control with a missing agent-scoped evaluator
+    # When: creating the control with a missing agent-scoped rule
     set_resp = client.put(
         "/api/v1/controls",
         json={"name": f"control-{uuid.uuid4().hex[:8]}", "data": control_data},
     )
 
-    # Then: the missing evaluator is surfaced deterministically
+    # Then: the missing rule is surfaced deterministically
     assert set_resp.status_code == 422
-    assert set_resp.json()["error_code"] == "EVALUATOR_NOT_FOUND"
+    assert set_resp.json()["error_code"] == "RULE_NOT_FOUND"
 
 
 def test_evaluation_control_with_invalid_config_caught_early(client: TestClient):
-    """Test that invalid evaluator config is caught at control creation.
+    """Test that invalid rule config is caught at control creation.
 
-    Given: A control with invalid config for an evaluator
+    Given: A control with invalid config for a rule
     When: Setting control data
     Then: Returns 422 with validation error
     """
@@ -76,7 +76,7 @@ def test_evaluation_control_with_invalid_config_caught_early(client: TestClient)
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {}  # Missing required 'pattern' field
         },
@@ -93,12 +93,12 @@ def test_evaluation_control_with_invalid_config_caught_early(client: TestClient)
     assert "pattern" in set_resp.text.lower() or "required" in set_resp.text.lower()
 
 
-def test_evaluation_errors_field_populated_on_evaluator_failure(
+def test_evaluation_errors_field_populated_on_rule_failure(
     client: TestClient, monkeypatch
 ):
-    """Test that errors field is populated when evaluator fails at runtime.
+    """Test that errors field is populated when rule fails at runtime.
 
-    Given: A valid control with an evaluator that crashes during evaluation
+    Given: A valid control with a rule that crashes during evaluation
     When: Evaluation is requested
     Then: Response has errors field populated and is_safe=False (for deny)
     """
@@ -109,7 +109,7 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": "test"}
         },
@@ -117,18 +117,18 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     }
     agent_name, control_name = create_and_assign_policy(client, control_data)
 
-    # And: an evaluator instance that throws during evaluation
-    mock_evaluator = MagicMock()
-    mock_evaluator.evaluate = AsyncMock(side_effect=RuntimeError("Simulated evaluator crash"))
-    mock_evaluator.get_timeout_seconds = MagicMock(return_value=30.0)
+    # And: a rule instance that throws during evaluation
+    mock_rule = MagicMock()
+    mock_rule.evaluate = AsyncMock(side_effect=RuntimeError("Simulated rule crash"))
+    mock_rule.get_timeout_seconds = MagicMock(return_value=30.0)
 
     # Patch where it's used (in core module), not where it's defined
     import agent_control_engine.core as core_module
 
-    def mock_get_evaluator_instance(config):
-        return mock_evaluator
+    def mock_get_rule_instance(config):
+        return mock_rule
 
-    monkeypatch.setattr(core_module, "get_evaluator_instance", mock_get_evaluator_instance)
+    monkeypatch.setattr(core_module, "get_rule_instance", mock_get_rule_instance)
 
     # When: sending an evaluation request
     payload = Step(type="llm", name="test-step", input="test content", output=None)
@@ -155,15 +155,15 @@ def test_evaluation_errors_field_populated_on_evaluator_failure(
     assert data["errors"][0]["control_name"] == control_name
     assert (
         data["errors"][0]["result"]["error"]
-        == "Evaluation failed due to an internal evaluator error."
+        == "Evaluation failed due to an internal rule error."
     )
     assert "RuntimeError" not in data["errors"][0]["result"]["error"]
-    assert "Simulated evaluator crash" not in data["errors"][0]["result"]["error"]
+    assert "Simulated rule crash" not in data["errors"][0]["result"]["error"]
     condition_trace = data["errors"][0]["result"]["metadata"]["condition_trace"]
-    assert condition_trace["error"] == SAFE_EVALUATOR_ERROR
-    assert condition_trace["message"] == SAFE_EVALUATOR_ERROR
+    assert condition_trace["error"] == SAFE_RULE_ERROR
+    assert condition_trace["message"] == SAFE_RULE_ERROR
     assert "RuntimeError" not in condition_trace["error"]
-    assert "Simulated evaluator crash" not in condition_trace["message"]
+    assert "Simulated rule crash" not in condition_trace["message"]
 
     # And: no matches are returned because evaluation failed
     assert data["matches"] is None or len(data["matches"]) == 0
@@ -180,7 +180,7 @@ def test_evaluation_response_is_sanitized_without_server_side_observability(
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": "test"}
         },
@@ -188,16 +188,16 @@ def test_evaluation_response_is_sanitized_without_server_side_observability(
     }
     agent_name, control_name = create_and_assign_policy(client, control_data)
 
-    mock_evaluator = MagicMock()
-    mock_evaluator.evaluate = AsyncMock(side_effect=RuntimeError("Simulated evaluator crash"))
-    mock_evaluator.get_timeout_seconds = MagicMock(return_value=30.0)
+    mock_rule = MagicMock()
+    mock_rule.evaluate = AsyncMock(side_effect=RuntimeError("Simulated rule crash"))
+    mock_rule.get_timeout_seconds = MagicMock(return_value=30.0)
 
     import agent_control_engine.core as core_module
 
     monkeypatch.setattr(
         core_module,
-        "get_evaluator_instance",
-        lambda _config: mock_evaluator,
+        "get_rule_instance",
+        lambda _config: mock_rule,
     )
 
     payload = Step(type="llm", name="test-step", input="test content", output=None)
@@ -213,16 +213,16 @@ def test_evaluation_response_is_sanitized_without_server_side_observability(
     assert data["errors"] is not None
     assert len(data["errors"]) == 1
     assert data["errors"][0]["control_name"] == control_name
-    assert data["errors"][0]["result"]["error"] == SAFE_EVALUATOR_ERROR
+    assert data["errors"][0]["result"]["error"] == SAFE_RULE_ERROR
 
 
 def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
-    # Given: a control match whose nested condition trace contains raw evaluator errors
+    # Given: a control match whose nested condition trace contains raw rule errors
     match = ControlMatch(
         control_id=1,
         control_name="nested-trace",
         action="deny",
-        result=EvaluatorResult(
+        result=RuleResult(
             matched=False,
             confidence=0.0,
             error="RuntimeError: nested boom",
@@ -247,10 +247,10 @@ def test_sanitize_control_match_redacts_nested_condition_trace_errors() -> None:
     child_trace = sanitized.result.metadata["condition_trace"]["children"][0]
 
     # Then: both the top-level result and nested trace are redacted
-    assert sanitized.result.error == SAFE_EVALUATOR_ERROR
-    assert sanitized.result.message == SAFE_EVALUATOR_ERROR
-    assert child_trace["error"] == SAFE_EVALUATOR_ERROR
-    assert child_trace["message"] == SAFE_EVALUATOR_ERROR
+    assert sanitized.result.error == SAFE_RULE_ERROR
+    assert sanitized.result.message == SAFE_RULE_ERROR
+    assert child_trace["error"] == SAFE_RULE_ERROR
+    assert child_trace["message"] == SAFE_RULE_ERROR
 
 
 def test_sanitize_control_match_redacts_nested_condition_trace_timeouts() -> None:
@@ -259,21 +259,21 @@ def test_sanitize_control_match_redacts_nested_condition_trace_timeouts() -> Non
         control_id=1,
         control_name="nested-timeout",
         action="deny",
-        result=EvaluatorResult(
+        result=RuleResult(
             matched=False,
             confidence=0.0,
-            error="TimeoutError: Evaluator exceeded 30s timeout",
-            message="Condition evaluation failed: TimeoutError: Evaluator exceeded 30s timeout",
+            error="TimeoutError: Rule exceeded 30s timeout",
+            message="Condition evaluation failed: TimeoutError: Rule exceeded 30s timeout",
             metadata={
                 "condition_trace": {
                     "type": "or",
                     "children": [
                         {
                             "type": "leaf",
-                            "error": "TimeoutError: Evaluator exceeded 30s timeout",
+                            "error": "TimeoutError: Rule exceeded 30s timeout",
                             "message": (
                                 "Evaluation failed: TimeoutError: "
-                                "Evaluator exceeded 30s timeout"
+                                "Rule exceeded 30s timeout"
                             ),
                         }
                     ],
@@ -287,10 +287,10 @@ def test_sanitize_control_match_redacts_nested_condition_trace_timeouts() -> Non
     child_trace = sanitized.result.metadata["condition_trace"]["children"][0]
 
     # Then: both the top-level result and nested trace use the safe timeout text
-    assert sanitized.result.error == SAFE_EVALUATOR_TIMEOUT_ERROR
-    assert sanitized.result.message == SAFE_EVALUATOR_TIMEOUT_ERROR
-    assert child_trace["error"] == SAFE_EVALUATOR_TIMEOUT_ERROR
-    assert child_trace["message"] == SAFE_EVALUATOR_TIMEOUT_ERROR
+    assert sanitized.result.error == SAFE_RULE_TIMEOUT_ERROR
+    assert sanitized.result.message == SAFE_RULE_TIMEOUT_ERROR
+    assert child_trace["error"] == SAFE_RULE_TIMEOUT_ERROR
+    assert child_trace["message"] == SAFE_RULE_TIMEOUT_ERROR
 
 
 def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypatch) -> None:
@@ -302,7 +302,7 @@ def test_evaluation_engine_value_error_returns_422(client: TestClient, monkeypat
         "execution": "server",
         "scope": {"step_types": ["llm"], "stages": ["pre"]},
         "selector": {"path": "input"},
-        "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+        "rule": {"name": "regex", "config": {"pattern": "test"}},
         "action": {"decision": "deny"},
     }
     agent_name, _ = create_and_assign_policy(client, control_data)
@@ -332,7 +332,7 @@ def test_evaluation_releases_db_connection_before_engine_processing(
     client: TestClient,
     monkeypatch,
 ) -> None:
-    """Evaluation should not hold a DB connection while evaluator work runs."""
+    """Evaluation should not hold a DB connection while rule work runs."""
     agent_name, _ = create_and_assign_policy(client)
     checked_out_counts: list[int] = []
 

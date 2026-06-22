@@ -50,7 +50,7 @@ export function ControlStoreModal({
   const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
   const {
     submodal,
-    evaluator: _evaluator,
+    rule: _rule,
     controlId,
     openModal,
     closeSubmodal,
@@ -194,7 +194,7 @@ export function ControlStoreModal({
     closeModal();
   };
 
-  // Build a draft control for the edit modal with full evaluator config (clone: append -copy to name)
+  // Build a draft control for the edit modal with full rule config (clone: append -copy to name)
   const draftControl = useMemo(() => {
     if (!selectedControl) return null;
     const { summary, definition } = selectedControl;

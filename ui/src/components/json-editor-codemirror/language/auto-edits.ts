@@ -5,7 +5,7 @@ import {
 } from 'jsonc-parser';
 
 import type {
-  JsonEditorEvaluatorOption,
+  JsonEditorRuleOption,
   JsonEditorMode,
 } from '@/core/page-components/agent-detail/modals/edit-control/types';
 
@@ -20,22 +20,22 @@ import {
 } from './schema';
 import type { JsonEditorTextEdit } from './types';
 
-type EvaluatorNodeInfo = {
+type RuleNodeInfo = {
   name: string;
   nameNode: JsonNode;
   configNode: JsonNode | undefined;
 };
 
-function collectEvaluatorNames(
+function collectRuleNames(
   node: JsonNode | undefined,
-  result: Map<string, EvaluatorNodeInfo>
+  result: Map<string, RuleNodeInfo>
 ) {
   if (!node || node.type !== 'object' || !node.children) return;
 
-  const evaluatorNode = findNodeAtLocation(node, ['evaluator']);
-  if (evaluatorNode?.type === 'object') {
-    const nameNode = findNodeAtLocation(evaluatorNode, ['name']);
-    const configNode = findNodeAtLocation(evaluatorNode, ['config']);
+  const ruleNode = findNodeAtLocation(node, ['rule']);
+  if (ruleNode?.type === 'object') {
+    const nameNode = findNodeAtLocation(ruleNode, ['name']);
+    const configNode = findNodeAtLocation(ruleNode, ['config']);
     if (nameNode && typeof nameNode.value === 'string') {
       result.set(`${nameNode.offset}`, {
         name: nameNode.value,
@@ -49,20 +49,20 @@ function collectEvaluatorNames(
     const arrayNode = findNodeAtLocation(node, [key]);
     if (arrayNode?.type === 'array' && arrayNode.children) {
       for (const child of arrayNode.children)
-        collectEvaluatorNames(child, result);
+        collectRuleNames(child, result);
     }
   }
 
   const notNode = findNodeAtLocation(node, ['not']);
-  if (notNode?.type === 'object') collectEvaluatorNames(notNode, result);
+  if (notNode?.type === 'object') collectRuleNames(notNode, result);
 }
 
-export function extractEvaluatorNames(text: string): Map<string, string> {
+export function extractRuleNames(text: string): Map<string, string> {
   const tree = parseTree(text);
   if (!tree) return new Map();
   const conditionNode = findNodeAtLocation(tree, ['condition']);
-  const result = new Map<string, EvaluatorNodeInfo>();
-  collectEvaluatorNames(conditionNode, result);
+  const result = new Map<string, RuleNodeInfo>();
+  collectRuleNames(conditionNode, result);
   const names = new Map<string, string>();
   for (const [key, info] of result) names.set(key, info.name);
   return names;
@@ -111,24 +111,24 @@ function buildDefaultConfig(configSchema: unknown): Record<string, unknown> {
   return config;
 }
 
-function findEvaluatorConfigEdit(
+function findRuleConfigEdit(
   text: string,
   previousNames: Map<string, string>,
-  evaluators: JsonEditorEvaluatorOption[] | undefined
+  rules: JsonEditorRuleOption[] | undefined
 ): JsonEditorTextEdit | null {
   const tree = parseTree(text);
   if (!tree) return null;
   const conditionNode = findNodeAtLocation(tree, ['condition']);
-  const result = new Map<string, EvaluatorNodeInfo>();
-  collectEvaluatorNames(conditionNode, result);
+  const result = new Map<string, RuleNodeInfo>();
+  collectRuleNames(conditionNode, result);
 
   for (const [key, { name, configNode, nameNode }] of result) {
     const prevName = previousNames.get(key);
     if (prevName === undefined || prevName === name) continue;
-    const evaluator = evaluators?.find((item) => item.id === name);
-    if (!evaluator) continue;
+    const rule = rules?.find((item) => item.id === name);
+    if (!rule) continue;
     const configJson = JSON.stringify(
-      buildDefaultConfig(evaluator.configSchema),
+      buildDefaultConfig(rule.configSchema),
       null,
       2
     );
@@ -196,17 +196,17 @@ function findSteeringContextEdit(
 
 export function computeAutoEdit(
   text: string,
-  previousEvaluatorNames: Map<string, string>,
+  previousRuleNames: Map<string, string>,
   previousDecision: string | null,
   mode: JsonEditorMode,
-  evaluators: JsonEditorEvaluatorOption[] | undefined
+  rules: JsonEditorRuleOption[] | undefined
 ): {
   edit: JsonEditorTextEdit | null;
-  editKind: 'evaluator-config' | 'steering-context' | null;
-  nextEvaluatorNames: Map<string, string>;
+  editKind: 'rule-config' | 'steering-context' | null;
+  nextRuleNames: Map<string, string>;
   nextDecision: string | null;
 } {
-  const nextEvaluatorNames = extractEvaluatorNames(text);
+  const nextRuleNames = extractRuleNames(text);
   let nextDecision: string | null = previousDecision;
   try {
     const tree = parseTree(text);
@@ -219,19 +219,19 @@ export function computeAutoEdit(
   }
 
   if (mode !== 'control') {
-    return { edit: null, editKind: null, nextEvaluatorNames, nextDecision };
+    return { edit: null, editKind: null, nextRuleNames, nextDecision };
   }
 
-  const evaluatorEdit = findEvaluatorConfigEdit(
+  const ruleEdit = findRuleConfigEdit(
     text,
-    previousEvaluatorNames,
-    evaluators
+    previousRuleNames,
+    rules
   );
-  if (evaluatorEdit) {
+  if (ruleEdit) {
     return {
-      edit: evaluatorEdit,
-      editKind: 'evaluator-config',
-      nextEvaluatorNames,
+      edit: ruleEdit,
+      editKind: 'rule-config',
+      nextRuleNames,
       nextDecision,
     };
   }
@@ -241,12 +241,12 @@ export function computeAutoEdit(
     return {
       edit: steeringEdit,
       editKind: 'steering-context',
-      nextEvaluatorNames,
+      nextRuleNames,
       nextDecision,
     };
   }
 
-  return { edit: null, editKind: null, nextEvaluatorNames, nextDecision };
+  return { edit: null, editKind: null, nextRuleNames, nextDecision };
 }
 
 export function applyTextEdit(text: string, edit: JsonEditorTextEdit): string {

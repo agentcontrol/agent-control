@@ -2,11 +2,11 @@
 Setup script for Content Publishing Flow controls.
 
 Creates Agent Control controls for each stage of the CrewAI Flow pipeline:
-- Intake: JSON evaluator to validate required fields
-- Research: LIST evaluator to block banned sources
-- Fact-Check: REGEX evaluator to flag unverified claims
-- Draft: REGEX evaluator for PII, LIST evaluator for banned topics
-- Compliance: JSON evaluator for legal review fields
+- Intake: JSON rule to validate required fields
+- Research: LIST rule to block banned sources
+- Fact-Check: REGEX rule to flag unverified claims
+- Draft: REGEX rule for PII, LIST rule for banned topics
+- Compliance: JSON rule for legal review fields
 - Editor: REGEX for PII cleanup (executive summary check is client-side)
 - Human Review: STEER action for manager approval on internal memos
 
@@ -98,7 +98,7 @@ async def setup_publishing_controls():
         control_ids: list[tuple[int, str]] = []
 
         # ------------------------------------------------------------------
-        # INTAKE STAGE: JSON evaluator - require topic, audience, content_type
+        # INTAKE STAGE: JSON rule - require topic, audience, content_type
         # ------------------------------------------------------------------
         intake_validation = {
             "description": "Validate content request has required fields (topic, audience, content_type)",
@@ -113,7 +113,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "input.request",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "json",
                     "config": {
                         "required_fields": ["topic", "audience", "content_type"],
@@ -126,7 +126,7 @@ async def setup_publishing_controls():
         control_ids.append((cid, "flow-intake-validation"))
 
         # ------------------------------------------------------------------
-        # RESEARCH STAGE: LIST evaluator - block banned sources
+        # RESEARCH STAGE: LIST rule - block banned sources
         # ------------------------------------------------------------------
         banned_sources = {
             "description": "Block research that references banned or unreliable sources",
@@ -141,7 +141,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "output",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "list",
                     "config": {
                         "values": [
@@ -163,7 +163,7 @@ async def setup_publishing_controls():
         control_ids.append((cid, "flow-research-banned-sources"))
 
         # ------------------------------------------------------------------
-        # FACT-CHECK STAGE: REGEX evaluator - flag unverified claims/URLs
+        # FACT-CHECK STAGE: REGEX rule - flag unverified claims/URLs
         # ------------------------------------------------------------------
         unverified_claims = {
             "description": "Flag fact-check results that contain unverified claim markers",
@@ -178,7 +178,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "output",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": (
@@ -196,7 +196,7 @@ async def setup_publishing_controls():
         control_ids.append((cid, "flow-factcheck-unverified"))
 
         # ------------------------------------------------------------------
-        # DRAFT STAGE: REGEX evaluator - block PII in draft content
+        # DRAFT STAGE: REGEX rule - block PII in draft content
         # ------------------------------------------------------------------
         draft_pii = {
             "description": "Block drafts containing PII (SSN, email, phone)",
@@ -211,7 +211,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "output",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": (
@@ -230,7 +230,7 @@ async def setup_publishing_controls():
         control_ids.append((cid, "flow-draft-pii-block"))
 
         # ------------------------------------------------------------------
-        # DRAFT STAGE: LIST evaluator - block banned topics
+        # DRAFT STAGE: LIST rule - block banned topics
         # ------------------------------------------------------------------
         banned_topics = {
             "description": "Block drafts that contain banned or restricted topics",
@@ -245,7 +245,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "output",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "list",
                     "config": {
                         "values": [
@@ -267,7 +267,7 @@ async def setup_publishing_controls():
         control_ids.append((cid, "flow-draft-banned-topics"))
 
         # ------------------------------------------------------------------
-        # COMPLIANCE STAGE: JSON evaluator - require disclaimer + legal_reviewed
+        # COMPLIANCE STAGE: JSON rule - require disclaimer + legal_reviewed
         # ------------------------------------------------------------------
         legal_review = {
             "description": "Require disclaimer and legal_reviewed=true in compliance output",
@@ -282,7 +282,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "output",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "json",
                     "config": {
                         "required_fields": ["disclaimer", "legal_reviewed"],
@@ -295,7 +295,7 @@ async def setup_publishing_controls():
         control_ids.append((cid, "flow-compliance-legal-review"))
 
         # ------------------------------------------------------------------
-        # EDITOR STAGE: REGEX evaluator - clean PII from edited content
+        # EDITOR STAGE: REGEX rule - clean PII from edited content
         # ------------------------------------------------------------------
         editor_pii = {
             "description": "Block edited content that still contains PII",
@@ -310,7 +310,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "output",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": (
@@ -331,7 +331,7 @@ async def setup_publishing_controls():
         # NOTE: Executive summary check for press releases is handled
         # client-side in the flow code (compliance_review stage), because
         # detecting the ABSENCE of text requires negative lookahead which
-        # the regex evaluator does not support.
+        # the regex rule does not support.
 
         # ------------------------------------------------------------------
         # HUMAN REVIEW STAGE: STEER - pause for manager approval
@@ -349,7 +349,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "input.content_type",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "list",
                     "config": {
                         "values": ["internal_memo"],
@@ -385,7 +385,7 @@ async def setup_publishing_controls():
                 "selector": {
                     "path": "input.content",
                 },
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": (

@@ -11,7 +11,7 @@ import { ClosedEnum } from "../types/enums.js";
  * @remarks
  *
  * STRICT preserves compatibility checks and raises conflicts on incompatible changes.
- * OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+ * OVERWRITE applies latest-init-wins replacement for steps and rules.
  */
 export const ConflictMode = {
   Strict: "strict",
@@ -23,7 +23,7 @@ export const ConflictMode = {
  * @remarks
  *
  * STRICT preserves compatibility checks and raises conflicts on incompatible changes.
- * OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+ * OVERWRITE applies latest-init-wins replacement for steps and rules.
  */
 export type ConflictMode = ClosedEnum<typeof ConflictMode>;
 

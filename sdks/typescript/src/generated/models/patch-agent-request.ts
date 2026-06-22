@@ -11,13 +11,13 @@ import {
 } from "./step-key.js";
 
 /**
- * Request to modify an agent (remove steps/evaluators).
+ * Request to modify an agent (remove steps/rules).
  */
 export type PatchAgentRequest = {
   /**
-   * Evaluator names to remove from the agent
+   * Rule names to remove from the agent
    */
-  removeEvaluators?: Array<string> | undefined;
+  removeRules?: Array<string> | undefined;
   /**
    * Step identifiers to remove from the agent
    */
@@ -26,7 +26,7 @@ export type PatchAgentRequest = {
 
 /** @internal */
 export type PatchAgentRequest$Outbound = {
-  remove_evaluators?: Array<string> | undefined;
+  remove_rules?: Array<string> | undefined;
   remove_steps?: Array<StepKey$Outbound> | undefined;
 };
 
@@ -36,12 +36,12 @@ export const PatchAgentRequest$outboundSchema: z.ZodMiniType<
   PatchAgentRequest
 > = z.pipe(
   z.object({
-    removeEvaluators: z.optional(z.array(z.string())),
+    removeRules: z.optional(z.array(z.string())),
     removeSteps: z.optional(z.array(StepKey$outboundSchema)),
   }),
   z.transform((v) => {
     return remap$(v, {
-      removeEvaluators: "remove_evaluators",
+      removeRules: "remove_rules",
       removeSteps: "remove_steps",
     });
   }),

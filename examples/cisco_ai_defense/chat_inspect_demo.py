@@ -71,7 +71,7 @@ class InspectOutcome:
 class ChatInspectClient:
     """Standalone direct-HTTP client used by the demo.
 
-    This example intentionally avoids importing the contrib evaluator package so
+    This example intentionally avoids importing the contrib rule package so
     the direct API demo can run with only the example environment dependencies.
     """
 

@@ -4,7 +4,7 @@ import {
   parseTree,
 } from 'jsonc-parser';
 
-import type { JsonEditorEvaluatorOption } from '@/core/page-components/agent-detail/modals/edit-control/types';
+import type { JsonEditorRuleOption } from '@/core/page-components/agent-detail/modals/edit-control/types';
 
 import {
   asSchema,
@@ -18,11 +18,11 @@ import type {
   SchemaCursor,
 } from './types';
 
-export function isEvaluatorNameLocation(path: JsonPath): boolean {
+export function isRuleNameLocation(path: JsonPath): boolean {
   return (
     path.length >= 2 &&
     path[path.length - 1] === 'name' &&
-    path[path.length - 2] === 'evaluator'
+    path[path.length - 2] === 'rule'
   );
 }
 
@@ -55,51 +55,51 @@ export function getScopeFilters(tree: JsonNode | undefined): {
   };
 }
 
-export function resolveActiveEvaluator(
+export function resolveActiveRule(
   context: JsonEditorCodeMirrorContext,
   tree: JsonNode | undefined,
   path: JsonPath
-): JsonEditorEvaluatorOption | null {
-  if (context.mode === 'evaluator-config') {
+): JsonEditorRuleOption | null {
+  if (context.mode === 'rule-config') {
     return (
-      context.evaluators?.find(
-        (item) => item.id === context.activeEvaluatorId
+      context.rules?.find(
+        (item) => item.id === context.activeRuleId
       ) ?? null
     );
   }
 
-  const evaluatorIndex = path.lastIndexOf('evaluator');
-  if (evaluatorIndex === -1 || !tree) return null;
-  const evaluatorPath = path.slice(0, evaluatorIndex + 1);
-  const nameNode = findNodeAtLocation(tree, [...evaluatorPath, 'name']);
+  const ruleIndex = path.lastIndexOf('rule');
+  if (ruleIndex === -1 || !tree) return null;
+  const rulePath = path.slice(0, ruleIndex + 1);
+  const nameNode = findNodeAtLocation(tree, [...rulePath, 'name']);
   const value = typeof nameNode?.value === 'string' ? nameNode.value : null;
   if (!value) return null;
-  return context.evaluators?.find((item) => item.id === value) ?? null;
+  return context.rules?.find((item) => item.id === value) ?? null;
 }
 
 /**
- * True when `path[index]` is the `config` property of an `evaluator` object.
- * Matches Monaco `isEvaluatorConfigSegment` — used to swap the schema root to
- * the active evaluator's configSchema while editing control JSON.
+ * True when `path[index]` is the `config` property of an `rule` object.
+ * Matches Monaco `isRuleConfigSegment` — used to swap the schema root to
+ * the active rule's configSchema while editing control JSON.
  */
-function isEvaluatorConfigSegment(path: JsonPath, index: number): boolean {
+function isRuleConfigSegment(path: JsonPath, index: number): boolean {
   return (
     typeof path[index] === 'string' &&
     path[index] === 'config' &&
     index > 0 &&
-    path[index - 1] === 'evaluator'
+    path[index - 1] === 'rule'
   );
 }
 
 export function resolveSchemaAtJsonPath(
   context: JsonEditorCodeMirrorContext,
-  activeEvaluator: JsonEditorEvaluatorOption | null,
+  activeRule: JsonEditorRuleOption | null,
   path: JsonPath
 ): SchemaCursor {
   const controlRoot = asSchema(context.schema) ?? null;
   let rootSchema = controlRoot;
-  if (context.mode === 'evaluator-config' && activeEvaluator?.configSchema) {
-    rootSchema = asSchema(activeEvaluator.configSchema) ?? rootSchema;
+  if (context.mode === 'rule-config' && activeRule?.configSchema) {
+    rootSchema = asSchema(activeRule.configSchema) ?? rootSchema;
   }
   if (!rootSchema) return { schema: null, rootSchema: null };
 
@@ -109,8 +109,8 @@ export function resolveSchemaAtJsonPath(
     const segment = path[index];
     if (cursor === null) break;
 
-    if (context.mode === 'control' && isEvaluatorConfigSegment(path, index)) {
-      const configRoot = asSchema(activeEvaluator?.configSchema ?? null);
+    if (context.mode === 'control' && isRuleConfigSegment(path, index)) {
+      const configRoot = asSchema(activeRule?.configSchema ?? null);
       if (configRoot) {
         rootSchema = configRoot;
         cursor = normalizeSchema(rootSchema, rootSchema);

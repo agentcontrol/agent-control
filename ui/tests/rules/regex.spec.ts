@@ -1,0 +1,42 @@
+/**
+ * Integration tests for the Regex rule form
+ */
+
+import { expect, test } from '../fixtures';
+import { openRuleForm } from './helpers';
+
+test.describe('Regex Rule', () => {
+  test('displays regex form fields', async ({ mockedPage }) => {
+    await openRuleForm(mockedPage, 'Regex');
+
+    // Check pattern field is visible (use exact match to avoid matching description)
+    await expect(
+      mockedPage.getByText('Pattern', { exact: true })
+    ).toBeVisible();
+    await expect(
+      mockedPage.getByPlaceholder('Enter regex pattern (e.g., ^.*$)')
+    ).toBeVisible();
+  });
+
+  test('pattern field has default value', async ({ mockedPage }) => {
+    await openRuleForm(mockedPage, 'Regex');
+
+    // Default pattern should be ^.*$
+    const patternInput = mockedPage.getByPlaceholder(
+      'Enter regex pattern (e.g., ^.*$)'
+    );
+    await expect(patternInput).toHaveValue('^.*$');
+  });
+
+  test('can edit pattern field', async ({ mockedPage }) => {
+    await openRuleForm(mockedPage, 'Regex');
+
+    const patternInput = mockedPage.getByPlaceholder(
+      'Enter regex pattern (e.g., ^.*$)'
+    );
+    await patternInput.clear();
+    await patternInput.fill('\\d{3}-\\d{2}-\\d{4}');
+
+    await expect(patternInput).toHaveValue('\\d{3}-\\d{2}-\\d{4}');
+  });
+});

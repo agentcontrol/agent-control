@@ -2,7 +2,7 @@
 
 from typing import Any, Literal, cast
 
-from agent_control_engine import ensure_evaluators_discovered
+from agent_control_engine import ensure_rules_discovered
 from agent_control_models import Agent
 from agent_control_models.server import AgentControlsResponse
 
@@ -45,7 +45,7 @@ async def register_agent(
     merges controls bound to that target into the returned set. The two
     fields must be supplied together.
     """
-    ensure_evaluators_discovered()
+    ensure_rules_discovered()
 
     if (target_type is None) != (target_id is None):
         raise ValueError(

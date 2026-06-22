@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
-from agent_control_engine import discover_evaluators, list_evaluators
+from agent_control_engine import discover_rules, list_rules
 from agent_control_models import HealthResponse
 from agent_control_telemetry import DEFAULT_CONTROL_EVENT_SINK_NAME, ControlEventSinkSelection
 from fastapi import Depends, FastAPI, HTTPException
@@ -26,9 +26,9 @@ from .endpoints.control_bindings import router as control_binding_router
 from .endpoints.controls import router as control_router
 from .endpoints.controls import template_router as control_template_router
 from .endpoints.evaluation import router as evaluation_router
-from .endpoints.evaluators import router as evaluator_router
 from .endpoints.observability import router as observability_router
 from .endpoints.policies import router as policy_router
+from .endpoints.rules import router as rule_router
 from .endpoints.system import router as system_router
 from .errors import (
     APIError,
@@ -137,10 +137,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     configure_auth_from_env()
 
-    # Discover evaluators at startup
-    discover_evaluators()
-    available = list(list_evaluators().keys())
-    logger.info(f"Evaluator discovery complete. Available evaluators: {available}")
+    # Discover rules at startup
+    discover_rules()
+    available = list(list_rules().keys())
+    logger.info(f"Rule discovery complete. Available rules: {available}")
 
     # Initialize observability components (stored on app.state)
     if observability_settings.enabled:
@@ -324,7 +324,7 @@ app.include_router(
 )
 
 app.include_router(
-    evaluator_router,
+    rule_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(get_api_key_from_header)],
 )

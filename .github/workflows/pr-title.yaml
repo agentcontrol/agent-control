@@ -33,7 +33,7 @@ jobs:
             server
             models
             engine
-            evaluators
+            rules
             ci
             docs
             infra

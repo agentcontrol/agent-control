@@ -3,7 +3,7 @@
 # This monorepo contains:
 # - models/ - Shared data models (published as agent-control-models)
 # - engine/ - Evaluation engine (bundled into SDK and server)
-# - evaluators/ - Evaluator implementations (bundled into server)
+# - rules/ - Rule implementations (bundled into server)
 # - sdks/python/ - Python SDK (published as agent-control-sdk)
 # - server/ - FastAPI server (published as agent-control-server)
 
@@ -20,8 +20,8 @@ members = [
     "sdks/python",
     "telemetry",
     "engine",
-    "evaluators/builtin",
-    # NOTE: evaluators/contrib/* excluded - install separately when needed
+    "rules/builtin",
+    # NOTE: rules/contrib/* excluded - install separately when needed
 ]
 
 [tool.uv]
@@ -36,7 +36,7 @@ required-environments = [
 [tool.uv.sources]
 agent-control-models = { workspace = true }
 agent-control-engine = { workspace = true }
-agent-control-evaluators = { workspace = true }
+agent-control-rules = { workspace = true }
 agent-control-telemetry = { workspace = true }
 
 [tool.ruff]
@@ -72,10 +72,10 @@ version_toml = [
     "sdks/python/pyproject.toml:project.version",
     "telemetry/pyproject.toml:project.version",
     "server/pyproject.toml:project.version",
-    "evaluators/builtin/pyproject.toml:project.version",
-    "evaluators/contrib/budget/pyproject.toml:project.version",
-    "evaluators/contrib/cisco/pyproject.toml:project.version",
-    "evaluators/contrib/galileo/pyproject.toml:project.version",
+    "rules/builtin/pyproject.toml:project.version",
+    "rules/contrib/budget/pyproject.toml:project.version",
+    "rules/contrib/cisco/pyproject.toml:project.version",
+    "rules/contrib/galileo/pyproject.toml:project.version",
 ]
 version_source = "tag"
 commit_message = "chore(release): v{version}"

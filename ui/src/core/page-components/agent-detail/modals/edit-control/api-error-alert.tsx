@@ -3,7 +3,7 @@ import { IconAlertCircle } from '@tabler/icons-react';
 
 import type { ProblemDetail } from '@/core/api/types';
 
-/** Convert API field path (e.g. data.evaluator.match_on) to user-friendly label (e.g. Match on) */
+/** Convert API field path (e.g. data.rule.match_on) to user-friendly label (e.g. Match on) */
 function formatFieldForDisplay(apiField: string | null): string {
   if (!apiField) return '';
   const lastSegment = apiField.split('.').pop() ?? apiField;

@@ -119,7 +119,7 @@ export const ControlDefinitionForm = ({
           label={
             <LabelWithTooltip
               label="Steering context"
-              tooltip="Optional correction message. If not provided, the evaluator message will be used."
+              tooltip="Optional correction message. If not provided, the rule message will be used."
             />
           }
           labelProps={labelPropsInline}

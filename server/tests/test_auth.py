@@ -100,48 +100,48 @@ class TestProtectedEndpoints:
         assert response.status_code == 404
 
 
-class TestEvaluatorsEndpoint:
-    """Evaluators endpoint requires valid API key (regular or admin)."""
+class TestRulesEndpoint:
+    """Rules endpoint requires valid API key (regular or admin)."""
 
-    def test_regular_key_works_on_evaluators(self, non_admin_client: TestClient) -> None:
-        """Given regular API key, when listing evaluators, then returns 200."""
+    def test_regular_key_works_on_rules(self, non_admin_client: TestClient) -> None:
+        """Given regular API key, when listing rules, then returns 200."""
         # When:
-        response = non_admin_client.get("/api/v1/evaluators")
+        response = non_admin_client.get("/api/v1/rules")
 
         # Then:
         assert response.status_code == 200
 
-    def test_admin_key_works_on_evaluators(self, admin_client: TestClient) -> None:
-        """Given admin API key, when listing evaluators, then returns 200."""
+    def test_admin_key_works_on_rules(self, admin_client: TestClient) -> None:
+        """Given admin API key, when listing rules, then returns 200."""
         # When:
-        response = admin_client.get("/api/v1/evaluators")
+        response = admin_client.get("/api/v1/rules")
 
         # Then:
         assert response.status_code == 200
 
-    def test_missing_key_returns_401_on_evaluators(
+    def test_missing_key_returns_401_on_rules(
         self, unauthenticated_client: TestClient
     ) -> None:
-        """Given no API key, when listing evaluators, then returns 401."""
+        """Given no API key, when listing rules, then returns 401."""
         # When:
-        response = unauthenticated_client.get("/api/v1/evaluators")
+        response = unauthenticated_client.get("/api/v1/rules")
 
         # Then:
         assert response.status_code == 401
 
-    def test_evaluators_use_auth_framework_provider(self, app: object) -> None:
-        """Given a custom authorizer, when listing evaluators, then route uses it."""
+    def test_rules_use_auth_framework_provider(self, app: object) -> None:
+        """Given a custom authorizer, when listing rules, then route uses it."""
         # Given:
         authorizer = _RecordingAuthorizer()
         set_authorizer(authorizer)
         client = TestClient(app, raise_server_exceptions=True)
 
         # When:
-        response = client.get("/api/v1/evaluators")
+        response = client.get("/api/v1/rules")
 
         # Then:
         assert response.status_code == 200
-        assert authorizer.calls == [(Operation.EVALUATORS_READ, None)]
+        assert authorizer.calls == [(Operation.RULES_READ, None)]
 
 
 class TestAuthDisabled:
@@ -160,10 +160,10 @@ class TestAuthDisabled:
         # Then: (404 for non-existent resource, but NOT 401)
         assert response.status_code == 404
 
-    def test_evaluators_accessible_when_disabled(self, unauthenticated_client: TestClient) -> None:
-        """Given auth disabled, when listing evaluators without API key, then returns 200."""
+    def test_rules_accessible_when_disabled(self, unauthenticated_client: TestClient) -> None:
+        """Given auth disabled, when listing rules without API key, then returns 200."""
         # When:
-        response = unauthenticated_client.get("/api/v1/evaluators")
+        response = unauthenticated_client.get("/api/v1/rules")
 
         # Then:
         assert response.status_code == 200
@@ -176,7 +176,7 @@ _VALID_CONTROL_DATA = {
     "scope": {"step_types": ["llm"], "stages": ["pre"]},
     "condition": {
         "selector": {"path": "input"},
-        "evaluator": {
+        "rule": {
             "name": "regex",
             "config": {"pattern": "test", "flags": []},
         },
@@ -213,7 +213,7 @@ class TestAdminWriteEndpointAuthorization:
             (
                 "PATCH",
                 "/api/v1/agents/agent-authz-test01",
-                {"remove_steps": [], "remove_evaluators": []},
+                {"remove_steps": [], "remove_rules": []},
             ),
         ],
     )
@@ -248,7 +248,7 @@ class TestAdminWriteEndpointAuthorization:
                     "output_schema": {"type": "object"},
                 }
             ],
-            "evaluators": [],
+            "rules": [],
         }
 
         init_response = non_admin_client.post("/api/v1/agents/initAgent", json=init_payload)
@@ -285,7 +285,7 @@ class TestAdminWriteEndpointAuthorization:
                 "agent_version": "1.0",
             },
             "steps": [],
-            "evaluators": [],
+            "rules": [],
         }
         init_response = admin_client.post("/api/v1/agents/initAgent", json=init_payload)
         assert init_response.status_code == 200

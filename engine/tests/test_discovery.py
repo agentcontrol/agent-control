@@ -1,4 +1,4 @@
-"""Tests for evaluator auto-discovery."""
+"""Tests for rule auto-discovery."""
 
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -6,130 +6,130 @@ from unittest.mock import MagicMock, patch
 from pydantic import BaseModel
 
 from agent_control_engine import (
-    discover_evaluators,
-    ensure_evaluators_discovered,
-    list_evaluators,
-    reset_evaluator_discovery,
+    discover_rules,
+    ensure_rules_discovered,
+    list_rules,
+    reset_rule_discovery,
 )
-from agent_control_evaluators import (
-    Evaluator,
-    EvaluatorMetadata,
-    clear_evaluators,
-    get_evaluator,
-    register_evaluator,
+from agent_control_rules import (
+    Rule,
+    RuleMetadata,
+    clear_rules,
+    get_rule,
+    register_rule,
 )
-from agent_control_models import EvaluatorResult
+from agent_control_models import RuleResult
 
 
-class TestDiscoverEvaluators:
-    """Tests for discover_evaluators() function."""
+class TestDiscoverRules:
+    """Tests for discover_rules() function."""
 
-    def test_discover_evaluators_loads_builtins(self) -> None:
-        """Test that built-in evaluators are loaded."""
-        discover_evaluators()
+    def test_discover_rules_loads_builtins(self) -> None:
+        """Test that built-in rules are loaded."""
+        discover_rules()
 
-        evaluators = list_evaluators()
-        assert "regex" in evaluators
-        assert "list" in evaluators
+        rules = list_rules()
+        assert "regex" in rules
+        assert "list" in rules
 
-    @patch("agent_control_evaluators._discovery.entry_points")
-    def test_discover_evaluators_loads_entry_points(
+    @patch("agent_control_rules._discovery.entry_points")
+    def test_discover_rules_loads_entry_points(
         self, mock_entry_points: MagicMock
     ) -> None:
-        """Test that entry point evaluators are discovered."""
+        """Test that entry point rules are discovered."""
 
-        # Create mock evaluator
+        # Create mock rule
         class MockConfig(BaseModel):
             pass
 
-        class MockEvaluator(Evaluator[MockConfig]):
-            metadata = EvaluatorMetadata(
-                name="mock-ep-evaluator",
+        class MockRule(Rule[MockConfig]):
+            metadata = RuleMetadata(
+                name="mock-ep-rule",
                 version="1.0.0",
-                description="Test evaluator",
+                description="Test rule",
             )
             config_model = MockConfig
 
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                return EvaluatorResult(matched=False, confidence=0.0, message="test")
+            async def evaluate(self, data: Any) -> RuleResult:
+                return RuleResult(matched=False, confidence=0.0, message="test")
 
         mock_ep = MagicMock()
-        mock_ep.name = "mock-ep-evaluator"
-        mock_ep.load.return_value = MockEvaluator
+        mock_ep.name = "mock-ep-rule"
+        mock_ep.load.return_value = MockRule
         mock_entry_points.return_value = [mock_ep]
 
-        count = discover_evaluators()
+        count = discover_rules()
 
-        mock_entry_points.assert_called_once_with(group="agent_control.evaluators")
-        evaluators = list_evaluators()
-        assert "mock-ep-evaluator" in evaluators
+        mock_entry_points.assert_called_once_with(group="agent_control.rules")
+        rules = list_rules()
+        assert "mock-ep-rule" in rules
         # Count only includes entry-point registrations (not built-ins loaded via import)
         assert count >= 1
 
-    @patch("agent_control_evaluators._discovery.entry_points")
-    def test_discover_evaluators_handles_load_error(
+    @patch("agent_control_rules._discovery.entry_points")
+    def test_discover_rules_handles_load_error(
         self, mock_entry_points: MagicMock
     ) -> None:
-        """Test graceful handling of evaluator load errors."""
+        """Test graceful handling of rule load errors."""
         mock_ep = MagicMock()
-        mock_ep.name = "bad-evaluator"
+        mock_ep.name = "bad-rule"
         mock_ep.load.side_effect = ImportError("Missing dependency")
         mock_entry_points.return_value = [mock_ep]
 
         # Should not raise
-        discover_evaluators()
+        discover_rules()
 
-    def test_discover_evaluators_only_runs_once(self) -> None:
+    def test_discover_rules_only_runs_once(self) -> None:
         """Test that discovery only runs once."""
-        count1 = discover_evaluators()
-        count2 = discover_evaluators()
+        count1 = discover_rules()
+        count2 = discover_rules()
 
-        # First call loads evaluators, second call returns 0 (already discovered)
+        # First call loads rules, second call returns 0 (already discovered)
         assert count2 == 0
-        # Verify evaluators are available (count may be 0 if no entry-point evaluators)
-        evaluators = list_evaluators()
-        assert "regex" in evaluators
-        assert "list" in evaluators
+        # Verify rules are available (count may be 0 if no entry-point rules)
+        rules = list_rules()
+        assert "regex" in rules
+        assert "list" in rules
 
-    def test_ensure_evaluators_discovered_triggers_discovery(self) -> None:
-        """Test that ensure_evaluators_discovered triggers discovery."""
-        ensure_evaluators_discovered()
+    def test_ensure_rules_discovered_triggers_discovery(self) -> None:
+        """Test that ensure_rules_discovered triggers discovery."""
+        ensure_rules_discovered()
 
-        evaluators = list_evaluators()
-        # Should have at least built-in evaluators
-        assert isinstance(evaluators, dict)
-        assert "regex" in evaluators
-        assert "list" in evaluators
+        rules = list_rules()
+        # Should have at least built-in rules
+        assert isinstance(rules, dict)
+        assert "regex" in rules
+        assert "list" in rules
 
-    def test_reset_evaluator_discovery_allows_rediscovery(self) -> None:
-        """Test that reset_evaluator_discovery allows discovery to run again."""
-        discover_evaluators()
-        evaluators1 = list_evaluators()
-        assert "regex" in evaluators1
+    def test_reset_rule_discovery_allows_rediscovery(self) -> None:
+        """Test that reset_rule_discovery allows discovery to run again."""
+        discover_rules()
+        rules1 = list_rules()
+        assert "regex" in rules1
 
         # After reset, discovery should run again
-        reset_evaluator_discovery()
-        clear_evaluators()
+        reset_rule_discovery()
+        clear_rules()
 
-        discover_evaluators()
-        evaluators2 = list_evaluators()
-        assert "regex" in evaluators2
-        assert "list" in evaluators2
+        discover_rules()
+        rules2 = list_rules()
+        assert "regex" in rules2
+        assert "list" in rules2
 
-    @patch("agent_control_evaluators._discovery.entry_points")
-    def test_discover_evaluators_skips_unavailable(
+    @patch("agent_control_rules._discovery.entry_points")
+    def test_discover_rules_skips_unavailable(
         self, mock_entry_points: MagicMock
     ) -> None:
-        """Test that evaluators with is_available() returning False are skipped."""
+        """Test that rules with is_available() returning False are skipped."""
 
         class MockConfig(BaseModel):
             pass
 
-        class UnavailableEvaluator(Evaluator[MockConfig]):
-            metadata = EvaluatorMetadata(
-                name="unavailable-evaluator",
+        class UnavailableRule(Rule[MockConfig]):
+            metadata = RuleMetadata(
+                name="unavailable-rule",
                 version="1.0.0",
-                description="Evaluator with missing deps",
+                description="Rule with missing deps",
             )
             config_model = MockConfig
 
@@ -137,35 +137,35 @@ class TestDiscoverEvaluators:
             def is_available(cls) -> bool:
                 return False  # Simulate missing dependency
 
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                return EvaluatorResult(matched=False, confidence=0.0, message="test")
+            async def evaluate(self, data: Any) -> RuleResult:
+                return RuleResult(matched=False, confidence=0.0, message="test")
 
         mock_ep = MagicMock()
-        mock_ep.name = "unavailable-evaluator"
-        mock_ep.load.return_value = UnavailableEvaluator
+        mock_ep.name = "unavailable-rule"
+        mock_ep.load.return_value = UnavailableRule
         mock_entry_points.return_value = [mock_ep]
 
-        count = discover_evaluators()
+        count = discover_rules()
 
-        # Evaluator should NOT be registered
-        evaluators = list_evaluators()
-        assert "unavailable-evaluator" not in evaluators
+        # Rule should NOT be registered
+        rules = list_rules()
+        assert "unavailable-rule" not in rules
         assert count == 0
 
-    @patch("agent_control_evaluators._discovery.entry_points")
-    def test_discover_evaluators_registers_available(
+    @patch("agent_control_rules._discovery.entry_points")
+    def test_discover_rules_registers_available(
         self, mock_entry_points: MagicMock
     ) -> None:
-        """Test that evaluators with is_available() returning True are registered."""
+        """Test that rules with is_available() returning True are registered."""
 
         class MockConfig(BaseModel):
             pass
 
-        class AvailableEvaluator(Evaluator[MockConfig]):
-            metadata = EvaluatorMetadata(
-                name="available-evaluator",
+        class AvailableRule(Rule[MockConfig]):
+            metadata = RuleMetadata(
+                name="available-rule",
                 version="1.0.0",
-                description="Evaluator with all deps",
+                description="Rule with all deps",
             )
             config_model = MockConfig
 
@@ -173,61 +173,61 @@ class TestDiscoverEvaluators:
             def is_available(cls) -> bool:
                 return True
 
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                return EvaluatorResult(matched=False, confidence=0.0, message="test")
+            async def evaluate(self, data: Any) -> RuleResult:
+                return RuleResult(matched=False, confidence=0.0, message="test")
 
         mock_ep = MagicMock()
-        mock_ep.name = "available-evaluator"
-        mock_ep.load.return_value = AvailableEvaluator
+        mock_ep.name = "available-rule"
+        mock_ep.load.return_value = AvailableRule
         mock_entry_points.return_value = [mock_ep]
 
-        count = discover_evaluators()
+        count = discover_rules()
 
-        # Evaluator should be registered
-        evaluators = list_evaluators()
-        assert "available-evaluator" in evaluators
+        # Rule should be registered
+        rules = list_rules()
+        assert "available-rule" in rules
         assert count == 1
 
 
 class TestIsAvailable:
-    """Tests for the is_available() evaluator method."""
+    """Tests for the is_available() rule method."""
 
     def test_base_class_is_available_returns_true(self) -> None:
-        """Test that base Evaluator.is_available() returns True by default."""
+        """Test that base Rule.is_available() returns True by default."""
 
         class MockConfig(BaseModel):
             pass
 
-        class TestEvaluator(Evaluator[MockConfig]):
-            metadata = EvaluatorMetadata(
-                name="test-evaluator",
+        class TestRule(Rule[MockConfig]):
+            metadata = RuleMetadata(
+                name="test-rule",
                 version="1.0.0",
                 description="Test",
             )
             config_model = MockConfig
 
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                return EvaluatorResult(matched=False, confidence=0.0, message="test")
+            async def evaluate(self, data: Any) -> RuleResult:
+                return RuleResult(matched=False, confidence=0.0, message="test")
 
         # Default is_available() should return True
-        assert TestEvaluator.is_available() is True
+        assert TestRule.is_available() is True
 
 
-class TestRegisterEvaluatorRespectsIsAvailable:
-    """Tests that @register_evaluator decorator respects is_available()."""
+class TestRegisterRuleRespectsIsAvailable:
+    """Tests that @register_rule decorator respects is_available()."""
 
-    def test_register_evaluator_skips_unavailable(self) -> None:
-        """Test that @register_evaluator skips evaluators where is_available() returns False."""
+    def test_register_rule_skips_unavailable(self) -> None:
+        """Test that @register_rule skips rules where is_available() returns False."""
 
         class MockConfig(BaseModel):
             pass
 
-        @register_evaluator
-        class UnavailableEvaluator(Evaluator[MockConfig]):
-            metadata = EvaluatorMetadata(
+        @register_rule
+        class UnavailableRule(Rule[MockConfig]):
+            metadata = RuleMetadata(
                 name="test-unavailable-decorated",
                 version="1.0.0",
-                description="Evaluator with unavailable deps",
+                description="Rule with unavailable deps",
             )
             config_model = MockConfig
 
@@ -235,24 +235,24 @@ class TestRegisterEvaluatorRespectsIsAvailable:
             def is_available(cls) -> bool:
                 return False  # Simulate missing dependency
 
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                return EvaluatorResult(matched=False, confidence=0.0, message="test")
+            async def evaluate(self, data: Any) -> RuleResult:
+                return RuleResult(matched=False, confidence=0.0, message="test")
 
-        # Evaluator should NOT be registered despite using @register_evaluator
-        assert get_evaluator("test-unavailable-decorated") is None
+        # Rule should NOT be registered despite using @register_rule
+        assert get_rule("test-unavailable-decorated") is None
 
-    def test_register_evaluator_registers_available(self) -> None:
-        """Test that @register_evaluator registers evaluators where is_available() returns True."""
+    def test_register_rule_registers_available(self) -> None:
+        """Test that @register_rule registers rules where is_available() returns True."""
 
         class MockConfig(BaseModel):
             pass
 
-        @register_evaluator
-        class AvailableEvaluator(Evaluator[MockConfig]):
-            metadata = EvaluatorMetadata(
+        @register_rule
+        class AvailableRule(Rule[MockConfig]):
+            metadata = RuleMetadata(
                 name="test-available-decorated",
                 version="1.0.0",
-                description="Evaluator with all deps",
+                description="Rule with all deps",
             )
             config_model = MockConfig
 
@@ -260,29 +260,29 @@ class TestRegisterEvaluatorRespectsIsAvailable:
             def is_available(cls) -> bool:
                 return True
 
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                return EvaluatorResult(matched=False, confidence=0.0, message="test")
+            async def evaluate(self, data: Any) -> RuleResult:
+                return RuleResult(matched=False, confidence=0.0, message="test")
 
-        # Evaluator should be registered
-        assert get_evaluator("test-available-decorated") is not None
+        # Rule should be registered
+        assert get_rule("test-available-decorated") is not None
 
-    def test_register_evaluator_default_is_available(self) -> None:
-        """Test that @register_evaluator works when is_available() is not overridden."""
+    def test_register_rule_default_is_available(self) -> None:
+        """Test that @register_rule works when is_available() is not overridden."""
 
         class MockConfig(BaseModel):
             pass
 
-        @register_evaluator
-        class DefaultEvaluator(Evaluator[MockConfig]):
-            metadata = EvaluatorMetadata(
+        @register_rule
+        class DefaultRule(Rule[MockConfig]):
+            metadata = RuleMetadata(
                 name="test-default-available",
                 version="1.0.0",
-                description="Evaluator with default is_available",
+                description="Rule with default is_available",
             )
             config_model = MockConfig
 
-            async def evaluate(self, data: Any) -> EvaluatorResult:
-                return EvaluatorResult(matched=False, confidence=0.0, message="test")
+            async def evaluate(self, data: Any) -> RuleResult:
+                return RuleResult(matched=False, confidence=0.0, message="test")
 
-        # Evaluator should be registered (default is_available returns True)
-        assert get_evaluator("test-default-available") is not None
+        # Rule should be registered (default is_available returns True)
+        assert get_rule("test-default-available") is not None

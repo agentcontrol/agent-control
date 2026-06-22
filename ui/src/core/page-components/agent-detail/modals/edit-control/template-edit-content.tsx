@@ -28,13 +28,13 @@ import { TemplateParamForm } from '@/core/components/template-param-form';
 import { TemplatePreview } from '@/core/components/template-preview';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useControlSchema } from '@/core/hooks/query-hooks/use-control-schema';
-import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
+import { useRules } from '@/core/hooks/query-hooks/use-rules';
 import { useUpdateControl } from '@/core/hooks/query-hooks/use-update-control';
 import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-control-metadata';
 import { openActionConfirmModal } from '@/core/utils/modals';
 
 import { ApiErrorAlert } from './api-error-alert';
-import type { JsonEditorEvaluatorOption } from './types';
+import type { JsonEditorRuleOption } from './types';
 
 type TemplateEditContentProps = {
   control: Control;
@@ -99,34 +99,34 @@ export function TemplateEditContent({
 
   // Hooks for smart JSON editor features
   const { data: controlSchemaResponse } = useControlSchema();
-  const { data: globalEvaluators } = useEvaluators();
+  const { data: globalRules } = useRules();
   const { data: agentResponse } = useAgent(agentId);
   const steps = agentResponse?.steps ?? [];
   const agentName = agentResponse?.agent?.agent_name ?? agentId;
 
-  const availableEvaluators = useMemo<JsonEditorEvaluatorOption[]>(() => {
-    const merged = new Map<string, JsonEditorEvaluatorOption>();
-    for (const [id, evaluatorInfo] of Object.entries(globalEvaluators ?? {})) {
+  const availableRules = useMemo<JsonEditorRuleOption[]>(() => {
+    const merged = new Map<string, JsonEditorRuleOption>();
+    for (const [id, ruleInfo] of Object.entries(globalRules ?? {})) {
       merged.set(id, {
         id,
-        label: evaluatorInfo.name,
-        description: evaluatorInfo.description,
+        label: ruleInfo.name,
+        description: ruleInfo.description,
         source: 'global',
-        configSchema: evaluatorInfo.config_schema,
+        configSchema: ruleInfo.config_schema,
       });
     }
-    for (const evaluatorSchema of agentResponse?.evaluators ?? []) {
-      const id = `${agentName}:${evaluatorSchema.name}`;
+    for (const ruleSchema of agentResponse?.rules ?? []) {
+      const id = `${agentName}:${ruleSchema.name}`;
       merged.set(id, {
         id,
-        label: evaluatorSchema.name,
-        description: evaluatorSchema.description,
+        label: ruleSchema.name,
+        description: ruleSchema.description,
         source: 'agent',
-        configSchema: evaluatorSchema.config_schema,
+        configSchema: ruleSchema.config_schema,
       });
     }
     return [...merged.values()];
-  }, [agentName, agentResponse?.evaluators, globalEvaluators]);
+  }, [agentName, agentResponse?.rules, globalRules]);
 
   // Dynamically extract parameter names from the current JSON text so
   // completions update as the user edits the parameters block.
@@ -383,7 +383,7 @@ export function TemplateEditContent({
             testId="template-json-textarea"
             editorMode="template"
             schema={controlSchemaResponse?.schema ?? null}
-            evaluators={availableEvaluators}
+            rules={availableRules}
             steps={steps}
             templateParameterNames={templateParameterNames}
           />

@@ -79,7 +79,7 @@ def _to_jsonable(value: Any) -> Any:
 
 
 def _json_dumps(value: Any) -> str:
-    """Serialize structured content deterministically for evaluator input."""
+    """Serialize structured content deterministically for rule input."""
 
     return json.dumps(value, sort_keys=True)
 

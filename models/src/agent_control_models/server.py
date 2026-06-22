@@ -39,7 +39,7 @@ _RAW_CONTROL_INPUT_FIELDS = _RAW_CONTROL_INPUT_FIELDS.union(
     {
         # Legacy flat leaf fields still accepted for raw controls.
         "selector",
-        "evaluator",
+        "rule",
     }
 )
 
@@ -84,17 +84,17 @@ ControlInput = Annotated[
 ]
 
 
-class EvaluatorSchema(BaseModel):
-    """Schema for a custom evaluator registered with an agent.
+class RuleSchema(BaseModel):
+    """Schema for a custom rule registered with an agent.
 
-    Custom evaluators are Evaluator classes deployed with the engine.
+    Custom rules are Rule classes deployed with the engine.
     This schema is registered via initAgent for validation and UI purposes.
     """
 
-    name: str = Field(..., min_length=1, max_length=255, description="Unique evaluator name")
+    name: str = Field(..., min_length=1, max_length=255, description="Unique rule name")
     config_schema: dict[str, Any] = Field(
         default_factory=dict,
-        description="JSON Schema for evaluator config validation",
+        description="JSON Schema for rule config validation",
     )
     description: str | None = Field(None, max_length=1000, description="Optional description")
 
@@ -103,28 +103,28 @@ class ConflictMode(StrEnum):
     """Conflict handling mode for initAgent registration updates.
 
     STRICT preserves compatibility checks and raises conflicts on incompatible changes.
-    OVERWRITE applies latest-init-wins replacement for steps and evaluators.
+    OVERWRITE applies latest-init-wins replacement for steps and rules.
     """
 
     STRICT = "strict"
     OVERWRITE = "overwrite"
 
 
-class InitAgentEvaluatorRemoval(BaseModel):
-    """Details for an evaluator removed during overwrite mode."""
+class InitAgentRuleRemoval(BaseModel):
+    """Details for a rule removed during overwrite mode."""
 
-    name: str = Field(..., description="Evaluator name removed by overwrite")
+    name: str = Field(..., description="Rule name removed by overwrite")
     referenced_by_active_controls: bool = Field(
         default=False,
-        description="Whether this evaluator is still referenced by active controls",
+        description="Whether this rule is still referenced by active controls",
     )
     control_ids: list[int] = Field(
         default_factory=list,
-        description="IDs of active controls referencing this evaluator",
+        description="IDs of active controls referencing this rule",
     )
     control_names: list[str] = Field(
         default_factory=list,
-        description="Names of active controls referencing this evaluator",
+        description="Names of active controls referencing this rule",
     )
 
 
@@ -146,21 +146,21 @@ class InitAgentOverwriteChanges(BaseModel):
         default_factory=list,
         description="Steps removed by overwrite",
     )
-    evaluators_added: list[str] = Field(
+    rules_added: list[str] = Field(
         default_factory=list,
-        description="Evaluator names added by overwrite",
+        description="Rule names added by overwrite",
     )
-    evaluators_updated: list[str] = Field(
+    rules_updated: list[str] = Field(
         default_factory=list,
-        description="Existing evaluator names updated by overwrite",
+        description="Existing rule names updated by overwrite",
     )
-    evaluators_removed: list[str] = Field(
+    rules_removed: list[str] = Field(
         default_factory=list,
-        description="Evaluator names removed by overwrite",
+        description="Rule names removed by overwrite",
     )
-    evaluator_removals: list[InitAgentEvaluatorRemoval] = Field(
+    rule_removals: list[InitAgentRuleRemoval] = Field(
         default_factory=list,
-        description="Per-evaluator removal details, including active control references",
+        description="Per-rule removal details, including active control references",
     )
 
 
@@ -189,9 +189,9 @@ class InitAgentRequest(BaseModel):
     steps: list[StepSchema] = Field(
         default_factory=list, description="List of steps available to the agent"
     )
-    evaluators: list[EvaluatorSchema] = Field(
+    rules: list[RuleSchema] = Field(
         default_factory=list,
-        description="Custom evaluator schemas for config validation",
+        description="Custom rule schemas for config validation",
     )
     force_replace: bool = Field(
         default=False,
@@ -205,7 +205,7 @@ class InitAgentRequest(BaseModel):
         description=(
             "Conflict handling mode for init registration updates. "
             "'strict' preserves existing compatibility checks. "
-            "'overwrite' applies latest-init-wins replacement for steps and evaluators."
+            "'overwrite' applies latest-init-wins replacement for steps and rules."
         ),
     )
     target_type: Annotated[
@@ -254,7 +254,7 @@ class InitAgentRequest(BaseModel):
                             "output_schema": {"results": {"type": "array"}},
                         }
                     ],
-                    "evaluators": [
+                    "rules": [
                         {
                             "name": "pii-detector",
                             "config_schema": {
@@ -293,8 +293,8 @@ class GetAgentResponse(BaseModel):
     """Response containing agent details and registered steps."""
     agent: Agent = Field(..., description="Agent metadata")
     steps: list[StepSchema] = Field(..., description="Steps registered with this agent")
-    evaluators: list[EvaluatorSchema] = Field(
-        default_factory=list, description="Custom evaluators registered with this agent"
+    rules: list[RuleSchema] = Field(
+        default_factory=list, description="Custom rules registered with this agent"
     )
 
 
@@ -453,13 +453,13 @@ class StepKey(BaseModel):
 
 
 class PatchAgentRequest(BaseModel):
-    """Request to modify an agent (remove steps/evaluators)."""
+    """Request to modify an agent (remove steps/rules)."""
 
     remove_steps: list[StepKey] = Field(
         default_factory=list, description="Step identifiers to remove from the agent"
     )
-    remove_evaluators: list[str] = Field(
-        default_factory=list, description="Evaluator names to remove from the agent"
+    remove_rules: list[str] = Field(
+        default_factory=list, description="Rule names to remove from the agent"
     )
 
 
@@ -469,8 +469,8 @@ class PatchAgentResponse(BaseModel):
     steps_removed: list[StepKey] = Field(
         default_factory=list, description="Step identifiers that were removed"
     )
-    evaluators_removed: list[str] = Field(
-        default_factory=list, description="Evaluator names that were removed"
+    rules_removed: list[str] = Field(
+        default_factory=list, description="Rule names that were removed"
     )
 
 
@@ -483,7 +483,7 @@ class AgentSummary(BaseModel):
     )
     created_at: str | None = Field(None, description="ISO 8601 timestamp when agent was created")
     step_count: int = Field(0, description="Number of steps registered with the agent")
-    evaluator_count: int = Field(0, description="Number of evaluators registered with the agent")
+    rule_count: int = Field(0, description="Number of rules registered with the agent")
     active_controls_count: int = Field(
         0, description="Number of active controls for this agent"
     )

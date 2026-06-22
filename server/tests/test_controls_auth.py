@@ -30,7 +30,7 @@ def _valid_template_render_payload() -> dict[str, object]:
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": {"$param": "pattern"}},
                     },

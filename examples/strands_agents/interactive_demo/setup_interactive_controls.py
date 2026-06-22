@@ -49,7 +49,7 @@ INTERACTIVE_CONTROLS = [
             },
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": r"\b\d{3}-\d{2}-\d{4}\b|\b\d{9}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
@@ -73,7 +73,7 @@ INTERACTIVE_CONTROLS = [
             },
             "condition": {
                 "selector": {"path": "input"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": r"(\bDROP\s+TABLE\b|\bDROP\s+DATABASE\b|--;)"
@@ -99,7 +99,7 @@ INTERACTIVE_CONTROLS = [
             },
             "condition": {
                 "selector": {"path": "output"},
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": r"\b\d{3}-\d{2}-\d{4}\b|\b\d{9}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
@@ -125,7 +125,7 @@ INTERACTIVE_CONTROLS = [
             },
             "condition": {
                 "selector": {"path": "input"},  # Check entire tool input
-                "evaluator": {
+                "rule": {
                     "name": "regex",
                     "config": {
                         "pattern": r"\b\d{3}-\d{2}-\d{4}\b|\b\d{9}\b|\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b"

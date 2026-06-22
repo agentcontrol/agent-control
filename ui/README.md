@@ -7,7 +7,7 @@ The Agent Control UI is a Next.js dashboard for managing agents, controls, and m
 - Create, enable, disable, and edit controls
 - Associate controls with agents and review active configurations
 - Monitor evaluations, denials, and recent activity in real time
-- Inspect evaluator types and configuration details in one place
+- Inspect rule types and configuration details in one place
 
 ## Quick start
 

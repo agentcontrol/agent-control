@@ -45,7 +45,7 @@ def _unrendered_template_payload() -> dict[str, Any]:
                 "scope": {"step_types": ["llm"], "stages": ["pre"]},
                 "condition": {
                     "selector": {"path": "input"},
-                    "evaluator": {
+                    "rule": {
                         "name": "regex",
                         "config": {"pattern": {"$param": "pattern"}},
                     },

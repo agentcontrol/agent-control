@@ -1,17 +1,17 @@
 import type { ControlDefinition } from '@/core/api/types';
-import type { AnyEvaluatorDefinition } from '@/core/evaluators';
-import { getEvaluator } from '@/core/evaluators';
+import type { AnyRuleDefinition } from '@/core/rules';
+import { getRule } from '@/core/rules';
 
 export type LeafConditionDetails = {
   selectorPath: string;
-  evaluatorName: string;
-  evaluatorConfig: Record<string, unknown>;
+  ruleName: string;
+  ruleConfig: Record<string, unknown>;
 };
 
 export type ControlConditionState = {
   leafCondition: LeafConditionDetails | null;
-  evaluatorId: string;
-  evaluator: AnyEvaluatorDefinition | undefined;
+  ruleId: string;
+  rule: AnyRuleDefinition | undefined;
   canEditLeafCondition: boolean;
 };
 
@@ -19,14 +19,14 @@ function getLeafConditionDetails(
   definition: ControlDefinition
 ): LeafConditionDetails | null {
   const condition = definition.condition;
-  if (!condition.selector || !condition.evaluator) {
+  if (!condition.selector || !condition.rule) {
     return null;
   }
 
   return {
     selectorPath: condition.selector.path ?? '*',
-    evaluatorName: condition.evaluator.name,
-    evaluatorConfig: condition.evaluator.config,
+    ruleName: condition.rule.name,
+    ruleConfig: condition.rule.config,
   };
 }
 
@@ -34,13 +34,13 @@ export function getControlConditionState(
   definition: ControlDefinition
 ): ControlConditionState {
   const leafCondition = getLeafConditionDetails(definition);
-  const evaluatorId = leafCondition?.evaluatorName ?? '';
-  const evaluator = getEvaluator(evaluatorId);
+  const ruleId = leafCondition?.ruleName ?? '';
+  const rule = getRule(ruleId);
 
   return {
     leafCondition,
-    evaluatorId,
-    evaluator,
+    ruleId,
+    rule,
     canEditLeafCondition: Boolean(leafCondition),
   };
 }
@@ -59,8 +59,8 @@ export function buildEditableCondition(
     selector: {
       path: selectorPath,
     },
-    evaluator: {
-      name: leafCondition.evaluatorName,
+    rule: {
+      name: leafCondition.ruleName,
       config: finalConfig,
     },
   };
