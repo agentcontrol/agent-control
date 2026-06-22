@@ -10,10 +10,7 @@ import {
   ControlSelector$inboundSchema,
 } from "./control-selector.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
-import {
-  RuleSpec,
-  RuleSpec$inboundSchema,
-} from "./rule-spec.js";
+import { RuleSpec, RuleSpec$inboundSchema } from "./rule-spec.js";
 
 /**
  * Recursive boolean condition tree for control evaluation.
@@ -24,10 +21,6 @@ export type ConditionNodeOutput = {
    */
   and?: Array<ConditionNodeOutput> | null | undefined;
   /**
-   * Leaf rule. Must be provided together with selector.
-   */
-  rule?: RuleSpec | null | undefined;
-  /**
    * Logical NOT over a single child condition.
    */
   not?: ConditionNodeOutput | null | undefined;
@@ -35,6 +28,10 @@ export type ConditionNodeOutput = {
    * Logical OR over child conditions.
    */
   or?: Array<ConditionNodeOutput> | null | undefined;
+  /**
+   * Leaf rule. Must be provided together with selector.
+   */
+  rule?: RuleSpec | null | undefined;
   /**
    * Leaf selector. Must be provided together with rule.
    */
@@ -49,11 +46,11 @@ export const ConditionNodeOutput$inboundSchema: z.ZodMiniType<
   and: z.optional(
     z.nullable(z.array(z.lazy(() => ConditionNodeOutput$inboundSchema))),
   ),
-  rule: z.optional(z.nullable(RuleSpec$inboundSchema)),
   not: z.optional(z.nullable(z.lazy(() => ConditionNodeOutput$inboundSchema))),
   or: z.optional(
     z.nullable(z.array(z.lazy(() => ConditionNodeOutput$inboundSchema))),
   ),
+  rule: z.optional(z.nullable(RuleSpec$inboundSchema)),
   selector: z.optional(z.nullable(ControlSelector$inboundSchema)),
 });
 

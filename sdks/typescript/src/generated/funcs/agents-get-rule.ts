@@ -47,8 +47,7 @@ import { Result } from "../types/fp.js";
  */
 export function agentsGetRule(
   client: AgentControlSDKCore,
-  request:
-    operations.GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
+  request: operations.GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -73,8 +72,7 @@ export function agentsGetRule(
 
 async function $do(
   client: AgentControlSDKCore,
-  request:
-    operations.GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
+  request: operations.GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -120,9 +118,9 @@ async function $do(
     }),
   };
 
-  const path = pathToFunc(
-    "/api/v1/agents/{agent_name}/rules/{rule_name}",
-  )(pathParams);
+  const path = pathToFunc("/api/v1/agents/{agent_name}/rules/{rule_name}")(
+    pathParams,
+  );
 
   const headers = new Headers(compactMap({
     Accept: "application/json",

@@ -1,8 +1,4 @@
-export {
-  applyTextEdit,
-  computeAutoEdit,
-  extractRuleNames,
-} from './auto-edits';
+export { applyTextEdit, computeAutoEdit, extractRuleNames } from './auto-edits';
 export {
   buildCodeMirrorInlineServerValidationErrorsExtension,
   buildCodeMirrorJsonExtensions,

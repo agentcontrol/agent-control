@@ -54,9 +54,7 @@ const DEFAULT_RULE_CONFIGS: Record<string, Record<string, unknown>> = {
   },
 };
 
-function getDefaultConfigForRule(
-  ruleId: string
-): Record<string, unknown> {
+function getDefaultConfigForRule(ruleId: string): Record<string, unknown> {
   return DEFAULT_RULE_CONFIGS[ruleId] ?? {};
 }
 

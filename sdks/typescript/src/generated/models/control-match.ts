@@ -12,10 +12,7 @@ import {
   ActionDecision$inboundSchema,
 } from "./action-decision.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
-import {
-  RuleResult,
-  RuleResult$inboundSchema,
-} from "./rule-result.js";
+import { RuleResult, RuleResult$inboundSchema } from "./rule-result.js";
 import {
   SteeringContext,
   SteeringContext$inboundSchema,

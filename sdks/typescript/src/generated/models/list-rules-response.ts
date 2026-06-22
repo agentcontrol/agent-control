@@ -7,23 +7,23 @@ import { safeParse } from "../lib/schemas.js";
 import { Result as SafeParseResult } from "../types/fp.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
-  RuleSchemaItem,
-  RuleSchemaItem$inboundSchema,
-} from "./rule-schema-item.js";
-import {
   PaginationInfo,
   PaginationInfo$inboundSchema,
 } from "./pagination-info.js";
+import {
+  RuleSchemaItem,
+  RuleSchemaItem$inboundSchema,
+} from "./rule-schema-item.js";
 
 /**
  * Response for listing agent's rule schemas.
  */
 export type ListRulesResponse = {
-  rules: Array<RuleSchemaItem>;
   /**
    * Pagination metadata for cursor-based pagination.
    */
   pagination: PaginationInfo;
+  rules: Array<RuleSchemaItem>;
 };
 
 /** @internal */
@@ -31,8 +31,8 @@ export const ListRulesResponse$inboundSchema: z.ZodMiniType<
   ListRulesResponse,
   unknown
 > = z.object({
-  rules: z.array(RuleSchemaItem$inboundSchema),
   pagination: PaginationInfo$inboundSchema,
+  rules: z.array(RuleSchemaItem$inboundSchema),
 });
 
 export function listRulesResponseFromJSON(

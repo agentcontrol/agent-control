@@ -108,10 +108,6 @@ export type ControlExecutionEvent = {
    */
   errorMessage?: string | null | undefined;
   /**
-   * Name of the rule used
-   */
-  ruleName?: string | null | undefined;
-  /**
    * Execution duration in milliseconds
    */
   executionDurationMs?: number | null | undefined;
@@ -123,6 +119,10 @@ export type ControlExecutionEvent = {
    * Additional metadata
    */
   metadata?: { [k: string]: any } | undefined;
+  /**
+   * Name of the rule used
+   */
+  ruleName?: string | null | undefined;
   /**
    * Selector path used to extract data
    */
@@ -174,10 +174,10 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
     control_id: types.number(),
     control_name: types.string(),
     error_message: z.optional(z.nullable(types.string())),
-    rule_name: z.optional(z.nullable(types.string())),
     execution_duration_ms: z.optional(z.nullable(types.number())),
     matched: types.boolean(),
     metadata: types.optional(z.record(z.string(), z.any())),
+    rule_name: z.optional(z.nullable(types.string())),
     selector_path: z.optional(z.nullable(types.string())),
     span_id: types.string(),
     timestamp: types.optional(types.date()),
@@ -192,8 +192,8 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
       "control_id": "controlId",
       "control_name": "controlName",
       "error_message": "errorMessage",
-      "rule_name": "ruleName",
       "execution_duration_ms": "executionDurationMs",
+      "rule_name": "ruleName",
       "selector_path": "selectorPath",
       "span_id": "spanId",
       "trace_id": "traceId",
@@ -211,10 +211,10 @@ export type ControlExecutionEvent$Outbound = {
   control_id: number;
   control_name: string;
   error_message?: string | null | undefined;
-  rule_name?: string | null | undefined;
   execution_duration_ms?: number | null | undefined;
   matched: boolean;
   metadata?: { [k: string]: any } | undefined;
+  rule_name?: string | null | undefined;
   selector_path?: string | null | undefined;
   span_id: string;
   timestamp?: string | undefined;
@@ -236,10 +236,10 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
     controlId: z.int(),
     controlName: z.string(),
     errorMessage: z.optional(z.nullable(z.string())),
-    ruleName: z.optional(z.nullable(z.string())),
     executionDurationMs: z.optional(z.nullable(z.number())),
     matched: z.boolean(),
     metadata: z.optional(z.record(z.string(), z.any())),
+    ruleName: z.optional(z.nullable(z.string())),
     selectorPath: z.optional(z.nullable(z.string())),
     spanId: z.string(),
     timestamp: z.optional(z.pipe(z.date(), z.transform(v => v.toISOString()))),
@@ -254,8 +254,8 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
       controlId: "control_id",
       controlName: "control_name",
       errorMessage: "error_message",
-      ruleName: "rule_name",
       executionDurationMs: "execution_duration_ms",
+      ruleName: "rule_name",
       selectorPath: "selector_path",
       spanId: "span_id",
       traceId: "trace_id",

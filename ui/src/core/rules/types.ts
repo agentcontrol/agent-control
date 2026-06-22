@@ -67,5 +67,4 @@ export type RuleFormProps<TFormValues> = {
 /**
  * Utility type for extracting form values type from a rule definition.
  */
-export type RuleFormValues<T> =
-  T extends RuleDefinition<infer V> ? V : never;
+export type RuleFormValues<T> = T extends RuleDefinition<infer V> ? V : never;

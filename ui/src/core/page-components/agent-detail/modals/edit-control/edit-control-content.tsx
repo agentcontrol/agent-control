@@ -168,11 +168,10 @@ const RawEditControlContent = ({
 
   const formRef = useRef<HTMLFormElement>(null);
   const formInitializedForRule = useRef<string>('');
-  const { leafCondition, ruleId, rule, canEditLeafCondition } =
-    useMemo(
-      () => getControlConditionState(workingDefinition),
-      [workingDefinition]
-    );
+  const { leafCondition, ruleId, rule, canEditLeafCondition } = useMemo(
+    () => getControlConditionState(workingDefinition),
+    [workingDefinition]
+  );
   const availableRules = useMemo<JsonEditorRuleOption[]>(() => {
     const merged = new Map<string, JsonEditorRuleOption>();
 
@@ -200,9 +199,7 @@ const RawEditControlContent = ({
     return [...merged.values()];
   }, [agentName, agentResponse?.rules, globalRules]);
   const activeRuleOption = useMemo(
-    () =>
-      availableRules.find((candidate) => candidate.id === ruleId) ??
-      null,
+    () => availableRules.find((candidate) => candidate.id === ruleId) ?? null,
     [availableRules, ruleId]
   );
 
@@ -556,9 +553,7 @@ const RawEditControlContent = ({
     definitionForm.resetDirty(syncedValues);
 
     if (leafCondition && rule) {
-      ruleForm.setValues(
-        rule.fromConfig(leafCondition.ruleConfig)
-      );
+      ruleForm.setValues(rule.fromConfig(leafCondition.ruleConfig));
       formInitializedForRule.current = ruleId;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

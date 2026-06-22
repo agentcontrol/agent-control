@@ -5,9 +5,9 @@
 import { agentsAddControl } from "../funcs/agents-add-control.js";
 import { agentsAddPolicy } from "../funcs/agents-add-policy.js";
 import { agentsDeletePolicy } from "../funcs/agents-delete-policy.js";
-import { agentsGetRule } from "../funcs/agents-get-rule.js";
 import { agentsGetPolicies } from "../funcs/agents-get-policies.js";
 import { agentsGetPolicy } from "../funcs/agents-get-policy.js";
+import { agentsGetRule } from "../funcs/agents-get-rule.js";
 import { agentsGet } from "../funcs/agents-get.js";
 import { agentsInit } from "../funcs/agents-init.js";
 import { agentsListControls } from "../funcs/agents-list-controls.js";
@@ -245,71 +245,6 @@ export class Agents extends ClientSDK {
   }
 
   /**
-   * List agent's registered rule schemas
-   *
-   * @remarks
-   * List all rule schemas registered with an agent.
-   *
-   * Rule schemas are registered via initAgent and used for:
-   * - Config validation when creating Controls
-   * - UI to display available config options
-   *
-   * Args:
-   *     agent_name: Agent identifier
-   *     cursor: Optional cursor for pagination (name of last rule from previous page)
-   *     limit: Pagination limit (default 20, max 100)
-   *     db: Database session (injected)
-   *     principal: Authorized request principal
-   *
-   * Returns:
-   *     ListRulesResponse with rule schemas and pagination
-   *
-   * Raises:
-   *     HTTPException 404: Agent not found
-   */
-  async listRules(
-    request:
-      operations.ListAgentRulesApiV1AgentsAgentNameRulesGetRequest,
-    options?: RequestOptions,
-  ): Promise<models.ListRulesResponse> {
-    return unwrapAsync(agentsListRules(
-      this,
-      request,
-      options,
-    ));
-  }
-
-  /**
-   * Get specific rule schema
-   *
-   * @remarks
-   * Get a specific rule schema registered with an agent.
-   *
-   * Args:
-   *     agent_name: Agent identifier
-   *     rule_name: Name of the rule
-   *     db: Database session (injected)
-   *     principal: Authorized request principal
-   *
-   * Returns:
-   *     RuleSchemaItem with schema details
-   *
-   * Raises:
-   *     HTTPException 404: Agent or rule not found
-   */
-  async getRule(
-    request:
-      operations.GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
-    options?: RequestOptions,
-  ): Promise<models.RuleSchemaItem> {
-    return unwrapAsync(agentsGetRule(
-      this,
-      request,
-      options,
-    ));
-  }
-
-  /**
    * Remove all policy associations from agent
    *
    * @remarks
@@ -430,6 +365,69 @@ export class Agents extends ClientSDK {
     options?: RequestOptions,
   ): Promise<models.SetPolicyResponse> {
     return unwrapAsync(agentsUpdatePolicy(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * List agent's registered rule schemas
+   *
+   * @remarks
+   * List all rule schemas registered with an agent.
+   *
+   * Rule schemas are registered via initAgent and used for:
+   * - Config validation when creating Controls
+   * - UI to display available config options
+   *
+   * Args:
+   *     agent_name: Agent identifier
+   *     cursor: Optional cursor for pagination (name of last rule from previous page)
+   *     limit: Pagination limit (default 20, max 100)
+   *     db: Database session (injected)
+   *     principal: Authorized request principal
+   *
+   * Returns:
+   *     ListRulesResponse with rule schemas and pagination
+   *
+   * Raises:
+   *     HTTPException 404: Agent not found
+   */
+  async listRules(
+    request: operations.ListAgentRulesApiV1AgentsAgentNameRulesGetRequest,
+    options?: RequestOptions,
+  ): Promise<models.ListRulesResponse> {
+    return unwrapAsync(agentsListRules(
+      this,
+      request,
+      options,
+    ));
+  }
+
+  /**
+   * Get specific rule schema
+   *
+   * @remarks
+   * Get a specific rule schema registered with an agent.
+   *
+   * Args:
+   *     agent_name: Agent identifier
+   *     rule_name: Name of the rule
+   *     db: Database session (injected)
+   *     principal: Authorized request principal
+   *
+   * Returns:
+   *     RuleSchemaItem with schema details
+   *
+   * Raises:
+   *     HTTPException 404: Agent or rule not found
+   */
+  async getRule(
+    request: operations.GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
+    options?: RequestOptions,
+  ): Promise<models.RuleSchemaItem> {
+    return unwrapAsync(agentsGetRule(
       this,
       request,
       options,

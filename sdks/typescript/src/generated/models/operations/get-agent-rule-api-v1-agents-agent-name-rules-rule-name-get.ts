@@ -5,18 +5,16 @@
 import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../../lib/primitives.js";
 
-export type GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest =
-  {
-    agentName: string;
-    ruleName: string;
-  };
+export type GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest = {
+  agentName: string;
+  ruleName: string;
+};
 
 /** @internal */
-export type GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest$Outbound =
-  {
-    agent_name: string;
-    rule_name: string;
-  };
+export type GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest$Outbound = {
+  agent_name: string;
+  rule_name: string;
+};
 
 /** @internal */
 export const GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest$outboundSchema:
@@ -41,9 +39,8 @@ export function getAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequestToJSON(
     GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
 ): string {
   return JSON.stringify(
-    GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest$outboundSchema
-      .parse(
-        getAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
-      ),
+    GetAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest$outboundSchema.parse(
+      getAgentRuleApiV1AgentsAgentNameRulesRuleNameGetRequest,
+    ),
   );
 }

@@ -33,21 +33,19 @@ export type RuleSchema = {
 };
 
 /** @internal */
-export const RuleSchema$inboundSchema: z.ZodMiniType<
-  RuleSchema,
-  unknown
-> = z.pipe(
-  z.object({
-    config_schema: types.optional(z.record(z.string(), z.any())),
-    description: z.optional(z.nullable(types.string())),
-    name: types.string(),
-  }),
-  z.transform((v) => {
-    return remap$(v, {
-      "config_schema": "configSchema",
-    });
-  }),
-);
+export const RuleSchema$inboundSchema: z.ZodMiniType<RuleSchema, unknown> = z
+  .pipe(
+    z.object({
+      config_schema: types.optional(z.record(z.string(), z.any())),
+      description: z.optional(z.nullable(types.string())),
+      name: types.string(),
+    }),
+    z.transform((v) => {
+      return remap$(v, {
+        "config_schema": "configSchema",
+      });
+    }),
+  );
 /** @internal */
 export type RuleSchema$Outbound = {
   config_schema?: { [k: string]: any } | undefined;
@@ -72,9 +70,7 @@ export const RuleSchema$outboundSchema: z.ZodMiniType<
   }),
 );
 
-export function ruleSchemaToJSON(
-  ruleSchema: RuleSchema,
-): string {
+export function ruleSchemaToJSON(ruleSchema: RuleSchema): string {
   return JSON.stringify(RuleSchema$outboundSchema.parse(ruleSchema));
 }
 export function ruleSchemaFromJSON(

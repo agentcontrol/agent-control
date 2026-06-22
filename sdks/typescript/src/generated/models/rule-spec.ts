@@ -30,13 +30,11 @@ export type RuleSpec = {
 };
 
 /** @internal */
-export const RuleSpec$inboundSchema: z.ZodMiniType<
-  RuleSpec,
-  unknown
-> = z.object({
-  config: z.record(z.string(), z.any()),
-  name: types.string(),
-});
+export const RuleSpec$inboundSchema: z.ZodMiniType<RuleSpec, unknown> = z
+  .object({
+    config: z.record(z.string(), z.any()),
+    name: types.string(),
+  });
 /** @internal */
 export type RuleSpec$Outbound = {
   config: { [k: string]: any };

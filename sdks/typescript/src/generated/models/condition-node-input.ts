@@ -23,10 +23,6 @@ export type ConditionNodeInput = {
    */
   and?: Array<ConditionNodeInput> | null | undefined;
   /**
-   * Leaf rule. Must be provided together with selector.
-   */
-  rule?: RuleSpec | null | undefined;
-  /**
    * Logical NOT over a single child condition.
    */
   not?: ConditionNodeInput | null | undefined;
@@ -34,6 +30,10 @@ export type ConditionNodeInput = {
    * Logical OR over child conditions.
    */
   or?: Array<ConditionNodeInput> | null | undefined;
+  /**
+   * Leaf rule. Must be provided together with selector.
+   */
+  rule?: RuleSpec | null | undefined;
   /**
    * Leaf selector. Must be provided together with rule.
    */
@@ -43,9 +43,9 @@ export type ConditionNodeInput = {
 /** @internal */
 export type ConditionNodeInput$Outbound = {
   and?: Array<ConditionNodeInput$Outbound> | null | undefined;
-  rule?: RuleSpec$Outbound | null | undefined;
   not?: ConditionNodeInput$Outbound | null | undefined;
   or?: Array<ConditionNodeInput$Outbound> | null | undefined;
+  rule?: RuleSpec$Outbound | null | undefined;
   selector?: ControlSelector$Outbound | null | undefined;
 };
 
@@ -57,11 +57,11 @@ export const ConditionNodeInput$outboundSchema: z.ZodMiniType<
   and: z.optional(
     z.nullable(z.array(z.lazy(() => ConditionNodeInput$outboundSchema))),
   ),
-  rule: z.optional(z.nullable(RuleSpec$outboundSchema)),
   not: z.optional(z.nullable(z.lazy(() => ConditionNodeInput$outboundSchema))),
   or: z.optional(
     z.nullable(z.array(z.lazy(() => ConditionNodeInput$outboundSchema))),
   ),
+  rule: z.optional(z.nullable(RuleSpec$outboundSchema)),
   selector: z.optional(z.nullable(ControlSelector$outboundSchema)),
 });
 

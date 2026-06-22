@@ -263,13 +263,7 @@ export function getJsonInsertTextForSchemaPropertyValue(
 
   if (
     schemaTitle === 'ConditionNode' ||
-    isSchemaWithProperties(normalized, [
-      'selector',
-      'rule',
-      'and',
-      'or',
-      'not',
-    ])
+    isSchemaWithProperties(normalized, ['selector', 'rule', 'and', 'or', 'not'])
   ) {
     return '{}';
   }

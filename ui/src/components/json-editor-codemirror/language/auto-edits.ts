@@ -48,8 +48,7 @@ function collectRuleNames(
   for (const key of ['and', 'or'] as const) {
     const arrayNode = findNodeAtLocation(node, [key]);
     if (arrayNode?.type === 'array' && arrayNode.children) {
-      for (const child of arrayNode.children)
-        collectRuleNames(child, result);
+      for (const child of arrayNode.children) collectRuleNames(child, result);
     }
   }
 
@@ -222,11 +221,7 @@ export function computeAutoEdit(
     return { edit: null, editKind: null, nextRuleNames, nextDecision };
   }
 
-  const ruleEdit = findRuleConfigEdit(
-    text,
-    previousRuleNames,
-    rules
-  );
+  const ruleEdit = findRuleConfigEdit(text, previousRuleNames, rules);
   if (ruleEdit) {
     return {
       edit: ruleEdit,

@@ -369,10 +369,7 @@ export const JsonEditorView = ({
     };
     updateHints();
 
-    let prevEvalNames = extractRuleNames(
-      editor.getValue(),
-      definitionPrefix
-    );
+    let prevEvalNames = extractRuleNames(editor.getValue(), definitionPrefix);
     let prevDecision: string | null = null;
     try {
       const initTree = parseTree(editor.getValue());

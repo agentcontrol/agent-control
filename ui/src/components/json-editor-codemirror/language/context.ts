@@ -62,9 +62,7 @@ export function resolveActiveRule(
 ): JsonEditorRuleOption | null {
   if (context.mode === 'rule-config') {
     return (
-      context.rules?.find(
-        (item) => item.id === context.activeRuleId
-      ) ?? null
+      context.rules?.find((item) => item.id === context.activeRuleId) ?? null
     );
   }
 

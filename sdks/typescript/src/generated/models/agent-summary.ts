@@ -26,13 +26,13 @@ export type AgentSummary = {
    */
   createdAt?: string | null | undefined;
   /**
-   * Number of rules registered with the agent
-   */
-  ruleCount: number;
-  /**
    * IDs of policies associated with the agent
    */
   policyIds?: Array<number> | undefined;
+  /**
+   * Number of rules registered with the agent
+   */
+  ruleCount: number;
   /**
    * Number of steps registered with the agent
    */
@@ -46,8 +46,8 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
       active_controls_count: z._default(types.number(), 0),
       agent_name: types.string(),
       created_at: z.optional(z.nullable(types.string())),
-      rule_count: z._default(types.number(), 0),
       policy_ids: types.optional(z.array(types.number())),
+      rule_count: z._default(types.number(), 0),
       step_count: z._default(types.number(), 0),
     }),
     z.transform((v) => {
@@ -55,8 +55,8 @@ export const AgentSummary$inboundSchema: z.ZodMiniType<AgentSummary, unknown> =
         "active_controls_count": "activeControlsCount",
         "agent_name": "agentName",
         "created_at": "createdAt",
-        "rule_count": "ruleCount",
         "policy_ids": "policyIds",
+        "rule_count": "ruleCount",
         "step_count": "stepCount",
       });
     }),

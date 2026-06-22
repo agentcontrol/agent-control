@@ -8,10 +8,7 @@ import { Result as SafeParseResult } from "../types/fp.js";
 import * as types from "../types/primitives.js";
 import { Agent, Agent$inboundSchema } from "./agent.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
-import {
-  RuleSchema,
-  RuleSchema$inboundSchema,
-} from "./rule-schema.js";
+import { RuleSchema, RuleSchema$inboundSchema } from "./rule-schema.js";
 import { StepSchema, StepSchema$inboundSchema } from "./step-schema.js";
 
 /**

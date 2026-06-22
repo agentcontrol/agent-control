@@ -55,16 +55,6 @@ actions:
       x-speakeasy-group: agents
       x-speakeasy-name-override: removeControl
 
-  - target: $["paths"]["/api/v1/agents/{agent_name}/rules"]["get"]
-    update:
-      x-speakeasy-group: agents
-      x-speakeasy-name-override: listRules
-
-  - target: $["paths"]["/api/v1/agents/{agent_name}/rules/{rule_name}"]["get"]
-    update:
-      x-speakeasy-group: agents
-      x-speakeasy-name-override: getRule
-
   - target: $["paths"]["/api/v1/agents/{agent_name}/policies"]["get"]
     update:
       x-speakeasy-group: agents
@@ -99,6 +89,16 @@ actions:
     update:
       x-speakeasy-group: agents
       x-speakeasy-name-override: updatePolicy
+
+  - target: $["paths"]["/api/v1/agents/{agent_name}/rules"]["get"]
+    update:
+      x-speakeasy-group: agents
+      x-speakeasy-name-override: listRules
+
+  - target: $["paths"]["/api/v1/agents/{agent_name}/rules/{rule_name}"]["get"]
+    update:
+      x-speakeasy-group: agents
+      x-speakeasy-name-override: getRule
 
   - target: $["paths"]["/api/v1/auth/runtime-token-exchange"]["post"]
     update:
@@ -215,11 +215,6 @@ actions:
       x-speakeasy-group: evaluation
       x-speakeasy-name-override: evaluate
 
-  - target: $["paths"]["/api/v1/rules"]["get"]
-    update:
-      x-speakeasy-group: rules
-      x-speakeasy-name-override: list
-
   - target: $["paths"]["/api/v1/observability/events"]["post"]
     update:
       x-speakeasy-group: observability
@@ -264,6 +259,11 @@ actions:
     update:
       x-speakeasy-group: policies
       x-speakeasy-name-override: removeControl
+
+  - target: $["paths"]["/api/v1/rules"]["get"]
+    update:
+      x-speakeasy-group: rules
+      x-speakeasy-name-override: list
 
   - target: $["paths"]["/health"]["get"]
     update:

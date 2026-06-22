@@ -12,12 +12,11 @@ export type ListAgentRulesApiV1AgentsAgentNameRulesGetRequest = {
 };
 
 /** @internal */
-export type ListAgentRulesApiV1AgentsAgentNameRulesGetRequest$Outbound =
-  {
-    agent_name: string;
-    cursor?: string | null | undefined;
-    limit: number;
-  };
+export type ListAgentRulesApiV1AgentsAgentNameRulesGetRequest$Outbound = {
+  agent_name: string;
+  cursor?: string | null | undefined;
+  limit: number;
+};
 
 /** @internal */
 export const ListAgentRulesApiV1AgentsAgentNameRulesGetRequest$outboundSchema:
@@ -42,7 +41,8 @@ export function listAgentRulesApiV1AgentsAgentNameRulesGetRequestToJSON(
     ListAgentRulesApiV1AgentsAgentNameRulesGetRequest,
 ): string {
   return JSON.stringify(
-    ListAgentRulesApiV1AgentsAgentNameRulesGetRequest$outboundSchema
-      .parse(listAgentRulesApiV1AgentsAgentNameRulesGetRequest),
+    ListAgentRulesApiV1AgentsAgentNameRulesGetRequest$outboundSchema.parse(
+      listAgentRulesApiV1AgentsAgentNameRulesGetRequest,
+    ),
   );
 }

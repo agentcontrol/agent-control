@@ -48,16 +48,14 @@ export type RuleResult = {
 };
 
 /** @internal */
-export const RuleResult$inboundSchema: z.ZodMiniType<
-  RuleResult,
-  unknown
-> = z.object({
-  confidence: types.number(),
-  error: z.optional(z.nullable(types.string())),
-  matched: types.boolean(),
-  message: z.optional(z.nullable(types.string())),
-  metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
-});
+export const RuleResult$inboundSchema: z.ZodMiniType<RuleResult, unknown> = z
+  .object({
+    confidence: types.number(),
+    error: z.optional(z.nullable(types.string())),
+    matched: types.boolean(),
+    message: z.optional(z.nullable(types.string())),
+    metadata: z.optional(z.nullable(z.record(z.string(), z.any()))),
+  });
 
 export function ruleResultFromJSON(
   jsonString: string,

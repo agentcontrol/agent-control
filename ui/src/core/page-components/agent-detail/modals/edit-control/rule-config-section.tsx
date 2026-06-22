@@ -124,8 +124,7 @@ export function RuleConfigSection({
               <FormComponent form={ruleForm} />
             ) : (
               <Text c="dimmed" ta="center" py="xl">
-                No form available for this rule. Use JSON view to
-                configure.
+                No form available for this rule. Use JSON view to configure.
               </Text>
             )
           ) : (

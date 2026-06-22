@@ -165,9 +165,7 @@ test.describe('JsonEditorCodeMirror (component)', () => {
   });
 
   test('remounting host switches mode document', async ({ mount, page }) => {
-    let host = await mount(
-      <JsonEditorCodeMirrorCtHost mode="rule-config" />
-    );
+    let host = await mount(<JsonEditorCodeMirrorCtHost mode="rule-config" />);
     expect(JSON.parse(await getJsonEditorValue(page, EDITOR))).toEqual({});
 
     await host.unmount();

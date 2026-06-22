@@ -52,8 +52,7 @@ import { Result } from "../types/fp.js";
  */
 export function agentsListRules(
   client: AgentControlSDKCore,
-  request:
-    operations.ListAgentRulesApiV1AgentsAgentNameRulesGetRequest,
+  request: operations.ListAgentRulesApiV1AgentsAgentNameRulesGetRequest,
   options?: RequestOptions,
 ): APIPromise<
   Result<
@@ -78,8 +77,7 @@ export function agentsListRules(
 
 async function $do(
   client: AgentControlSDKCore,
-  request:
-    operations.ListAgentRulesApiV1AgentsAgentNameRulesGetRequest,
+  request: operations.ListAgentRulesApiV1AgentsAgentNameRulesGetRequest,
   options?: RequestOptions,
 ): Promise<
   [
@@ -139,8 +137,7 @@ async function $do(
   const context = {
     options: client._options,
     baseURL: options?.serverURL ?? client._baseURL ?? "",
-    operationID:
-      "list_agent_rules_api_v1_agents__agent_name__rules_get",
+    operationID: "list_agent_rules_api_v1_agents__agent_name__rules_get",
     oAuth2Scopes: null,
 
     resolvedSecurity: requestSecurity,

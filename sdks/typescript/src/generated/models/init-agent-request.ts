@@ -40,13 +40,13 @@ export type InitAgentRequest = {
    */
   conflictMode?: ConflictMode | undefined;
   /**
-   * Custom rule schemas for config validation
-   */
-  rules?: Array<RuleSchema> | undefined;
-  /**
    * If true, replace corrupted agent data instead of failing. Use only when agent data is corrupted and cannot be parsed.
    */
   forceReplace?: boolean | undefined;
+  /**
+   * Custom rule schemas for config validation
+   */
+  rules?: Array<RuleSchema> | undefined;
   /**
    * List of steps available to the agent
    */
@@ -65,8 +65,8 @@ export type InitAgentRequest = {
 export type InitAgentRequest$Outbound = {
   agent: Agent$Outbound;
   conflict_mode?: string | undefined;
-  rules?: Array<RuleSchema$Outbound> | undefined;
   force_replace: boolean;
+  rules?: Array<RuleSchema$Outbound> | undefined;
   steps?: Array<StepSchema$Outbound> | undefined;
   target_id?: string | null | undefined;
   target_type?: string | null | undefined;
@@ -80,8 +80,8 @@ export const InitAgentRequest$outboundSchema: z.ZodMiniType<
   z.object({
     agent: Agent$outboundSchema,
     conflictMode: z._default(z.optional(ConflictMode$outboundSchema), "overwrite"),
-    rules: z.optional(z.array(RuleSchema$outboundSchema)),
     forceReplace: z._default(z.boolean(), false),
+    rules: z.optional(z.array(RuleSchema$outboundSchema)),
     steps: z.optional(z.array(StepSchema$outboundSchema)),
     targetId: z.optional(z.nullable(z.string())),
     targetType: z.optional(z.nullable(z.string())),

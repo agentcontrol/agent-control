@@ -40,10 +40,7 @@ export type RuleInfo = {
 };
 
 /** @internal */
-export const RuleInfo$inboundSchema: z.ZodMiniType<
-  RuleInfo,
-  unknown
-> = z.pipe(
+export const RuleInfo$inboundSchema: z.ZodMiniType<RuleInfo, unknown> = z.pipe(
   z.object({
     config_schema: z.record(z.string(), z.any()),
     description: types.string(),

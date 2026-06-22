@@ -19,6 +19,10 @@ import { StepKey, StepKey$inboundSchema } from "./step-key.js";
  */
 export type InitAgentOverwriteChanges = {
   /**
+   * Whether agent metadata changed
+   */
+  metadataChanged: boolean;
+  /**
    * Per-rule removal details, including active control references
    */
   ruleRemovals?: Array<InitAgentRuleRemoval> | undefined;
@@ -34,10 +38,6 @@ export type InitAgentOverwriteChanges = {
    * Existing rule names updated by overwrite
    */
   rulesUpdated?: Array<string> | undefined;
-  /**
-   * Whether agent metadata changed
-   */
-  metadataChanged: boolean;
   /**
    * Steps added by overwrite
    */
@@ -58,24 +58,24 @@ export const InitAgentOverwriteChanges$inboundSchema: z.ZodMiniType<
   unknown
 > = z.pipe(
   z.object({
+    metadata_changed: z._default(types.boolean(), false),
     rule_removals: types.optional(
       z.array(InitAgentRuleRemoval$inboundSchema),
     ),
     rules_added: types.optional(z.array(types.string())),
     rules_removed: types.optional(z.array(types.string())),
     rules_updated: types.optional(z.array(types.string())),
-    metadata_changed: z._default(types.boolean(), false),
     steps_added: types.optional(z.array(StepKey$inboundSchema)),
     steps_removed: types.optional(z.array(StepKey$inboundSchema)),
     steps_updated: types.optional(z.array(StepKey$inboundSchema)),
   }),
   z.transform((v) => {
     return remap$(v, {
+      "metadata_changed": "metadataChanged",
       "rule_removals": "ruleRemovals",
       "rules_added": "rulesAdded",
       "rules_removed": "rulesRemoved",
       "rules_updated": "rulesUpdated",
-      "metadata_changed": "metadataChanged",
       "steps_added": "stepsAdded",
       "steps_removed": "stepsRemoved",
       "steps_updated": "stepsUpdated",

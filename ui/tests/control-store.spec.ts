@@ -219,9 +219,7 @@ test.describe('Add New Control Modal', () => {
     ).toBeVisible();
   });
 
-  test('displays rules table with available rules', async ({
-    mockedPage,
-  }) => {
+  test('displays rules table with available rules', async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
     await expect(
       modal.getByRole('columnheader', { name: 'Name' })

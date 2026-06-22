@@ -656,13 +656,7 @@ function buildSchemaValueSnippet(
 
   if (
     schemaTitle === 'ConditionNode' ||
-    isSchemaWithProperties(normalized, [
-      'selector',
-      'rule',
-      'and',
-      'or',
-      'not',
-    ])
+    isSchemaWithProperties(normalized, ['selector', 'rule', 'and', 'or', 'not'])
   ) {
     return '{}';
   }
@@ -900,9 +894,7 @@ function resolveActiveRule(
   ];
   const ruleNameNode = findNodeAtLocation(tree, ruleNamePath);
   const ruleName =
-    typeof ruleNameNode?.value === 'string'
-      ? ruleNameNode.value
-      : null;
+    typeof ruleNameNode?.value === 'string' ? ruleNameNode.value : null;
 
   return findRuleById(context.rules, ruleName);
 }
@@ -997,10 +989,7 @@ function buildRuleNameSuggestions(
   return (rules ?? []).map((rule, index) => ({
     label: rule.id,
     kind: monaco.languages.CompletionItemKind.Value,
-    detail:
-      rule.source === 'agent'
-        ? `${rule.label} (agent rule)`
-        : rule.label,
+    detail: rule.source === 'agent' ? `${rule.label} (agent rule)` : rule.label,
     documentation: rule.description ?? undefined,
     insertText: buildValueInsertText(rule.id, isStringValueContext),
     range,
@@ -1772,11 +1761,7 @@ export function getEmptyValueHints(
       continue;
     }
 
-    const activeRule = resolveActiveRule(
-      context,
-      tree,
-      location.path
-    );
+    const activeRule = resolveActiveRule(context, tree, location.path);
 
     if (isRuleNameLocation(effectivePath) && context.rules?.length) {
       const names = context.rules.map((e) => e.id);
@@ -1903,11 +1888,7 @@ export function setupJsonEditorLanguageSupport(
         }
       }
 
-      const activeRule = resolveActiveRule(
-        context,
-        tree,
-        location.path
-      );
+      const activeRule = resolveActiveRule(context, tree, location.path);
       const cursor = resolveSchemaAtJsonPath(
         context,
         activeRule,

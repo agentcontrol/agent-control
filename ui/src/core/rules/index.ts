@@ -77,8 +77,4 @@ export { listRule } from './list';
 export { lunaRule } from './luna';
 export { regexRule } from './regex';
 export { sqlRule } from './sql';
-export type {
-  AnyRuleDefinition,
-  RuleDefinition,
-  RuleFormProps,
-} from './types';
+export type { AnyRuleDefinition, RuleDefinition, RuleFormProps } from './types';

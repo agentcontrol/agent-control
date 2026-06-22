@@ -205,11 +205,7 @@ function getPropertySuggestions(
   const tree = parseJsonTree(text);
   const activeRule = resolveActiveRule(context, tree, path);
   const objectPath = path.slice(0, -1);
-  const schemaCursor = resolveSchemaAtJsonPath(
-    context,
-    activeRule,
-    objectPath
-  );
+  const schemaCursor = resolveSchemaAtJsonPath(context, activeRule, objectPath);
   if (!schemaCursor.schema) return [];
 
   const objectNode = tree ? findNodeAtLocation(tree, objectPath) : undefined;
@@ -818,11 +814,7 @@ function _createHoverExtension(
     const location = getLocation(text, pos);
     if (!location.path.length) return null;
 
-    const activeRule = resolveActiveRule(
-      context,
-      tree,
-      location.path
-    );
+    const activeRule = resolveActiveRule(context, tree, location.path);
     const path = location.isAtPropertyKey
       ? location.path.slice(0, -1)
       : location.path;
