@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from agent_control_models import RuleResult
 from agent_control_rules import (
     Rule,
     RuleConfig,
@@ -19,7 +20,6 @@ from agent_control_rules import (
     reset_rule_discovery,
 )
 from agent_control_rules import _discovery as discovery_module
-from agent_control_models import RuleResult
 
 
 class _DiscoveryConfig(RuleConfig):

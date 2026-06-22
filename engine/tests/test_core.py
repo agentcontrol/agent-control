@@ -13,7 +13,6 @@ from typing import Any
 import pytest
 from agent_control_engine import clear_rule_cache
 from agent_control_engine.core import ControlEngine, _compile_regex
-from agent_control_rules import Rule, RuleMetadata, register_rule
 from agent_control_models import (
     ControlAction,
     ControlDefinition,
@@ -23,6 +22,7 @@ from agent_control_models import (
     SteeringContext,
     Step,
 )
+from agent_control_rules import Rule, RuleMetadata, register_rule
 from pydantic import BaseModel
 
 # =============================================================================
