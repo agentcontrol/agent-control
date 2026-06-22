@@ -7,7 +7,7 @@ import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import sqlglot
 from agent_control_models import EvaluatorResult
@@ -239,7 +239,8 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         top_level_where = top_level_select.find(exp.Where) if top_level_select else None
 
         # Single tree walk to collect all metrics
-        for node in stmt.walk():
+        for raw_node in stmt.walk():
+            node = cast(exp.Expression, raw_node)
             # Collect operations
             op_name = self._get_operation_name(node)
             if op_name:
@@ -310,7 +311,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
             # If we hit a SELECT node before the target, node is in a subquery
             if isinstance(current, exp.Select) and current is not target_node:
                 return False
-            current = current.parent
+            current = cast(exp.Expression | None, current.parent)
         return False
 
     def _is_in_where_clause(self, column: exp.Column) -> bool:
@@ -319,7 +320,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         while current:
             if isinstance(current, exp.Where):
                 return True
-            current = current.parent
+            current = cast(exp.Expression | None, current.parent)
         return False
 
     def _is_in_top_level_select(
@@ -339,12 +340,12 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
             # If we hit another SELECT before the top-level, we're in a subquery
             if isinstance(current, exp.Select) and current is not top_level_select:
                 return False
-            current = current.parent
+            current = cast(exp.Expression | None, current.parent)
         return False
 
     def _is_in_select_clause(self, column: exp.Column) -> bool:
         """Check if column is in any SELECT clause (including subqueries)."""
-        current: exp.Expression | None = column.parent
+        current = cast(exp.Expression | None, column.parent)
         while current:
             # Check if this column is in a SELECT's expressions
             if isinstance(current, exp.Select):
@@ -352,7 +353,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
                     if self._is_descendant_of(column, select_expr):
                         return True
                 return False
-            current = current.parent
+            current = cast(exp.Expression | None, current.parent)
         return False
 
     def _is_descendant_of(
@@ -363,7 +364,7 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
         while current:
             if current is potential_ancestor:
                 return True
-            current = current.parent
+            current = cast(exp.Expression | None, current.parent)
         return False
 
     def _is_top_level_select(self, select_node: exp.Select) -> bool:
@@ -1106,7 +1107,9 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
                 metadata=self._create_query_metadata(query),
             )
 
-        parsed_statements = [stmt for stmt in parsed if stmt is not None]
+        parsed_statements = [
+            cast(exp.Expression, stmt) for stmt in parsed if stmt is not None
+        ]
 
         # 2. Check multi-statements
         if not self.config.allow_multi_statements or self.config.max_statements:

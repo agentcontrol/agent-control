@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-evaluators"
-version = "8.1.0"
+version = "8.1.2"
 description = "Builtin evaluators for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -11,8 +11,7 @@ dependencies = [
     "pydantic>=2.12.4",
     "google-re2>=1.1",
     "jsonschema>=4.0.0",
-    "sqlglot[c]>=29.0.0,<29.1.0",
-    "sqlglotc>=29.0.0,<29.1.0",
+    "sqlglot[c]>=30.11.0,<30.12.0",
 ]
 
 [project.optional-dependencies]
