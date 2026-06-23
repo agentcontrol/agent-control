@@ -133,7 +133,7 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         if not has_secret:
             raise ValueError(
                 "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for Luna "
-                "runners-api invocation. Set one as an environment variable before using "
+                "scorer invocation. Set one as an environment variable before using "
                 "galileo.luna."
             )
 
@@ -263,14 +263,16 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         echoed_label = response.scorer_label or self.config.scorer_label
         if echoed_label is not None:
             metadata["scorer_label"] = echoed_label
-        metadata.update({
-            "score": response.score,
-            "threshold": self.config.threshold,
-            "operator": self.config.operator,
-            "status": response.status,
-            "execution_time_seconds": response.execution_time,
-            "error_message": response.error_message,
-        })
+        metadata.update(
+            {
+                "score": response.score,
+                "threshold": self.config.threshold,
+                "operator": self.config.operator,
+                "status": response.status,
+                "execution_time_seconds": response.execution_time,
+                "error_message": response.error_message,
+            }
+        )
         return metadata
 
     def _handle_error(

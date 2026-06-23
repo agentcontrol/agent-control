@@ -1,4 +1,4 @@
-"""Direct HTTP client for Galileo Luna scorer invocation via runners-api."""
+"""Direct HTTP client for Galileo Luna scorer invocation."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
+from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue
@@ -20,12 +21,12 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECS = 10.0
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
-RUNNERS_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
-RUNNERS_API_URL_ENV = "GALILEO_RUNNERS_API_URL"
-RUNNERS_API_CA_FILE_ENV = "GALILEO_RUNNERS_API_CA_FILE"
+DEFAULT_LUNA_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
+LUNA_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
+LUNA_INVOKE_CA_FILE_ENV = "GALILEO_LUNA_INVOKE_CA_FILE"
 AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
-# Headers that must never be forwarded to runners-api (checked case-insensitively).
+# Headers that must never be forwarded to the Luna invoke endpoint (checked case-insensitively).
 _BLOCKED_REQUEST_HEADERS = frozenset({"galileo-api-key"})
 
 # Keep pooled-connection reuse shorter than typical server keepalive/worker
@@ -48,7 +49,7 @@ def _internal_auth_token(
     api_secret: str,
     ttl_seconds: int = DEFAULT_INTERNAL_TOKEN_TTL_SECS,
 ) -> str:
-    """Create the internal JWT expected by runners-api scorer invoke routes."""
+    """Create the internal JWT expected by Luna scorer invoke routes."""
     now = int(time())
     header = {"alg": "HS256", "typ": "JWT"}
     payload = {
@@ -65,6 +66,15 @@ def _internal_auth_token(
     )
     signature = hmac_new(api_secret.encode("utf-8"), signing_input.encode("ascii"), sha256).digest()
     return f"{signing_input}.{_b64url(signature)}"
+
+
+def _normalize_luna_invoke_url(raw_url: str) -> str:
+    """Use full invoke URLs as-is and append the default path to bare service roots."""
+    url = raw_url.strip().rstrip("/")
+    parsed = urlsplit(url)
+    if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        return url
+    return f"{url}{DEFAULT_LUNA_SCORER_INVOKE_PATH}"
 
 
 def _load_float_env(env_name: str, default: float) -> float:
@@ -139,7 +149,7 @@ def _has_value(value: JSONValue) -> bool:
 
 
 class ScorerInvokeInputs(BaseModel):
-    """Input values sent to the runners-api scorer invoke endpoint."""
+    """Input values sent to the Luna scorer invoke endpoint."""
 
     query: JSONValue = ""
     response: JSONValue = ""
@@ -148,7 +158,7 @@ class ScorerInvokeInputs(BaseModel):
 
 
 class ScorerInvokeRequest(BaseModel):
-    """Request payload for runners-api scorer invocation.
+    """Request payload for Luna scorer invocation.
 
     Attributes:
         scorer_id: Required scorer identifier.
@@ -171,12 +181,12 @@ class ScorerInvokeRequest(BaseModel):
         return self
 
     def to_dict(self) -> JSONObject:
-        """Convert to the runners-api scorer invoke request shape."""
+        """Convert to the Luna scorer invoke request shape."""
         return self.model_dump(mode="json", exclude_none=True)
 
 
 class ScorerInvokeResponse(BaseModel):
-    """Response from runners-api scorer invocation.
+    """Response from Luna scorer invocation.
 
     Attributes:
         scorer_label: Echoed scorer label, when returned.
@@ -199,7 +209,7 @@ class ScorerInvokeResponse(BaseModel):
 
     @classmethod
     def from_dict(cls, data: JSONObject) -> ScorerInvokeResponse:
-        """Create a response model from the runners-api JSON object."""
+        """Create a response model from the Luna scorer invoke JSON object."""
         response = cls.model_validate(
             data | {"execution_time": _as_float_or_none(data.get("execution_time"))}
         )
@@ -208,12 +218,12 @@ class ScorerInvokeResponse(BaseModel):
 
 
 class GalileoLunaClient:
-    """Thin HTTP client for Galileo Luna scorer invocation via runners-api.
+    """Thin HTTP client for Galileo Luna scorer invocation.
 
     Environment Variables:
-        GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: JWT signing secret for runners-api auth.
-        GALILEO_RUNNERS_API_URL: runners-api base URL (required).
-        GALILEO_RUNNERS_API_CA_FILE: CA bundle used to verify runners-api TLS.
+        GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: JWT signing secret for internal auth.
+        GALILEO_LUNA_INVOKE_URL: Luna scorer invoke URL or service root (required).
+        GALILEO_LUNA_INVOKE_CA_FILE: CA bundle used to verify Luna invoke TLS.
         AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE: Shared internal CA fallback.
         GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS: HTTP pooled connection expiry.
         GALILEO_LUNA_MAX_CONNECTIONS: Maximum outbound HTTP connections.
@@ -224,22 +234,22 @@ class GalileoLunaClient:
     def __init__(
         self,
         api_secret: str | None = None,
-        runners_api_url: str | None = None,
-        runners_api_ca_file: str | None = None,
+        luna_invoke_url: str | None = None,
+        luna_invoke_ca_file: str | None = None,
     ) -> None:
         """Initialize the Galileo Luna client.
 
         Args:
             api_secret: Internal JWT signing secret. If not provided, reads from
                 GALILEO_API_SECRET_KEY or GALILEO_API_SECRET.
-            runners_api_url: runners-api base URL. If not provided, reads from
-                GALILEO_RUNNERS_API_URL.
-            runners_api_ca_file: Optional CA bundle used to verify runners-api TLS. If not
-                provided, reads from GALILEO_RUNNERS_API_CA_FILE, then
+            luna_invoke_url: Luna scorer invoke URL or service root. If not provided,
+                reads from GALILEO_LUNA_INVOKE_URL.
+            luna_invoke_ca_file: Optional CA bundle used to verify Luna invoke TLS. If not
+                provided, reads from GALILEO_LUNA_INVOKE_CA_FILE, then
                 AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE.
 
         Raises:
-            ValueError: If the API secret, runners-api URL, CA bundle, or connection
+            ValueError: If the API secret, Luna invoke URL, CA bundle, or connection
                 tuning configuration is invalid.
         """
         resolved_api_secret = (
@@ -248,26 +258,26 @@ class GalileoLunaClient:
         if not resolved_api_secret:
             raise ValueError(
                 "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for Luna "
-                "runners-api invocation. Set one as an environment variable or pass it "
+                "scorer invocation. Set one as an environment variable or pass it "
                 "to the constructor."
             )
 
-        resolved_runners_url = runners_api_url or os.getenv(RUNNERS_API_URL_ENV)
-        if resolved_runners_url is None or resolved_runners_url.strip() == "":
+        resolved_luna_invoke_url = luna_invoke_url or os.getenv(LUNA_INVOKE_URL_ENV)
+        if resolved_luna_invoke_url is None or resolved_luna_invoke_url.strip() == "":
             raise ValueError(
-                "GALILEO_RUNNERS_API_URL is required for Luna runners-api invocation. "
+                "GALILEO_LUNA_INVOKE_URL is required for Luna scorer invocation. "
                 "Set it as an environment variable or pass it to the constructor."
             )
 
         self.api_secret = resolved_api_secret
-        self.runners_api_base = resolved_runners_url.strip().rstrip("/")
-        self.runners_api_ca_file = (
-            runners_api_ca_file
-            or os.getenv(RUNNERS_API_CA_FILE_ENV)
+        self.luna_invoke_url = _normalize_luna_invoke_url(resolved_luna_invoke_url)
+        self.luna_invoke_ca_file = (
+            luna_invoke_ca_file
+            or os.getenv(LUNA_INVOKE_CA_FILE_ENV)
             or os.getenv(AUTH_UPSTREAM_CA_FILE_ENV)
             or ""
         ).strip() or None
-        self._ssl_context = self._load_ssl_context(self.runners_api_ca_file)
+        self._ssl_context = self._load_ssl_context(self.luna_invoke_ca_file)
         self.keepalive_expiry_seconds = _load_float_env(
             LUNA_KEEPALIVE_EXPIRY_ENV, DEFAULT_KEEPALIVE_EXPIRY_SECS
         )
@@ -337,8 +347,7 @@ class GalileoLunaClient:
 
     def _endpoint_and_auth_header(self) -> tuple[str, str]:
         token = _internal_auth_token(self.api_secret)
-        endpoint = f"{self.runners_api_base}{RUNNERS_SCORER_INVOKE_PATH}"
-        return endpoint, f"Bearer {token}"
+        return self.luna_invoke_url, f"Bearer {token}"
 
     async def invoke(
         self,
@@ -352,7 +361,7 @@ class GalileoLunaClient:
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
     ) -> ScorerInvokeResponse:
-        """Invoke a Galileo Luna scorer via runners-api.
+        """Invoke a Galileo Luna scorer.
 
         Args:
             scorer_id: Required scorer identifier.
@@ -370,7 +379,7 @@ class GalileoLunaClient:
         Raises:
             ValueError: If neither input nor output is provided.
             RuntimeError: If the API response is not a JSON object.
-            httpx.HTTPStatusError: If runners-api returns an error status code.
+            httpx.HTTPStatusError: If the Luna invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
         """
         if not (_has_value(input) or _has_value(output)):

@@ -67,6 +67,21 @@ def make_agent_payload(
     }
 
 
+def _collect_paths(routes: list, prefix: str = "") -> set[str]:
+    """Recursively collect route paths, handling FastAPI's _IncludedRouter wrapper."""
+    paths: set[str] = set()
+    for route in routes:
+        path = getattr(route, "path", None)
+        if path:
+            paths.add(prefix + path)
+        nested = getattr(route, "original_router", None)
+        if nested:
+            ctx = getattr(route, "include_context", None)
+            pfx = getattr(ctx, "prefix", "") if ctx else ""
+            paths |= _collect_paths(nested.routes, prefix + pfx)
+    return paths
+
+
 def test_init_agent_route_exists(app: FastAPI) -> None:
     # Given: an application router
     paths = _collect_route_paths(list(app.router.routes))

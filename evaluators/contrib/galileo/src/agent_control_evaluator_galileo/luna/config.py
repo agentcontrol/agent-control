@@ -32,7 +32,7 @@ class LunaEvaluatorConfig(EvaluatorConfig):
     """Configuration for direct Luna scorer evaluation.
 
     Attributes:
-        scorer_id: Required scorer identifier for runners-api invocation.
+        scorer_id: Required scorer identifier for Luna scorer invocation.
         scorer_version_id: Optional pinned scorer version identifier.
         scorer_label: Optional display/metadata label.
         threshold: Local threshold used by the evaluator for comparison.
@@ -44,7 +44,7 @@ class LunaEvaluatorConfig(EvaluatorConfig):
 
     scorer_id: str = Field(
         min_length=1,
-        description="Required scorer identifier for runners-api invocation.",
+        description="Required scorer identifier for Luna scorer invocation.",
     )
     scorer_version_id: str | None = Field(
         default=None,
@@ -68,7 +68,9 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         default=None,
         alias="config",
         serialization_alias="config",
-        description="Optional scorer-specific configuration sent to runners-api.",
+        description=(
+            "Optional scorer-specific configuration sent to the Luna scorer invoke endpoint."
+        ),
     )
     payload_field: LunaPayloadField = Field(
         default="input",

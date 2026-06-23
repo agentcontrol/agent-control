@@ -5,7 +5,7 @@ Prerequisites:
     - Agent Control server running at AGENT_CONTROL_URL, default http://localhost:8000
     - Galileo credentials set where demo_agent.py will run:
       GALILEO_API_SECRET_KEY or GALILEO_API_SECRET
-      GALILEO_RUNNERS_API_URL
+      GALILEO_LUNA_INVOKE_URL
       GALILEO_LUNA_SCORER_ID (required)
 
 Usage:

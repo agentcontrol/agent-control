@@ -6,7 +6,7 @@ Prerequisites:
     2. Create controls: uv run python setup_controls.py
     3. Set Galileo credentials where this script runs:
        GALILEO_API_SECRET_KEY or GALILEO_API_SECRET
-       GALILEO_RUNNERS_API_URL
+       GALILEO_LUNA_INVOKE_URL
 
 Usage:
     uv run python demo_agent.py
@@ -93,7 +93,7 @@ def init_agent() -> None:
 async def run_demo() -> None:
     """Run scripted scenarios."""
     api_secret = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
-    runners_url = os.getenv("GALILEO_RUNNERS_API_URL")
+    luna_invoke_url = os.getenv("GALILEO_LUNA_INVOKE_URL")
 
     if not api_secret:
         print(
@@ -101,8 +101,8 @@ async def run_demo() -> None:
             "galileo.luna evaluator."
         )
         return
-    if not runners_url:
-        print("GALILEO_RUNNERS_API_URL is required for the galileo.luna evaluator.")
+    if not luna_invoke_url:
+        print("GALILEO_LUNA_INVOKE_URL is required for the galileo.luna evaluator.")
         return
 
     print("=" * 72)
@@ -110,7 +110,7 @@ async def run_demo() -> None:
     print("=" * 72)
     print(f"Server:      {SERVER_URL}")
     print(f"Agent:       {AGENT_NAME}")
-    print(f"Runners API: {runners_url}")
+    print(f"Luna invoke: {luna_invoke_url}")
     print()
 
     init_agent()
