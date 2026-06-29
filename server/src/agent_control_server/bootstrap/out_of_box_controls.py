@@ -1,9 +1,5 @@
 """Startup bootstrap for out-of-box controls.
 
-Phase 1 provides the tooling needed to seed controls safely, but does not
-register the static out-of-box control catalog yet. Phase 2 should add those
-definitions to ``OUT_OF_BOX_CONTROL_TEMPLATES``.
-
 Namespace rule:
 - Standalone Agent Control seeds into ``DEFAULT_NAMESPACE_KEY``.
 - Galileo-integrated Agent Control should call the same helper with
@@ -35,6 +31,7 @@ _CONTROL_NAME_UNIQUE_CONSTRAINTS = frozenset(
 )
 _INITIAL_VERSION_NOTE = "Out-of-box control seed"
 _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
+_OUT_OF_BOX_TAGS = ["out-of-box"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +101,250 @@ class OutOfBoxSeedResult:
         )
 
 
-OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = ()
+def _leaf_control_payload(
+    *,
+    description: str,
+    selector_path: str,
+    evaluator_name: str,
+    evaluator_config: Mapping[str, object],
+    step_types: list[str],
+    stages: list[str],
+    decision: str,
+    tags: list[str],
+    steering_message: str | None = None,
+) -> dict[str, object]:
+    action: dict[str, object] = {"decision": decision}
+    if steering_message is not None:
+        action["steering_context"] = {"message": steering_message}
+
+    return {
+        "description": description,
+        "enabled": True,
+        "execution": "server",
+        "scope": {"step_types": step_types, "stages": stages},
+        "condition": {
+            "selector": {"path": selector_path},
+            "evaluator": {
+                "name": evaluator_name,
+                "config": dict(evaluator_config),
+            },
+        },
+        "action": action,
+        "tags": [*_OUT_OF_BOX_TAGS, *tags],
+    }
+
+
+OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
+    OutOfBoxControlTemplate.from_payload(
+        name="oob-ssn-match",
+        data=_leaf_control_payload(
+            description="Block LLM output containing US Social Security Numbers.",
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={"pattern": r"\b\d{3}-\d{2}-\d{4}\b"},
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["pii", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        name="oob-credit-card-number-match",
+        data=_leaf_control_payload(
+            description="Block LLM output containing common credit-card-like numbers.",
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={"pattern": r"\b(?:\d[ -]?){13,19}\b"},
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["pii", "payment", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        name="oob-phone-number-match",
+        data=_leaf_control_payload(
+            description="Block LLM output containing common US phone number formats.",
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"\b(?:\+?1[-.\s]?)?(?:\(?[2-9]\d{2}\)?[-.\s]?)?"
+                    r"[2-9]\d{2}[-.\s]?\d{4}\b"
+                )
+            },
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["pii", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        name="oob-dangerous-shell-command-match",
+        data=_leaf_control_payload(
+            description="Block tool commands matching common destructive shell operations.",
+            selector_path="input.command",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"\b(?:rm\s+-rf\s+(?:/|~|\$HOME)|sudo\s+rm\s+-rf|"
+                    r"mkfs(?:\.[a-z0-9]+)?|dd\s+if=[^\s]+\s+of=/dev/[^\s]+|"
+                    r"chmod\s+-R\s+777\s+/|chown\s+-R\s+[^|;&]*\s+/|"
+                    r"shutdown\s+(?:-h\s+)?now|reboot)\b"
+                ),
+                "flags": ["IGNORECASE"],
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["tool", "shell", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        name="oob-high-value-action-requires-approval",
+        data=_leaf_control_payload(
+            description=(
+                "Steer tool calls over the default amount threshold to collect approval."
+            ),
+            selector_path="input",
+            evaluator_name="json",
+            evaluator_config={
+                "json_schema": {
+                    "type": "object",
+                    "anyOf": [
+                        {"not": {"required": ["amount"]}},
+                        {
+                            "required": ["amount"],
+                            "properties": {
+                                "amount": {"type": "number", "maximum": 10000}
+                            },
+                        },
+                        {
+                            "required": ["amount"],
+                            "properties": {
+                                "amount": {"type": "number", "exclusiveMinimum": 10000}
+                            },
+                            "anyOf": [
+                                {
+                                    "required": ["approved"],
+                                    "properties": {"approved": {"const": True}},
+                                },
+                                {
+                                    "required": ["approval"],
+                                    "properties": {
+                                        "approval": {
+                                            "type": "object",
+                                            "required": ["approved"],
+                                            "properties": {"approved": {"const": True}},
+                                        }
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                }
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="steer",
+            steering_message=(
+                "This high-value action requires approval. Ask for approval, record it "
+                "in the tool input, then retry."
+            ),
+            tags=["tool", "approval", "json"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        name="oob-outbound-communication-requires-approval",
+        data=_leaf_control_payload(
+            description=(
+                "Steer outbound communication tool calls to collect approval before sending."
+            ),
+            selector_path="input",
+            evaluator_name="json",
+            evaluator_config={
+                "json_schema": {
+                    "type": "object",
+                    "anyOf": [
+                        {
+                            "not": {
+                                "anyOf": [
+                                    {"required": ["to"]},
+                                    {"required": ["recipient"]},
+                                    {"required": ["recipients"]},
+                                    {"required": ["email"]},
+                                    {"required": ["phone_number"]},
+                                    {"required": ["channel"]},
+                                    {"required": ["destination"]},
+                                ]
+                            }
+                        },
+                        {
+                            "required": ["approved"],
+                            "properties": {"approved": {"const": True}},
+                        },
+                        {
+                            "required": ["approval"],
+                            "properties": {
+                                "approval": {
+                                    "type": "object",
+                                    "required": ["approved"],
+                                    "properties": {"approved": {"const": True}},
+                                }
+                            },
+                        },
+                    ],
+                }
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="steer",
+            steering_message=(
+                "Outbound communication requires approval. Ask the user to approve the "
+                "recipient and message before sending."
+            ),
+            tags=["tool", "approval", "exfiltration", "json"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        name="oob-sensitive-tool-requires-approved-role",
+        data=_leaf_control_payload(
+            description="Deny sensitive tool use when runtime context has an unapproved role.",
+            selector_path="context.user.role",
+            evaluator_name="list",
+            evaluator_config={
+                "values": ["admin", "security", "compliance", "manager"],
+                "logic": "any",
+                "match_on": "no_match",
+                "match_mode": "exact",
+                "case_sensitive": False,
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["tool", "rbac", "list"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        name="oob-only-approved-tools-may-run",
+        data=_leaf_control_payload(
+            description="Deny tool calls whose step name is not in the approved tool list.",
+            selector_path="name",
+            evaluator_name="list",
+            evaluator_config={
+                "values": ["search", "web_search", "retrieve", "calculator"],
+                "logic": "any",
+                "match_on": "no_match",
+                "match_mode": "exact",
+                "case_sensitive": False,
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["tool", "allowlist", "list"],
+        ),
+    ),
+)
 
 
 def default_out_of_box_namespace_key() -> str:
