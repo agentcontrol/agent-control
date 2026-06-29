@@ -217,6 +217,22 @@ def test_lifespan_skips_observability_when_disabled(monkeypatch) -> None:
         assert not hasattr(app.state, "event_ingestor")
 
 
+def test_lifespan_fails_open_when_out_of_box_bootstrap_fails(monkeypatch, caplog) -> None:
+    async def fail_seed_out_of_box_controls(**kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(observability_settings, "enabled", False)
+    monkeypatch.setattr(main_module, "seed_out_of_box_controls", fail_seed_out_of_box_controls)
+
+    app = FastAPI(lifespan=lifespan)
+
+    with caplog.at_level("WARNING"):
+        with TestClient(app):
+            pass
+
+    assert "Out-of-box control bootstrap failed; continuing startup" in caplog.text
+
+
 def test_custom_openapi_replaces_jsonvalue_variants(monkeypatch) -> None:
     # Given: a custom openapi generator that includes Pydantic JSONValue schemas
     json_value_schema_names = (
