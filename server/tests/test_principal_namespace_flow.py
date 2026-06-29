@@ -11,6 +11,7 @@ from agent_control_server.auth_framework import (
     Principal,
     set_authorizer,
 )
+from agent_control_server.bootstrap.out_of_box_controls import OUT_OF_BOX_CONTROL_TEMPLATES
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -71,6 +72,24 @@ def _evaluation_payload(agent_name: str) -> dict[str, Any]:
         "target_type": "env",
         "target_id": "prod",
     }
+
+
+def test_controls_list_seeds_out_of_box_controls_for_principal_namespace(
+    app: FastAPI,
+) -> None:
+    set_authorizer(HeaderNamespaceAuthorizer())
+
+    namespace_client = _client(app, "org-oob-controls")
+    filtered = namespace_client.get("/api/v1/controls", params={"name": "oob"})
+    assert filtered.status_code == 200, filtered.text
+    assert filtered.json()["controls"] == []
+
+    resp = namespace_client.get("/api/v1/controls", params={"limit": 10})
+    assert resp.status_code == 200, resp.text
+
+    expected_names = {template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES}
+    returned_names = {control["name"] for control in resp.json()["controls"]}
+    assert expected_names.issubset(returned_names)
 
 
 def test_principal_namespace_scopes_management_and_runtime(app: FastAPI) -> None:

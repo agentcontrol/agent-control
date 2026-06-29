@@ -43,7 +43,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
-from ..db import get_async_db
+from ..bootstrap.out_of_box_controls import (
+    default_out_of_box_namespace_key,
+    seed_out_of_box_controls,
+)
+from ..db import AsyncSessionLocal, get_async_db
 from ..errors import (
     APIError,
     APIValidationError,
@@ -54,7 +58,7 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData
+from ..models import Agent, AgentData, Control
 from ..services.condition_traversal import iter_condition_leaves_with_paths
 from ..services.control_bindings import ControlBindingsService
 from ..services.control_definitions import parse_control_definition_or_api_error
@@ -255,6 +259,78 @@ def _validate_attachment_filters(
             )
         ],
     )
+
+
+async def _seed_out_of_box_controls_for_namespace(
+    db: AsyncSession,
+    *,
+    namespace_key: str,
+) -> None:
+    """Best-effort namespace seeding for browse/list surfaces."""
+    try:
+        if namespace_key == default_out_of_box_namespace_key():
+            return
+        if await _namespace_has_active_controls(db, namespace_key=namespace_key):
+            return
+        await seed_out_of_box_controls(
+            session_factory=AsyncSessionLocal,
+            namespace_key=namespace_key,
+            available_evaluators=set(list_evaluators().keys()),
+        )
+    except Exception:
+        await db.rollback()
+        _logger.warning(
+            "Out-of-box control seed failed for namespace '%s'; continuing request",
+            namespace_key,
+            exc_info=True,
+        )
+
+
+def _should_seed_out_of_box_controls_on_list(
+    *,
+    cursor: int | None,
+    name: str | None,
+    enabled: bool | None,
+    template_backed: bool | None,
+    cloned: bool | None,
+    step_type: str | None,
+    stage: str | None,
+    execution: str | None,
+    tag: str | None,
+    include_attachments: bool,
+    attachment_target_type: str | None,
+    attachment_target_id: str | None,
+) -> bool:
+    return (
+        cursor is None
+        and name is None
+        and enabled is None
+        and template_backed is None
+        and cloned is None
+        and step_type is None
+        and stage is None
+        and execution is None
+        and tag is None
+        and not include_attachments
+        and attachment_target_type is None
+        and attachment_target_id is None
+    )
+
+
+async def _namespace_has_active_controls(
+    db: AsyncSession,
+    *,
+    namespace_key: str,
+) -> bool:
+    result = await db.execute(
+        select(Control.id)
+        .where(
+            Control.namespace_key == namespace_key,
+            Control.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    return result.first() is not None
 
 
 def _serialize_control_data(
@@ -1234,6 +1310,21 @@ async def list_controls(
 
     control_service = ControlService(db)
     namespace_key = principal.namespace_key
+    if _should_seed_out_of_box_controls_on_list(
+        cursor=cursor,
+        name=name,
+        enabled=enabled,
+        template_backed=template_backed,
+        cloned=cloned,
+        step_type=step_type,
+        stage=stage,
+        execution=execution,
+        tag=tag,
+        include_attachments=include_attachments,
+        attachment_target_type=attachment_target_type,
+        attachment_target_id=attachment_target_id,
+    ):
+        await _seed_out_of_box_controls_for_namespace(db, namespace_key=namespace_key)
     filter_by_attachment = target_principal is not None and (
         attachment_target_type is not None or attachment_target_id is not None
     )
