@@ -110,27 +110,49 @@ def test_db_config_reads_pool_settings_from_env(monkeypatch) -> None:
 
 def test_settings_parses_out_of_box_namespace_keys_from_env(monkeypatch) -> None:
     # Given: startup OOTB namespace keys are configured as a comma-separated env var
-    monkeypatch.setenv("AGENT_CONTROL_OUT_OF_BOX_NAMESPACE_KEYS", "org-a, org-b,, org-c")
+    monkeypatch.setenv(
+        "AGENT_CONTROL_OUT_OF_BOX_NAMESPACE_KEYS",
+        "namespace-alpha, namespace-beta,, namespace-gamma",
+    )
 
     # When: loading server settings
     config = Settings()
 
     # Then: the namespace keys are parsed for startup bootstrap seeding
-    assert config.get_out_of_box_namespace_keys() == ["org-a", "org-b", "org-c"]
+    assert config.get_out_of_box_namespace_keys() == [
+        "namespace-alpha",
+        "namespace-beta",
+        "namespace-gamma",
+    ]
 
 
 def test_settings_reads_galileo_organization_id_for_out_of_box_namespace(
     monkeypatch,
 ) -> None:
-    # Given: Galileo provides a single organization id in the environment
+    # Given: Galileo provides a deployment-specific organization id in the environment
     monkeypatch.delenv("AGENT_CONTROL_OUT_OF_BOX_NAMESPACE_KEYS", raising=False)
-    monkeypatch.setenv("GALILEO_ORGANIZATION_ID", "org-devstack")
+    monkeypatch.setenv("GALILEO_ORGANIZATION_ID", "namespace-7f3c9a")
 
     # When: loading server settings
     config = Settings()
 
-    # Then: the organization id is treated as a startup OOTB namespace key
-    assert config.get_out_of_box_namespace_keys() == ["org-devstack"]
+    # Then: the arbitrary organization id is treated as a startup OOTB namespace key
+    assert config.get_out_of_box_namespace_keys() == ["namespace-7f3c9a"]
+
+
+def test_settings_reads_galileo_organization_ids_for_out_of_box_namespaces(
+    monkeypatch,
+) -> None:
+    # Given: Galileo provides deployment-specific organization ids in the environment
+    monkeypatch.delenv("AGENT_CONTROL_OUT_OF_BOX_NAMESPACE_KEYS", raising=False)
+    monkeypatch.delenv("GALILEO_ORGANIZATION_ID", raising=False)
+    monkeypatch.setenv("GALILEO_ORGANIZATION_IDS", "namespace-one, namespace-two")
+
+    # When: loading server settings
+    config = Settings()
+
+    # Then: each arbitrary organization id is treated as a startup OOTB namespace key
+    assert config.get_out_of_box_namespace_keys() == ["namespace-one", "namespace-two"]
 
 
 def test_db_config_pool_defaults(monkeypatch) -> None:

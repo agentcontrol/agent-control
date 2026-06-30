@@ -229,7 +229,7 @@ def test_lifespan_seeds_configured_out_of_box_namespaces(monkeypatch) -> None:
     monkeypatch.setattr(
         type(settings),
         "get_out_of_box_namespace_keys",
-        lambda self: ["org-a", "default", "org-b"],
+        lambda self: ["namespace-alpha", "default", "namespace-beta"],
     )
     monkeypatch.setattr(main_module, "seed_out_of_box_controls", fake_seed_out_of_box_controls)
 
@@ -238,7 +238,7 @@ def test_lifespan_seeds_configured_out_of_box_namespaces(monkeypatch) -> None:
     with TestClient(app):
         pass
 
-    assert calls == ["default", "org-a", "org-b"]
+    assert calls == ["default", "namespace-alpha", "namespace-beta"]
 
 
 def test_lifespan_fails_open_when_out_of_box_bootstrap_fails(monkeypatch, caplog) -> None:
