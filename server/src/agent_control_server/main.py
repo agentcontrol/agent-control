@@ -89,22 +89,6 @@ def _configure_logging_once() -> None:
     _logging_configured = True
 
 
-def _out_of_box_bootstrap_namespace_keys() -> tuple[str, ...]:
-    """Return startup namespaces that should receive out-of-box controls."""
-    namespace_keys: list[str] = []
-    seen: set[str] = set()
-    for namespace_key in (
-        default_out_of_box_namespace_key(),
-        *settings.get_out_of_box_namespace_keys(),
-    ):
-        normalized = namespace_key.strip()
-        if not normalized or normalized in seen:
-            continue
-        namespace_keys.append(normalized)
-        seen.add(normalized)
-    return tuple(namespace_keys)
-
-
 def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
     """Configure Prometheus metrics for the FastAPI app."""
     app.add_middleware(
@@ -162,30 +146,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     available = list(list_evaluators().keys())
     logger.info(f"Evaluator discovery complete. Available evaluators: {available}")
 
-    for namespace_key in _out_of_box_bootstrap_namespace_keys():
-        try:
-            seed_result = await seed_out_of_box_controls(
-                session_factory=AsyncSessionLocal,
-                namespace_key=namespace_key,
-                available_evaluators=set(available),
+    try:
+        seed_result = await seed_out_of_box_controls(
+            session_factory=AsyncSessionLocal,
+            namespace_key=default_out_of_box_namespace_key(),
+            available_evaluators=set(available),
+        )
+        if seed_result.created_count or seed_result.skipped_count:
+            logger.info(
+                "Out-of-box control bootstrap complete: created=%s "
+                "skipped_existing=%s skipped_missing_evaluator=%s skipped_conflict=%s",
+                seed_result.created_count,
+                len(seed_result.skipped_existing),
+                len(seed_result.skipped_missing_evaluator),
+                len(seed_result.skipped_conflict),
             )
-            if seed_result.created_count or seed_result.skipped_count:
-                logger.info(
-                    "Out-of-box control bootstrap complete for namespace '%s': "
-                    "created=%s skipped_existing=%s skipped_missing_evaluator=%s "
-                    "skipped_conflict=%s",
-                    namespace_key,
-                    seed_result.created_count,
-                    len(seed_result.skipped_existing),
-                    len(seed_result.skipped_missing_evaluator),
-                    len(seed_result.skipped_conflict),
-                )
-        except Exception:
-            logger.warning(
-                "Out-of-box control bootstrap failed for namespace '%s'; continuing startup",
-                namespace_key,
-                exc_info=True,
-            )
+    except Exception:
+        logger.warning("Out-of-box control bootstrap failed; continuing startup", exc_info=True)
 
     # Initialize observability components (stored on app.state)
     if observability_settings.enabled:

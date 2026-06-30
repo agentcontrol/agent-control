@@ -207,14 +207,6 @@ class Settings(BaseSettings):
         "AGENT_CONTROL_ALLOW_HEADERS",
         "ALLOW_HEADERS",
     )
-    out_of_box_namespace_keys: list[str] | str = _env_alias_field(
-        [],
-        "AGENT_CONTROL_OUT_OF_BOX_NAMESPACE_KEYS",
-        "OUT_OF_BOX_NAMESPACE_KEYS",
-        "GALILEO_ORGANIZATION_ID",
-        "GALILEO_ORGANIZATION_IDS",
-    )
-
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from string or list."""
         return self._parse_list_setting(self.cors_origins)
@@ -226,10 +218,6 @@ class Settings(BaseSettings):
     def get_allow_headers(self) -> list[str]:
         """Parse allow_headers from string or list."""
         return self._parse_list_setting(self.allow_headers)
-
-    def get_out_of_box_namespace_keys(self) -> list[str]:
-        """Parse namespace keys that should receive startup out-of-box controls."""
-        return self._parse_list_setting(self.out_of_box_namespace_keys)
 
     @staticmethod
     def _parse_list_setting(value: list[str] | str) -> list[str]:
