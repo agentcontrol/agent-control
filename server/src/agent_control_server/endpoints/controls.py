@@ -306,7 +306,7 @@ def _should_seed_out_of_box_controls_on_list(
         and name is None
         and enabled is None
         and template_backed is None
-        and cloned is None
+        and cloned is not True
         and step_type is None
         and stage is None
         and execution is None
