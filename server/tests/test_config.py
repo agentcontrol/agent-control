@@ -108,6 +108,31 @@ def test_db_config_reads_pool_settings_from_env(monkeypatch) -> None:
     assert config.statement_timeout_seconds == 2.5
 
 
+def test_settings_parses_out_of_box_namespace_keys_from_env(monkeypatch) -> None:
+    # Given: startup OOTB namespace keys are configured as a comma-separated env var
+    monkeypatch.setenv("AGENT_CONTROL_OUT_OF_BOX_NAMESPACE_KEYS", "org-a, org-b,, org-c")
+
+    # When: loading server settings
+    config = Settings()
+
+    # Then: the namespace keys are parsed for startup bootstrap seeding
+    assert config.get_out_of_box_namespace_keys() == ["org-a", "org-b", "org-c"]
+
+
+def test_settings_reads_galileo_organization_id_for_out_of_box_namespace(
+    monkeypatch,
+) -> None:
+    # Given: Galileo provides a single organization id in the environment
+    monkeypatch.delenv("AGENT_CONTROL_OUT_OF_BOX_NAMESPACE_KEYS", raising=False)
+    monkeypatch.setenv("GALILEO_ORGANIZATION_ID", "org-devstack")
+
+    # When: loading server settings
+    config = Settings()
+
+    # Then: the organization id is treated as a startup OOTB namespace key
+    assert config.get_out_of_box_namespace_keys() == ["org-devstack"]
+
+
 def test_db_config_pool_defaults(monkeypatch) -> None:
     # Given: no pool or timeout settings in the environment
     for name in (

@@ -7,6 +7,7 @@ import sys
 import textwrap
 
 from agent_control_server import main as main_module
+from agent_control_server.bootstrap.out_of_box_controls import OutOfBoxSeedResult
 from agent_control_server.config import observability_settings, settings
 from agent_control_server.main import lifespan
 from agent_control_server.observability.sinks import (
@@ -217,6 +218,29 @@ def test_lifespan_skips_observability_when_disabled(monkeypatch) -> None:
         assert not hasattr(app.state, "event_ingestor")
 
 
+def test_lifespan_seeds_configured_out_of_box_namespaces(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def fake_seed_out_of_box_controls(**kwargs: object) -> OutOfBoxSeedResult:
+        calls.append(str(kwargs["namespace_key"]))
+        return OutOfBoxSeedResult()
+
+    monkeypatch.setattr(observability_settings, "enabled", False)
+    monkeypatch.setattr(
+        type(settings),
+        "get_out_of_box_namespace_keys",
+        lambda self: ["org-a", "default", "org-b"],
+    )
+    monkeypatch.setattr(main_module, "seed_out_of_box_controls", fake_seed_out_of_box_controls)
+
+    app = FastAPI(lifespan=lifespan)
+
+    with TestClient(app):
+        pass
+
+    assert calls == ["default", "org-a", "org-b"]
+
+
 def test_lifespan_fails_open_when_out_of_box_bootstrap_fails(monkeypatch, caplog) -> None:
     async def fail_seed_out_of_box_controls(**kwargs: object) -> None:
         raise RuntimeError("boom")
@@ -230,7 +254,10 @@ def test_lifespan_fails_open_when_out_of_box_bootstrap_fails(monkeypatch, caplog
         with TestClient(app):
             pass
 
-    assert "Out-of-box control bootstrap failed; continuing startup" in caplog.text
+    assert (
+        "Out-of-box control bootstrap failed for namespace 'default'; continuing startup"
+        in caplog.text
+    )
 
 
 def test_custom_openapi_replaces_jsonvalue_variants(monkeypatch) -> None:
