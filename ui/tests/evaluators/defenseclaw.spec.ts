@@ -9,20 +9,12 @@ test.describe('DefenseClaw Rule Pack Evaluator', () => {
   }) => {
     await openEvaluatorForm(mockedPage, 'DefenseClaw Rule Pack');
 
-    await expect(
-      mockedPage.getByText('Rule ID', { exact: true })
-    ).toBeVisible();
-    await expect(mockedPage.getByText('Title', { exact: true })).toBeVisible();
-    await expect(
-      mockedPage.getByText('Pattern', { exact: true })
-    ).toBeVisible();
-    await expect(
-      mockedPage.getByText('Severity', { exact: true })
-    ).toBeVisible();
-    await expect(
-      mockedPage.getByText('Confidence', { exact: true })
-    ).toBeVisible();
-    await expect(mockedPage.getByText('Tags', { exact: true })).toBeVisible();
+    await expect(mockedPage.getByLabel('Rule ID')).toBeVisible();
+    await expect(mockedPage.getByLabel('Title')).toBeVisible();
+    await expect(mockedPage.getByLabel('Pattern')).toBeVisible();
+    await expect(mockedPage.getByLabel('Severity')).toBeVisible();
+    await expect(mockedPage.getByLabel('Confidence')).toBeVisible();
+    await expect(mockedPage.getByLabel('Tags')).toBeVisible();
 
     await expect(
       mockedPage.getByText('Schema version', { exact: true })
@@ -54,16 +46,10 @@ test.describe('DefenseClaw OPA Policy Evaluator', () => {
   }) => {
     await openEvaluatorForm(mockedPage, 'DefenseClaw OPA Policy');
 
-    await expect(mockedPage.getByText('Domain', { exact: true })).toBeVisible();
-    await expect(
-      mockedPage.getByText('Block at', { exact: true })
-    ).toBeVisible();
-    await expect(
-      mockedPage.getByText('Alert at', { exact: true })
-    ).toBeVisible();
-    await expect(
-      mockedPage.getByText('Cisco trust level', { exact: true })
-    ).toBeVisible();
+    await expect(mockedPage.getByLabel('Domain')).toBeVisible();
+    await expect(mockedPage.getByLabel('Block at')).toBeVisible();
+    await expect(mockedPage.getByLabel('Alert at')).toBeVisible();
+    await expect(mockedPage.getByLabel('Cisco trust level')).toBeVisible();
     await expect(
       mockedPage.getByText('Schema version', { exact: true })
     ).toHaveCount(0);
