@@ -18,6 +18,7 @@ dependencies = [
 galileo = ["agent-control-evaluator-galileo>=7.5.0"]
 budget = ["agent-control-evaluator-budget>=7.5.0"]
 cisco = ["agent-control-evaluator-cisco>=7.5.0"]
+defenseclaw = ["agent-control-evaluator-defenseclaw>=8.2.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
 
 [project.entry-points."agent_control.evaluators"]
@@ -39,3 +40,4 @@ agent-control-models = { workspace = true }
 agent-control-evaluator-galileo = { path = "../contrib/galileo", editable = true }
 agent-control-evaluator-budget = { path = "../contrib/budget", editable = true }
 agent-control-evaluator-cisco = { path = "../contrib/cisco", editable = true }
+agent-control-evaluator-defenseclaw = { path = "../contrib/defenseclaw", editable = true }

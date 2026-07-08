@@ -52,6 +52,32 @@ const DEFAULT_EVALUATOR_CONFIGS: Record<string, Record<string, unknown>> = {
     timeout_ms: 10000,
     config: null,
   },
+  'defenseclaw.rule_pack': {
+    schema_version: 1,
+    rule_pack: {
+      version: 1,
+      category: 'agent-control',
+      rules: [
+        {
+          id: '',
+          pattern: '',
+          title: '',
+          severity: 'HIGH',
+          confidence: 0.99,
+          tags: [],
+        },
+      ],
+    },
+  },
+  'defenseclaw.opa_policy': {
+    schema_version: 1,
+    policy: {
+      domain: 'guardrail',
+      block_at: 'HIGH',
+      alert_at: 'MEDIUM',
+      cisco_trust_level: 'full',
+    },
+  },
 };
 
 function getDefaultConfigForEvaluator(

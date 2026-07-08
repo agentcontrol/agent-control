@@ -75,6 +75,7 @@ version_toml = [
     "evaluators/builtin/pyproject.toml:project.version",
     "evaluators/contrib/budget/pyproject.toml:project.version",
     "evaluators/contrib/cisco/pyproject.toml:project.version",
+    "evaluators/contrib/defenseclaw/pyproject.toml:project.version",
     "evaluators/contrib/galileo/pyproject.toml:project.version",
 ]
 version_source = "tag"

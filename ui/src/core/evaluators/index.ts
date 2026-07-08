@@ -33,6 +33,10 @@
  * ```
  */
 
+import {
+  defenseClawOpaPolicyEvaluator,
+  defenseClawRulePackEvaluator,
+} from './defenseclaw';
 import { jsonEvaluator } from './json';
 import { listEvaluator } from './list';
 import { lunaEvaluator } from './luna';
@@ -45,6 +49,8 @@ import type { AnyEvaluatorDefinition } from './types';
  * Add new evaluators here to make them available in the UI.
  */
 export const evaluators: AnyEvaluatorDefinition[] = [
+  defenseClawRulePackEvaluator,
+  defenseClawOpaPolicyEvaluator,
   regexEvaluator,
   listEvaluator,
   jsonEvaluator,
@@ -72,6 +78,10 @@ export const getEvaluator = (id: string): AnyEvaluatorDefinition | undefined =>
 export const hasEvaluator = (id: string): boolean => evaluatorRegistry.has(id);
 
 // Re-export types and individual evaluators for direct imports
+export {
+  defenseClawOpaPolicyEvaluator,
+  defenseClawRulePackEvaluator,
+} from './defenseclaw';
 export { jsonEvaluator } from './json';
 export { listEvaluator } from './list';
 export { lunaEvaluator } from './luna';
