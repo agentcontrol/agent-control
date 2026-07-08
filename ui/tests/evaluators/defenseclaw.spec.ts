@@ -12,9 +12,13 @@ test.describe('DefenseClaw Rule Pack Evaluator', () => {
     await expect(mockedPage.getByLabel('Rule ID')).toBeVisible();
     await expect(mockedPage.getByLabel('Title')).toBeVisible();
     await expect(mockedPage.getByLabel('Pattern')).toBeVisible();
-    await expect(mockedPage.getByLabel('Severity')).toBeVisible();
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Severity' })
+    ).toBeVisible();
     await expect(mockedPage.getByLabel('Confidence')).toBeVisible();
-    await expect(mockedPage.getByLabel('Tags')).toBeVisible();
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Tags' })
+    ).toBeVisible();
 
     await expect(
       mockedPage.getByText('Schema version', { exact: true })
@@ -46,10 +50,18 @@ test.describe('DefenseClaw OPA Policy Evaluator', () => {
   }) => {
     await openEvaluatorForm(mockedPage, 'DefenseClaw OPA Policy');
 
-    await expect(mockedPage.getByLabel('Domain')).toBeVisible();
-    await expect(mockedPage.getByLabel('Block at')).toBeVisible();
-    await expect(mockedPage.getByLabel('Alert at')).toBeVisible();
-    await expect(mockedPage.getByLabel('Cisco trust level')).toBeVisible();
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Domain' })
+    ).toBeVisible();
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Block at' })
+    ).toBeVisible();
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Alert at' })
+    ).toBeVisible();
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Cisco trust level' })
+    ).toBeVisible();
     await expect(
       mockedPage.getByText('Schema version', { exact: true })
     ).toHaveCount(0);
