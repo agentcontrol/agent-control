@@ -39,6 +39,7 @@ def test_discover_contrib_packages_returns_expected_metadata() -> None:
     assert [(package.name, package.package, package.extra) for package in packages] == [
         ("budget", "agent-control-evaluator-budget", "budget"),
         ("cisco", "agent-control-evaluator-cisco", "cisco"),
+        ("defenseclaw", "agent-control-evaluator-defenseclaw", "defenseclaw"),
         ("galileo", "agent-control-evaluator-galileo", "galileo"),
     ]
 
