@@ -17,8 +17,8 @@ export const TIME_RANGE_SEGMENTS: TimeRangeOption[] = [
   { label: '1Y', value: 'lastYear' },
 ];
 
-import type { StatsResponse } from '@/core/hooks/query-hooks/use-agent-monitor';
 import { useAgentEvents } from '@/core/hooks/query-hooks/use-agent-events';
+import type { StatsResponse } from '@/core/hooks/query-hooks/use-agent-monitor';
 import { useAgentMonitor } from '@/core/hooks/query-hooks/use-agent-monitor';
 
 import { ControlStatsTable } from './control-stats-table';

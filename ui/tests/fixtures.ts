@@ -1248,6 +1248,7 @@ export async function mockApiRoutesWithAuthRequired(page: Page) {
   await mockRoutes.controlCreate(page);
   await mockRoutes.controlUpdate(page);
   await mockRoutes.stats(page);
+  await mockRoutes.events(page);
 }
 
 export {

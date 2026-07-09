@@ -11,7 +11,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 import type { ControlExecutionEvent } from '@/core/hooks/query-hooks/use-agent-events';
 
@@ -60,22 +60,8 @@ export function RecentExecutions({
   hasError = false,
 }: RecentExecutionsProps) {
   const latestKey = events.length > 0 ? executionKey(events[0]) : null;
-  const [openValue, setOpenValue] = useState<string | null>(latestKey);
-  const previousLatestRef = useRef<string | null>(latestKey);
-
-  useEffect(() => {
-    const previousLatest = previousLatestRef.current;
-    if (latestKey === null) {
-      setOpenValue(null);
-    } else if (previousLatest === null) {
-      setOpenValue(latestKey);
-    } else if (previousLatest !== latestKey) {
-      setOpenValue((current) =>
-        current === previousLatest ? latestKey : current
-      );
-    }
-    previousLatestRef.current = latestKey;
-  }, [latestKey]);
+  const [selectedValue, setSelectedValue] = useState<string | null>(null);
+  const openValue = selectedValue ?? latestKey;
 
   if (hasError) {
     return (
@@ -113,7 +99,11 @@ export function RecentExecutions({
           Latest span opens automatically
         </Text>
       </Group>
-      <Accordion value={openValue} onChange={setOpenValue} variant="separated">
+      <Accordion
+        value={openValue}
+        onChange={setSelectedValue}
+        variant="separated"
+      >
         {events.map((event) => {
           const metadata = (event.metadata ?? {}) as EventMetadata;
           const blockedInput = asRecord(metadata.blocked_input);
@@ -144,16 +134,16 @@ export function RecentExecutions({
                     </Text>
                   </Stack>
                   <Group gap="xs" wrap="nowrap">
-                    {contentUnredacted && (
+                    {contentUnredacted ? (
                       <Badge color="orange" variant="light">
                         Unredacted
                       </Badge>
-                    )}
-                    {!contentUnredacted && (
+                    ) : null}
+                    {!contentUnredacted ? (
                       <Badge color="gray" variant="light">
                         Metadata only
                       </Badge>
-                    )}
+                    ) : null}
                     <Badge color={event.action === 'deny' ? 'red' : 'blue'}>
                       {event.action}
                     </Badge>
@@ -186,7 +176,7 @@ export function RecentExecutions({
                     />
                   </SimpleGrid>
 
-                  {prompt && (
+                  {prompt !== null ? (
                     <Stack gap="xs">
                       <Group gap="xs">
                         <Text size="sm" fw={600}>
@@ -211,9 +201,9 @@ export function RecentExecutions({
                         {prompt}
                       </Code>
                     </Stack>
-                  )}
+                  ) : null}
 
-                  {verdictReason && (
+                  {verdictReason !== null ? (
                     <Stack gap="xs">
                       <Text size="sm" fw={600}>
                         Enforcement reason
@@ -228,9 +218,9 @@ export function RecentExecutions({
                         {verdictReason}
                       </Code>
                     </Stack>
-                  )}
+                  ) : null}
 
-                  {rawRequestBody && (
+                  {rawRequestBody !== null ? (
                     <Accordion variant="contained">
                       <Accordion.Item value="raw-request">
                         <Accordion.Control>Raw request body</Accordion.Control>
@@ -247,7 +237,7 @@ export function RecentExecutions({
                         </Accordion.Panel>
                       </Accordion.Item>
                     </Accordion>
-                  )}
+                  ) : null}
                 </Stack>
               </Accordion.Panel>
             </Accordion.Item>
