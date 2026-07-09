@@ -14,6 +14,7 @@ import {
 import { useState } from 'react';
 
 import type { ControlExecutionEvent } from '@/core/hooks/query-hooks/use-agent-events';
+import { useAuth } from '@/core/providers/auth-provider';
 
 type RecentExecutionsProps = {
   events: ControlExecutionEvent[];
@@ -59,6 +60,10 @@ export function RecentExecutions({
   events,
   hasError = false,
 }: RecentExecutionsProps) {
+  const { auth } = useAuth();
+  const administrator =
+    auth.status === 'not-required' ||
+    (auth.status === 'authenticated' && auth.isAdmin);
   const latestKey = events.length > 0 ? executionKey(events[0]) : null;
   const [selectedValue, setSelectedValue] = useState<string | null>(null);
   const openValue = selectedValue ?? latestKey;
@@ -92,9 +97,16 @@ export function RecentExecutions({
   return (
     <Card withBorder p="md">
       <Group justify="space-between" mb="sm">
-        <Title order={3} size="h5">
-          Recent executions
-        </Title>
+        <Stack gap={2}>
+          <Title order={3} size="h5">
+            Recent executions
+          </Title>
+          <Text size="xs" c="dimmed">
+            {administrator
+              ? 'Administrator view: all enforcement actions in this namespace.'
+              : 'Member view: only enforcement actions owned by your user.'}
+          </Text>
+        </Stack>
         <Text size="xs" c="dimmed">
           Latest span opens automatically
         </Text>
@@ -118,6 +130,12 @@ export function RecentExecutions({
           const requestId = asString(metadata.request_id);
           const key = executionKey(event);
           const contentUnredacted = metadata.content_unredacted === true;
+          const hasBlockedContent = blockedInput !== null;
+          const contentLabel = contentUnredacted
+            ? 'Exact content'
+            : hasBlockedContent
+              ? 'Redacted by DefenseClaw'
+              : 'Metadata only';
 
           return (
             <Accordion.Item key={key} value={key}>
@@ -134,16 +152,12 @@ export function RecentExecutions({
                     </Text>
                   </Stack>
                   <Group gap="xs" wrap="nowrap">
-                    {contentUnredacted ? (
-                      <Badge color="orange" variant="light">
-                        Unredacted
-                      </Badge>
-                    ) : null}
-                    {!contentUnredacted ? (
-                      <Badge color="gray" variant="light">
-                        Metadata only
-                      </Badge>
-                    ) : null}
+                    <Badge
+                      color={contentUnredacted ? 'orange' : 'gray'}
+                      variant="light"
+                    >
+                      {contentLabel}
+                    </Badge>
                     <Badge color={event.action === 'deny' ? 'red' : 'blue'}>
                       {event.action}
                     </Badge>
@@ -160,10 +174,14 @@ export function RecentExecutions({
                       value={requestId ?? 'Unavailable'}
                     />
                     <Detail
-                      label="Rule IDs"
+                      label="Matched rule IDs"
                       value={
                         ruleIds.length > 0 ? ruleIds.join(', ') : 'Unavailable'
                       }
+                    />
+                    <Detail
+                      label="Rule bucket"
+                      value={`${event.control_name} (#${event.control_id})`}
                     />
                     <Detail label="Stage" value={event.check_stage} />
                     <Detail
@@ -187,8 +205,8 @@ export function RecentExecutions({
                           variant="light"
                         >
                           {contentUnredacted
-                            ? 'Unredacted content'
-                            : 'Redacted content'}
+                            ? 'Exact content'
+                            : 'Redacted by DefenseClaw'}
                         </Badge>
                       </Group>
                       <Code
@@ -201,6 +219,13 @@ export function RecentExecutions({
                         {prompt}
                       </Code>
                     </Stack>
+                  ) : null}
+
+                  {!hasBlockedContent ? (
+                    <Text size="sm" c="dimmed">
+                      Blocked content is unavailable. DefenseClaw sent decision
+                      metadata and matched rule IDs only.
+                    </Text>
                   ) : null}
 
                   {verdictReason !== null ? (

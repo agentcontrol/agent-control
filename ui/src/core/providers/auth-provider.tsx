@@ -1,5 +1,6 @@
 'use client';
 
+import { useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   type ReactNode,
@@ -41,6 +42,13 @@ type AuthProviderProps = { children: ReactNode };
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [auth, setAuth] = useState<AuthState>({ status: 'loading' });
+  const queryClient = useQueryClient();
+
+  const clearPrincipalState = useCallback(() => {
+    // Resource query keys are shared by design, so cached controls and exact
+    // spans must not survive a change of authenticated principal.
+    queryClient.clear();
+  }, [queryClient]);
 
   // Fetch server config on mount to decide if auth is required
   useEffect(() => {
@@ -82,25 +90,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (auth.status === 'not-required') return;
 
     return onUnauthorized(() => {
+      clearPrincipalState();
       setAuth((prev) => {
         if (prev.status === 'not-required') return prev;
         return { status: 'needs-login' };
       });
     });
-  }, [auth.status]);
+  }, [auth.status, clearPrincipalState]);
 
-  const login = useCallback(async (apiKey: string): Promise<LoginResponse> => {
-    const { status, data } = await authApi.login(apiKey);
-    if (status === 200 && data.authenticated) {
-      setAuth({ status: 'authenticated', isAdmin: data.is_admin });
-    }
-    return data;
-  }, []);
+  const login = useCallback(
+    async (apiKey: string): Promise<LoginResponse> => {
+      const { status, data } = await authApi.login(apiKey);
+      if (status === 200 && data.authenticated) {
+        clearPrincipalState();
+        setAuth({ status: 'authenticated', isAdmin: data.is_admin });
+      }
+      return data;
+    },
+    [clearPrincipalState]
+  );
 
   const logout = useCallback(async () => {
-    await authApi.logout();
-    setAuth({ status: 'needs-login' });
-  }, []);
+    try {
+      await authApi.logout();
+    } finally {
+      clearPrincipalState();
+      setAuth({ status: 'needs-login' });
+    }
+  }, [clearPrincipalState]);
 
   return (
     <AuthContext.Provider value={{ auth, login, logout }}>

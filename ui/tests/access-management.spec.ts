@@ -13,7 +13,7 @@ import type {
 import {
   expect,
   mockApiRoutesWithAuthRequired,
-  mockRoutes,
+  mockData,
   test,
 } from './fixtures';
 
@@ -48,6 +48,14 @@ const memberApiKey: ApiKeyResponse = {
   expires_at: null,
   revoked_at: null,
   created_at: '2026-07-09T12:30:00Z',
+};
+
+const adminApiKey: ApiKeyResponse = {
+  ...memberApiKey,
+  id: 'key-admin',
+  user_id: adminUser.id,
+  name: 'Platform break-glass',
+  key_prefix: 'ac_admin_7d2e',
 };
 
 function createAccessMockState(): AccessMockState {
@@ -229,6 +237,7 @@ test.describe('Access management', () => {
     await expect(page.getByText('2 users')).toBeVisible();
 
     await page.getByRole('button', { name: /DefenseClaw operator/ }).click();
+    await page.getByTestId(`toggle-grants-${memberApiKey.id}`).click();
 
     await expect(page.getByText('DefenseClaw production')).toBeVisible();
     await expect(page.getByText('Prefix ac_live_3f4c')).toBeVisible();
@@ -237,6 +246,97 @@ test.describe('Access management', () => {
         .getByTestId(`api-key-${memberApiKey.id}`)
         .getByText('PII Detection', { exact: true })
     ).toBeVisible();
+  });
+
+  test('loads user keys and per-key grants only when expanded', async ({
+    page,
+  }) => {
+    await setupAdminPage(page);
+    let keyRequests = 0;
+    let grantRequests = 0;
+    await page.route(
+      '**/api/v1/admin/access/users/*/api-keys',
+      async (route) => {
+        keyRequests += 1;
+        await route.fallback();
+      }
+    );
+    await page.route(
+      '**/api/v1/admin/access/api-keys/*/control-grants',
+      async (route) => {
+        grantRequests += 1;
+        await route.fallback();
+      }
+    );
+
+    await page.goto('/admin/access');
+    await expect(page.getByText('2 users')).toBeVisible();
+    expect(keyRequests).toBe(0);
+    expect(grantRequests).toBe(0);
+
+    await page.getByRole('button', { name: /DefenseClaw operator/ }).click();
+    await expect.poll(() => keyRequests).toBe(1);
+    expect(grantRequests).toBe(0);
+    await page.getByTestId(`toggle-grants-${memberApiKey.id}`).click();
+    await expect.poll(() => grantRequests).toBe(1);
+  });
+
+  test('loads every paginated rule bucket for assignment', async ({ page }) => {
+    await setupAdminPage(page);
+    await page.route('**/api/v1/controls?**', async (route, request) => {
+      const cursor = new URL(request.url()).searchParams.get('cursor');
+      const controls = cursor
+        ? [
+            {
+              ...mockData.controls.controls[0],
+              id: 101,
+              name: 'Bucket 101',
+            },
+          ]
+        : Array.from({ length: 100 }, (_, index) => ({
+            ...mockData.controls.controls[0],
+            id: index + 1,
+            name: `Bucket ${index + 1}`,
+          }));
+      await fulfillJson(route, {
+        controls,
+        pagination: {
+          total: 101,
+          limit: 100,
+          has_more: cursor === null,
+          next_cursor: cursor === null ? '100' : null,
+        },
+      });
+    });
+
+    await page.goto('/admin/access');
+    await page.getByRole('button', { name: /DefenseClaw operator/ }).click();
+    await page.getByTestId(`toggle-grants-${memberApiKey.id}`).click();
+    await page
+      .getByLabel('Assigned rule buckets for DefenseClaw production')
+      .click();
+    await expect(
+      page.getByRole('option', { name: 'Bucket 101' })
+    ).toBeVisible();
+  });
+
+  test('labels administrator keys as namespace-wide and skips grants', async ({
+    page,
+  }) => {
+    const state = createAccessMockState();
+    state.apiKeys[adminUser.id] = [adminApiKey];
+    await setupAdminPage(page, state);
+
+    await page.goto('/admin/access');
+    await page.getByRole('button', { name: /Platform administrator/ }).click();
+    await expect(
+      page.getByText(
+        'Administrator keys are namespace-wide. Rule bucket assignments do not restrict them.'
+      )
+    ).toBeVisible();
+    await expect(
+      page.getByTestId(`toggle-grants-${adminApiKey.id}`)
+    ).toHaveCount(0);
   });
 
   test('creates a user and shows a generated key exactly once with SDK guidance', async ({
@@ -281,6 +381,11 @@ test.describe('Access management', () => {
       })
     ).toBeVisible();
 
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('dialog', { name: 'API key created' })
+    ).toBeVisible();
+
     await page.getByTestId('close-api-key-secret').click();
     await expect(
       page.getByText('ac_test_generated_secret', { exact: true })
@@ -294,6 +399,7 @@ test.describe('Access management', () => {
     const state = await setupAdminPage(page);
     await page.goto('/admin/access');
     await page.getByRole('button', { name: /DefenseClaw operator/ }).click();
+    await page.getByTestId(`toggle-grants-${memberApiKey.id}`).click();
 
     const grantsInput = page.getByLabel(
       'Assigned rule buckets for DefenseClaw production'

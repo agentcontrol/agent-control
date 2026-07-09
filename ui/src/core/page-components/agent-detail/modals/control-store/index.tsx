@@ -29,6 +29,7 @@ import { useControlsInfinite } from '@/core/hooks/query-hooks/use-controls-infin
 import { useInfiniteScroll } from '@/core/hooks/use-infinite-scroll';
 import { useModalRoute } from '@/core/hooks/use-modal-route';
 import { useQueryParam } from '@/core/hooks/use-query-param';
+import { useAuth } from '@/core/providers/auth-provider';
 
 import { AddNewControlModal } from '../add-new-control';
 import { EditControlContent } from '../edit-control/edit-control-content';
@@ -45,6 +46,10 @@ export function ControlStoreModal({
   onClose,
   agentId,
 }: ControlStoreModalProps) {
+  const { auth } = useAuth();
+  const canManageControls =
+    auth.status === 'not-required' ||
+    (auth.status === 'authenticated' && auth.isAdmin);
   // Get search value for debouncing (SearchInput handles the UI and URL sync)
   const [searchQuery, setSearchQuery] = useQueryParam('store_q');
   const [debouncedSearch] = useDebouncedValue(searchQuery, 300);
@@ -63,10 +68,13 @@ export function ControlStoreModal({
   const [loadingControlId, setLoadingControlId] = useState<number | null>(null);
 
   // Derive submodal open state from URL
-  const editModalOpened = submodal === SUBMODAL_NAMES.EDIT;
+  const editModalOpened =
+    opened && canManageControls && submodal === SUBMODAL_NAMES.EDIT;
   // AddNewControlModal should be open when submodal is "add-new" OR "create" (create is nested inside add-new)
   const addNewModalOpened =
-    submodal === SUBMODAL_NAMES.ADD_NEW || submodal === SUBMODAL_NAMES.CREATE;
+    opened &&
+    canManageControls &&
+    (submodal === SUBMODAL_NAMES.ADD_NEW || submodal === SUBMODAL_NAMES.CREATE);
 
   // Clear search query param when modal closes
   useEffect(() => {

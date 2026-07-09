@@ -52,7 +52,7 @@ import { useRevokeApiKey } from '@/core/hooks/query-hooks/access/use-revoke-api-
 import { useUpdateAccessUser } from '@/core/hooks/query-hooks/access/use-update-access-user';
 import { useUpdateApiKeyControlGrants } from '@/core/hooks/query-hooks/access/use-update-api-key-control-grants';
 import { useUserApiKeys } from '@/core/hooks/query-hooks/access/use-user-api-keys';
-import { useControls } from '@/core/hooks/query-hooks/use-controls';
+import { useAllControls } from '@/core/hooks/query-hooks/use-controls';
 import { useAuth } from '@/core/providers/auth-provider';
 import { openDestructiveConfirmModal } from '@/core/utils/modals';
 
@@ -81,7 +81,8 @@ function AccessDenied() {
         maw={560}
       >
         API keys, users, and rule bucket assignments can only be managed by an
-        administrator. Your API key remains read-only.
+        administrator. Member keys remain read-only for rule changes; SDK agent
+        registration and enforcement-event reporting stay available.
       </Alert>
     </Center>
   );
@@ -105,6 +106,7 @@ function SecretModal({
       centered
       size="lg"
       closeOnClickOutside={false}
+      closeOnEscape={false}
     >
       {secretState ? (
         <Stack gap="md">
@@ -244,8 +246,8 @@ function CreateUserForm() {
             <Select
               label="Role"
               data={[
-                { value: 'member', label: 'Member (read-only)' },
-                { value: 'admin', label: 'Administrator' },
+                { value: 'member', label: 'Member (rule read-only)' },
+                { value: 'admin', label: 'Administrator (unrestricted)' },
               ]}
               allowDeselect={false}
               {...form.getInputProps('role')}
@@ -413,16 +415,19 @@ function GrantEditor({
 function ApiKeyCard({
   apiKey,
   userId,
+  userRole,
   controlOptions,
   controlsError,
 }: {
   apiKey: ApiKeyResponse;
   userId: string;
+  userRole: AccessUserRole;
   controlOptions: ControlOption[];
   controlsError: boolean;
 }) {
   const revokeKey = useRevokeApiKey();
   const isRevoked = Boolean(apiKey.revoked_at) || !apiKey.enabled;
+  const [showAssignments, setShowAssignments] = useState(false);
 
   const handleRevoke = () => {
     openDestructiveConfirmModal({
@@ -500,11 +505,37 @@ function ApiKeyCard({
 
         <Divider />
 
-        <GrantEditor
-          apiKey={apiKey}
-          controlOptions={controlOptions}
-          controlsError={controlsError}
-        />
+        {userRole === 'admin' ? (
+          <Alert color="violet" icon={<IconShieldLock size={16} />}>
+            Administrator keys are namespace-wide. Rule bucket assignments do
+            not restrict them.
+          </Alert>
+        ) : (
+          <Stack gap="sm">
+            <Group justify="space-between">
+              <Text size="xs" c="dimmed">
+                Load assignments only when you need to review or change this
+                key.
+              </Text>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowAssignments((value) => !value)}
+                disabled={isRevoked}
+                data-testid={`toggle-grants-${apiKey.id}`}
+              >
+                {showAssignments ? 'Hide assignments' : 'Manage assignments'}
+              </Button>
+            </Group>
+            {showAssignments ? (
+              <GrantEditor
+                apiKey={apiKey}
+                controlOptions={controlOptions}
+                controlsError={controlsError}
+              />
+            ) : null}
+          </Stack>
+        )}
       </Stack>
     </Paper>
   );
@@ -536,6 +567,7 @@ function UserApiKeys({
       });
       setKeyName('');
       onSecretCreated({ ...created, userName: user.name });
+      createKey.reset();
     } catch {
       // The inline alert below remains visible until the next attempt.
     }
@@ -554,8 +586,9 @@ function UserApiKeys({
             Create API key
           </Text>
           <Text size="xs" c="dimmed">
-            The generated key signs this user into the read-only monitor and
-            authenticates Agent Control SDK requests.
+            The generated key signs this user into their enforcement history and
+            authenticates Agent Control SDK requests. Member keys cannot change
+            rule buckets.
           </Text>
           <Group align="flex-end" wrap="wrap">
             <TextInput
@@ -616,6 +649,7 @@ function UserApiKeys({
               key={apiKey.id}
               apiKey={apiKey}
               userId={user.id}
+              userRole={user.role}
               controlOptions={controlOptions}
               controlsError={controlsError}
             />
@@ -643,11 +677,13 @@ function UserPanel({
   controlOptions,
   controlsError,
   onSecretCreated,
+  expanded,
 }: {
   user: AccessUserResponse;
   controlOptions: ControlOption[];
   controlsError: boolean;
   onSecretCreated: (secretState: SecretState) => void;
+  expanded: boolean;
 }) {
   const updateUser = useUpdateAccessUser();
 
@@ -711,12 +747,14 @@ function UserPanel({
             />
           </Group>
           <Divider />
-          <UserApiKeys
-            user={user}
-            controlOptions={controlOptions}
-            controlsError={controlsError}
-            onSecretCreated={onSecretCreated}
-          />
+          {expanded ? (
+            <UserApiKeys
+              user={user}
+              controlOptions={controlOptions}
+              controlsError={controlsError}
+              onSecretCreated={onSecretCreated}
+            />
+          ) : null}
         </Stack>
       </Accordion.Panel>
     </Accordion.Item>
@@ -725,16 +763,17 @@ function UserPanel({
 
 function AdminAccessContent() {
   const users = useAccessUsers();
-  const controls = useControls({ limit: 100 });
+  const controls = useAllControls();
   const [secretState, setSecretState] = useState<SecretState | null>(null);
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   const controlOptions = useMemo<ControlOption[]>(() => {
-    const summaries = (controls.data?.controls ?? []) as ControlSummary[];
+    const summaries = (controls.data ?? []) as ControlSummary[];
     return summaries.map((control) => ({
       value: String(control.id),
       label: control.name,
     }));
-  }, [controls.data?.controls]);
+  }, [controls.data]);
 
   return (
     <Box p="xl" maw={1100} mx="auto">
@@ -811,7 +850,12 @@ function AdminAccessContent() {
               </Stack>
             </Alert>
           ) : users.data?.length ? (
-            <Accordion variant="separated" radius="md">
+            <Accordion
+              variant="separated"
+              radius="md"
+              value={expandedUserId}
+              onChange={setExpandedUserId}
+            >
               {users.data.map((user) => (
                 <UserPanel
                   key={user.id}
@@ -819,6 +863,7 @@ function AdminAccessContent() {
                   controlOptions={controlOptions}
                   controlsError={controls.isError}
                   onSecretCreated={setSecretState}
+                  expanded={expandedUserId === user.id}
                 />
               ))}
             </Accordion>

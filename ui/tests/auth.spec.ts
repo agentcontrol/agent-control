@@ -87,4 +87,68 @@ test.describe('API key login flow', () => {
       await expect(assignedControlSwitches.nth(index)).toBeDisabled();
     }
   });
+
+  test('clears member-scoped spans before a different API key signs in', async ({
+    page,
+  }) => {
+    await mockApiRoutesWithAuthRequired(page, {
+      has_active_session: true,
+      is_admin: false,
+    });
+    await mockRoutes.login(page, { authenticated: true, is_admin: false });
+    await page.route('**/api/logout', async (route) => {
+      await route.fulfill({ status: 204 });
+    });
+
+    let principal: 'first' | 'second' = 'first';
+    let releaseSecondResponse: () => void = () => undefined;
+    const secondResponseGate = new Promise<void>((resolve) => {
+      releaseSecondResponse = resolve;
+    });
+    await page.route('**/api/v1/observability/events/query', async (route) => {
+      if (principal === 'second') await secondResponseGate;
+      const event = mockData.events.events[0];
+      const prompt =
+        principal === 'first' ? 'member-a-exact-span' : 'member-b-exact-span';
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...mockData.events,
+          total: 1,
+          events: [
+            {
+              ...event,
+              control_execution_id: `execution-${principal}`,
+              metadata: {
+                ...event.metadata,
+                blocked_input: { prompt },
+              },
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.goto('/agents?id=agent-1&tab=monitor');
+    await expect(
+      page.getByText('member-a-exact-span', { exact: true })
+    ).toBeVisible();
+
+    principal = 'second';
+    await page.getByTitle('Sign out').click();
+    await page.getByPlaceholder('Enter your API key').fill('member-b-key');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'customer-support-bot' })
+    ).toBeVisible();
+    await expect(
+      page.getByText('member-a-exact-span', { exact: true })
+    ).toHaveCount(0);
+
+    releaseSecondResponse();
+    await expect(
+      page.getByText('member-b-exact-span', { exact: true })
+    ).toBeVisible();
+  });
 });
