@@ -28,6 +28,7 @@ import { useUpdateControlMetadata } from '@/core/hooks/query-hooks/use-update-co
 import { useModalRoute } from '@/core/hooks/use-modal-route';
 import { useQueryParam } from '@/core/hooks/use-query-param';
 import { useTimeRangePreference } from '@/core/hooks/use-time-range-preference';
+import { useAuth } from '@/core/providers/auth-provider';
 
 import { ControlsTab } from './controls/controls-tab';
 import { useControlsTableColumns } from './controls/table-columns';
@@ -43,13 +44,18 @@ type AgentDetailPageProps = {
 
 const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   const router = useRouter();
+  const { auth } = useAuth();
+  const canManageControls =
+    auth.status === 'not-required' ||
+    (auth.status === 'authenticated' && auth.isAdmin);
   const { modal, controlId, openModal, closeModal } = useModalRoute();
   const [selectedControl, setSelectedControl] = useState<Control | null>(null);
   const [searchQuery] = useQueryParam('q');
   const [timeRangeValue, setTimeRangeValue] = useTimeRangePreference();
 
-  const controlStoreOpened = modal === MODAL_NAMES.CONTROL_STORE;
-  const editModalOpened = modal === MODAL_NAMES.EDIT;
+  const controlStoreOpened =
+    canManageControls && modal === MODAL_NAMES.CONTROL_STORE;
+  const editModalOpened = canManageControls && modal === MODAL_NAMES.EDIT;
 
   const {
     data: agent,
@@ -148,6 +154,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
   const columns = useControlsTableColumns({
     agentId,
+    canManageControls,
     updateControl,
     updateControlMetadata,
     removeControlFromAgent,
@@ -324,15 +331,17 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                       size="sm"
                       data-testid="controls-search-input"
                     />
-                    <Button
-                      variant="filled"
-                      size="sm"
-                      data-testid="add-control-button"
-                      h={32}
-                      onClick={() => openModal('control-store')}
-                    >
-                      Add Control
-                    </Button>
+                    {canManageControls ? (
+                      <Button
+                        variant="filled"
+                        size="sm"
+                        data-testid="add-control-button"
+                        h={32}
+                        onClick={() => openModal('control-store')}
+                      >
+                        Add Control
+                      </Button>
+                    ) : null}
                   </>
                 ) : (
                   <TimeRangeSwitch
@@ -352,6 +361,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
               controlsLoading={controlsLoading}
               controlsError={controlsError}
               columns={columns}
+              canManageControls={canManageControls}
               onAddControl={() => openModal(MODAL_NAMES.CONTROL_STORE)}
             />
           </Tabs.Panel>

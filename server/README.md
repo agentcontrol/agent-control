@@ -57,3 +57,16 @@ psycopg's bundled binary package.
 Server configuration is driven by environment variables (database, auth, observability, evaluators). For the full list and examples, see the docs.
 
 Full guide: https://docs.agentcontrol.dev/components/server
+
+### Scoped API-key access
+
+When API-key authentication is enabled, configure at least one bootstrap admin
+key with `AGENT_CONTROL_ADMIN_API_KEYS`. Administrators can then use
+`/api/v1/admin/access` or the dashboard's **Access management** page to create
+users, issue revocable API keys, and assign control buckets to each key.
+
+Generated secrets are returned only by the key-creation response. Agent
+Control stores a one-way digest, revalidates database-backed browser sessions
+on every request, and applies the key's grants to effective agent controls and
+all observability reads and writes. Non-admin keys never receive control
+mutation privileges.

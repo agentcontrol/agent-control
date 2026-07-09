@@ -56,6 +56,7 @@ export type ServerConfig = {
   requires_api_key: boolean;
   auth_mode: 'none' | 'api-key';
   has_active_session: boolean;
+  is_admin: boolean;
 };
 
 export type LoginResponse = {

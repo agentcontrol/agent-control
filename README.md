@@ -84,6 +84,32 @@ export AGENT_CONTROL_POSTGRES_PASSWORD="postgres-password"
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
 ```
 
+#### Create scoped user API keys
+
+`AGENT_CONTROL_ADMIN_API_KEYS` provides the initial administrator credential.
+Sign in to the dashboard with that key, open **Access management**, and then:
+
+1. Create a named user.
+2. Create an API key for the user. The secret is shown only once.
+3. Assign the control buckets that key may use.
+
+The user supplies the same key to the Python SDK:
+
+```bash
+export AGENT_CONTROL_API_KEY="<user-api-key>"
+```
+
+The key can also be entered in the dashboard login dialog. A non-admin session
+can inspect its assigned controls and their enforcement history, but cannot
+create, edit, enable, disable, attach, or delete controls. Server-side
+authorization scopes SDK policy refresh, observability ingestion, event
+queries, and statistics to the key's assigned buckets; hiding edit buttons in
+the UI is not the security boundary.
+
+Disabling a user or revoking a key invalidates both SDK requests and existing
+browser sessions. Store generated keys in a secret manager and never put them
+in `config.yaml` or source control.
+
 Verify it is up:
 
 ```bash

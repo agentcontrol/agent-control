@@ -14,6 +14,7 @@ import { getStepTypeLabelAndColor } from './utils';
 
 type UseControlsTableColumnsParams = {
   agentId: string;
+  canManageControls: boolean;
   updateControl: ReturnType<typeof useUpdateControl>;
   updateControlMetadata: ReturnType<typeof useUpdateControlMetadata>;
   removeControlFromAgent: ReturnType<typeof useRemoveControlFromAgent>;
@@ -23,14 +24,15 @@ type UseControlsTableColumnsParams = {
 
 export function useControlsTableColumns({
   agentId,
+  canManageControls,
   updateControl,
   updateControlMetadata,
   removeControlFromAgent,
   onEditControl,
   onDeleteControl,
 }: UseControlsTableColumnsParams): ColumnDef<Control>[] {
-  return useMemo(
-    () => [
+  return useMemo(() => {
+    const columns: ColumnDef<Control>[] = [
       {
         id: 'enabled',
         header: '',
@@ -44,6 +46,12 @@ export function useControlsTableColumns({
             <Switch
               checked={enabled}
               color="green.5"
+              disabled={!canManageControls}
+              aria-label={
+                canManageControls
+                  ? `${enabled ? 'Disable' : 'Enable'} ${control.name}`
+                  : `${control.name} is ${enabled ? 'enabled' : 'disabled'}; administrator access is required to change it`
+              }
               onChange={(e) => {
                 const newEnabled = e.currentTarget.checked;
                 openActionConfirmModal({
@@ -189,58 +197,65 @@ export function useControlsTableColumns({
           );
         },
       },
-      {
-        id: 'edit',
-        header: '',
-        size: 44,
-        cell: ({ row }: { row: { original: Control } }) => (
-          <Box style={{ display: 'flex', justifyContent: 'center' }}>
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="sm"
-              onClick={() => onEditControl(row.original)}
-              aria-label="Edit control"
-            >
-              <IconPencil size={16} />
-            </ActionIcon>
-          </Box>
-        ),
-      },
-      {
-        id: 'delete',
-        header: '',
-        size: 44,
-        cell: ({ row }: { row: { original: Control } }) => {
-          const control = row.original;
-          const isDeleting =
-            removeControlFromAgent.isPending &&
-            removeControlFromAgent.variables?.controlId === control.id;
-          return (
+    ];
+
+    if (canManageControls) {
+      columns.push(
+        {
+          id: 'edit',
+          header: '',
+          size: 44,
+          cell: ({ row }: { row: { original: Control } }) => (
             <Box style={{ display: 'flex', justifyContent: 'center' }}>
               <ActionIcon
                 variant="subtle"
-                color="red"
+                color="gray"
                 size="sm"
-                onClick={() => onDeleteControl(control)}
-                aria-label="Remove control from agent"
-                disabled={isDeleting}
+                onClick={() => onEditControl(row.original)}
+                aria-label="Edit control"
               >
-                <IconTrash size={16} />
+                <IconPencil size={16} />
               </ActionIcon>
             </Box>
-          );
+          ),
         },
-      },
-    ],
-    [
+        {
+          id: 'delete',
+          header: '',
+          size: 44,
+          cell: ({ row }: { row: { original: Control } }) => {
+            const control = row.original;
+            const isDeleting =
+              removeControlFromAgent.isPending &&
+              removeControlFromAgent.variables?.controlId === control.id;
+            return (
+              <Box style={{ display: 'flex', justifyContent: 'center' }}>
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  size="sm"
+                  onClick={() => onDeleteControl(control)}
+                  aria-label="Remove control from agent"
+                  disabled={isDeleting}
+                >
+                  <IconTrash size={16} />
+                </ActionIcon>
+              </Box>
+            );
+          },
+        }
+      );
+    }
+
+    return columns;
+  }, [
       agentId,
+      canManageControls,
       updateControl,
       updateControlMetadata,
       removeControlFromAgent.isPending,
       removeControlFromAgent.variables?.controlId,
       onEditControl,
       onDeleteControl,
-    ]
-  );
+    ]);
 }

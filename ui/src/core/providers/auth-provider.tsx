@@ -55,7 +55,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         } else {
           if (config.has_active_session) {
             // Cookie or header already authenticated; no need to prompt.
-            setAuth({ status: 'authenticated', isAdmin: false });
+            setAuth({ status: 'authenticated', isAdmin: config.is_admin });
           } else {
             setAuth({ status: 'needs-login' });
           }

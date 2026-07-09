@@ -851,12 +851,14 @@ export const serverConfigResponse = {
   requires_api_key: false,
   auth_mode: 'none' as const,
   has_active_session: false,
+  is_admin: false,
 };
 
 export type ServerConfigMock = {
   requires_api_key: boolean;
   auth_mode: 'none' | 'api-key';
   has_active_session: boolean;
+  is_admin: boolean;
 };
 
 /**
@@ -1229,13 +1231,17 @@ export async function mockApiRoutes(page: Page) {
  * Set up all API route mocks with auth required (for login flow tests).
  * Call mockRoutes.login(page, ...) in the test for success/failure.
  */
-export async function mockApiRoutesWithAuthRequired(page: Page) {
+export async function mockApiRoutesWithAuthRequired(
+  page: Page,
+  session: { has_active_session?: boolean; is_admin?: boolean } = {}
+) {
   await mockRoutes.config(page, {
     data: {
       ...serverConfigResponse,
       requires_api_key: true,
       auth_mode: 'api-key',
-      has_active_session: false,
+      has_active_session: session.has_active_session ?? false,
+      is_admin: session.is_admin ?? false,
     },
   });
   await mockRoutes.agents(page);

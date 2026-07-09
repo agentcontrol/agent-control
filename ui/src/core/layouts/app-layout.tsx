@@ -12,8 +12,10 @@ import {
   IconBook,
   IconChevronRight,
   IconHexagons,
+  IconLogout,
   IconMoon,
   IconSun,
+  IconUsers,
 } from '@tabler/icons-react';
 import { AnimatePresence, motion } from 'motion/react';
 import Image from 'next/image';
@@ -23,6 +25,7 @@ import { type ReactNode, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
+import { useAuth } from '@/core/providers/auth-provider';
 
 // import { useAgentsInfinite } from "@/core/hooks/query-hooks/use-agents-infinite";
 import classes from './app-layout.module.css';
@@ -83,12 +86,35 @@ function NavItem({ href, icon, label, active, onClick }: NavItemProps) {
 // }
 
 function BottomSection() {
+  const { auth, logout } = useAuth();
   const { colorScheme: _colorScheme, toggleColorScheme } =
     useMantineColorScheme();
 
   return (
     <Stack gap={0} p="md">
       <Divider mb="md" className={classes.divider} />
+
+      {auth.status === 'authenticated' ? (
+        <>
+          <Text size="xs" c="dimmed" px={10} py={4}>
+            Signed in as {auth.isAdmin ? 'administrator' : 'viewer'}
+          </Text>
+          <UnstyledButton
+            className={classes.navItem}
+            onClick={() => void logout()}
+            title="Sign out"
+          >
+            <Group gap="sm" wrap="nowrap">
+              <Box className={classes.navIcon}>
+                <IconLogout size={18} stroke={2} />
+              </Box>
+              <Text size="sm" className={classes.navLabel}>
+                Sign out
+              </Text>
+            </Group>
+          </UnstyledButton>
+        </>
+      ) : null}
 
       {/* Docs - GitHub README */}
       <UnstyledButton
@@ -137,6 +163,10 @@ function BottomSection() {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const router = useRouter();
+  const { auth } = useAuth();
+  const canManageAccess =
+    auth.status === 'not-required' ||
+    (auth.status === 'authenticated' && auth.isAdmin);
   const [mobileOpened, setMobileOpened] = useState(false);
   const [desktopOpened, _setDesktopOpened] = useState(true);
   // TODO: Agent list temporarily disabled in sidebar
@@ -233,6 +263,22 @@ export function AppLayout({ children }: AppLayoutProps) {
                 onClick={closeNavbar}
               />
 
+              {canManageAccess ? (
+                <NavItem
+                  href="/admin/access"
+                  icon={
+                    <IconUsers
+                      color="var(--jds-color-muted-foreground)"
+                      size={18}
+                      stroke={2}
+                    />
+                  }
+                  label="Access management"
+                  active={router.pathname === '/admin/access'}
+                  onClick={closeNavbar}
+                />
+              ) : null}
+
               {/* Agent List - Temporarily hidden */}
               {/* TODO: Decide on pagination strategy for sidebar agent list */}
               {/* {desktopOpened && (
@@ -297,6 +343,14 @@ function Header() {
   const agentDisplayName = agentData?.agent?.agent_name ?? agentId ?? null;
 
   const getBreadcrumb = () => {
+    if (router.pathname === '/admin/access') {
+      return (
+        <Text size="sm" fw={500}>
+          Access management
+        </Text>
+      );
+    }
+
     if (router.pathname !== '/' && router.pathname !== '/agents') {
       return null;
     }

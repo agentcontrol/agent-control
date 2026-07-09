@@ -1,6 +1,7 @@
 import {
   expect,
   mockApiRoutesWithAuthRequired,
+  mockData,
   mockRoutes,
   test,
 } from './fixtures';
@@ -61,5 +62,31 @@ test.describe('API key login flow', () => {
     await expect(
       page.getByRole('heading', { name: 'Agent Control' })
     ).toBeVisible();
+  });
+
+  test('restores a non-admin session as read-only', async ({ page }) => {
+    await mockApiRoutesWithAuthRequired(page, {
+      has_active_session: true,
+      is_admin: false,
+    });
+
+    await page.goto('/agents?id=agent-1&tab=controls');
+
+    await expect(
+      page.getByRole('alert', { name: 'Administrator-managed rule buckets' })
+    ).toBeVisible();
+    await expect(page.getByTestId('add-control-button')).toHaveCount(0);
+    await expect(page.getByLabel('Edit control')).toHaveCount(0);
+    await expect(
+      page.getByLabel('Remove control from agent')
+    ).toHaveCount(0);
+
+    const assignedControlSwitches = page.getByRole('switch');
+    await expect(assignedControlSwitches).toHaveCount(
+      mockData.controls.controls.length
+    );
+    for (let index = 0; index < mockData.controls.controls.length; index += 1) {
+      await expect(assignedControlSwitches.nth(index)).toBeDisabled();
+    }
   });
 });

@@ -1,6 +1,6 @@
-import { Alert, Box, Center, Loader, Paper, Stack, Text } from '@mantine/core';
+import { Alert, Center, Loader, Paper, Stack, Text } from '@mantine/core';
 import { Button, Table } from '@rungalileo/jupiter-ds';
-import { IconAlertCircle, IconInbox } from '@tabler/icons-react';
+import { IconAlertCircle, IconEye, IconInbox } from '@tabler/icons-react';
 import { type ColumnDef } from '@tanstack/react-table';
 
 import type { Control } from '@/core/api/types';
@@ -10,6 +10,7 @@ type ControlsTabProps = {
   controlsLoading: boolean;
   controlsError: Error | null;
   columns: ColumnDef<Control>[];
+  canManageControls: boolean;
   onAddControl: () => void;
 };
 
@@ -18,6 +19,7 @@ export function ControlsTab({
   controlsLoading,
   controlsError,
   columns,
+  canManageControls,
   onAddControl,
 }: ControlsTabProps) {
   if (controlsLoading) {
@@ -56,21 +58,34 @@ export function ControlsTab({
               This agent doesn&apos;t have any controls set up yet.
             </Text>
           </Stack>
-          <Button
-            variant="filled"
-            mt="md"
-            data-testid="add-control-button"
-            onClick={onAddControl}
-          >
-            Add Control
-          </Button>
+          {canManageControls ? (
+            <Button
+              variant="filled"
+              mt="md"
+              data-testid="add-control-button"
+              onClick={onAddControl}
+            >
+              Add Control
+            </Button>
+          ) : null}
         </Stack>
       </Paper>
     );
   }
 
   return (
-    <Box>
+    <Stack gap="md">
+      {!canManageControls ? (
+        <Alert
+          icon={<IconEye size={16} />}
+          title="Administrator-managed rule buckets"
+          color="blue"
+          variant="light"
+        >
+          This API key can view its assigned controls and enforcement history.
+          Only an administrator can change rule buckets.
+        </Alert>
+      ) : null}
       <Table
         columns={columns}
         data={controls}
@@ -78,6 +93,6 @@ export function ControlsTab({
         highlightOnHover
         withColumnBorders
       />
-    </Box>
+    </Stack>
   );
 }
