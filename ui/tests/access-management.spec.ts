@@ -188,7 +188,10 @@ async function mockAccessApi(page: Page, state: AccessMockState) {
       if (method === 'PUT') {
         const body =
           (await request.postDataJSON()) as UpdateControlGrantsRequest;
-        const grant = { api_key_id: apiKeyId, control_ids: body.control_ids };
+        const grant = {
+          api_key_id: apiKeyId,
+          control_ids: body.control_ids ?? [],
+        };
         state.grants[apiKeyId] = grant;
         await fulfillJson(route, grant);
         return;
@@ -270,7 +273,7 @@ test.describe('Access management', () => {
       page.getByText('ac_test_generated_secret', { exact: true })
     ).toBeVisible();
     await expect(
-      page.getByText('export AGENT_CONTROL_API_KEY="<secret>"')
+      page.getByText('AGENT_CONTROL_API_KEY', { exact: true })
     ).toBeVisible();
     await expect(
       page.getByText('defenseclaw keys set AGENT_CONTROL_API_KEY', {

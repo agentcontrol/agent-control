@@ -40,13 +40,14 @@ export function useControlsTableColumns({
         cell: ({ row }: { row: { original: Control } }) => {
           const control = row.original;
           const enabled = control.control?.enabled ?? false;
-          const ctrl = control.control as Record<string, unknown> | undefined;
-          const isTemplate = ctrl?.template != null;
+          const isTemplate =
+            'template' in control.control && control.control.template != null;
+          const isRendered = 'condition' in control.control;
           return (
             <Switch
               checked={enabled}
               color="green.5"
-              disabled={!canManageControls}
+              disabled={!canManageControls || !isRendered}
               aria-label={
                 canManageControls
                   ? `${enabled ? 'Disable' : 'Enable'} ${control.name}`
@@ -94,7 +95,7 @@ export function useControlsTableColumns({
                         },
                         callbacks
                       );
-                    } else {
+                    } else if ('condition' in control.control) {
                       updateControl.mutate(
                         {
                           agentId,
@@ -144,7 +145,9 @@ export function useControlsTableColumns({
         accessorKey: 'control.scope.step_types',
         size: 180,
         cell: ({ row }: { row: { original: Control } }) => {
-          const stepTypes = row.original.control?.scope?.step_types ?? [];
+          const definition = row.original.control;
+          const stepTypes =
+            'scope' in definition ? (definition.scope?.step_types ?? []) : [];
           if (stepTypes.length === 0) {
             return (
               <Badge variant="light" color="gray" size="sm">
@@ -172,7 +175,9 @@ export function useControlsTableColumns({
         accessorKey: 'control.scope.stages',
         size: 120,
         cell: ({ row }: { row: { original: Control } }) => {
-          const stages = row.original.control?.scope?.stages ?? [];
+          const definition = row.original.control;
+          const stages =
+            'scope' in definition ? (definition.scope?.stages ?? []) : [];
           if (stages.length === 0) {
             return (
               <Badge variant="light" color="gray" size="sm">
@@ -249,13 +254,13 @@ export function useControlsTableColumns({
 
     return columns;
   }, [
-      agentId,
-      canManageControls,
-      updateControl,
-      updateControlMetadata,
-      removeControlFromAgent.isPending,
-      removeControlFromAgent.variables?.controlId,
-      onEditControl,
-      onDeleteControl,
-    ]);
+    agentId,
+    canManageControls,
+    updateControl,
+    updateControlMetadata,
+    removeControlFromAgent.isPending,
+    removeControlFromAgent.variables?.controlId,
+    onEditControl,
+    onDeleteControl,
+  ]);
 }

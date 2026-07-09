@@ -152,11 +152,11 @@ function SecretModal({
               Use with the Agent Control SDK
             </Text>
             <Text size="xs" c="dimmed">
-              Provide the copied key through your secret manager in the
-              environment that runs the SDK. Avoid putting the secret in shell
-              history.
+              Inject the copied key through your secret manager under this
+              environment-variable name. Do not put the secret in shell history
+              or process arguments.
             </Text>
-            <Code block>{'export AGENT_CONTROL_API_KEY="<secret>"'}</Code>
+            <Code block>AGENT_CONTROL_API_KEY</Code>
           </Stack>
 
           <Stack gap="xs">
@@ -212,6 +212,7 @@ function CreateUserForm() {
       await createUser.mutateAsync({
         name: values.name.trim(),
         role: values.role,
+        enabled: true,
       });
       form.reset();
       notifications.show({

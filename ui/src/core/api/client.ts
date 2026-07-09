@@ -249,6 +249,56 @@ export const api = {
         params: { path: { policy_id: policyId, control_id: controlId } },
       }),
   },
+  access: {
+    users: {
+      list: () => apiClient.GET('/api/v1/admin/access/users'),
+      create: (
+        body: paths['/api/v1/admin/access/users']['post']['requestBody']['content']['application/json']
+      ) => apiClient.POST('/api/v1/admin/access/users', { body }),
+      update: (
+        userId: string,
+        body: paths['/api/v1/admin/access/users/{user_id}']['patch']['requestBody']['content']['application/json']
+      ) =>
+        apiClient.PATCH('/api/v1/admin/access/users/{user_id}', {
+          params: { path: { user_id: userId } },
+          body,
+        }),
+    },
+    apiKeys: {
+      list: (userId: string) =>
+        apiClient.GET('/api/v1/admin/access/users/{user_id}/api-keys', {
+          params: { path: { user_id: userId } },
+        }),
+      create: (
+        userId: string,
+        body: paths['/api/v1/admin/access/users/{user_id}/api-keys']['post']['requestBody']['content']['application/json']
+      ) =>
+        apiClient.POST('/api/v1/admin/access/users/{user_id}/api-keys', {
+          params: { path: { user_id: userId } },
+          body,
+        }),
+      revoke: (apiKeyId: string) =>
+        apiClient.DELETE('/api/v1/admin/access/api-keys/{api_key_id}', {
+          params: { path: { api_key_id: apiKeyId } },
+        }),
+      getControlGrants: (apiKeyId: string) =>
+        apiClient.GET(
+          '/api/v1/admin/access/api-keys/{api_key_id}/control-grants',
+          { params: { path: { api_key_id: apiKeyId } } }
+        ),
+      updateControlGrants: (
+        apiKeyId: string,
+        body: paths['/api/v1/admin/access/api-keys/{api_key_id}/control-grants']['put']['requestBody']['content']['application/json']
+      ) =>
+        apiClient.PUT(
+          '/api/v1/admin/access/api-keys/{api_key_id}/control-grants',
+          {
+            params: { path: { api_key_id: apiKeyId } },
+            body,
+          }
+        ),
+    },
+  },
   observability: {
     getStats: (params: {
       agent_name: string;

@@ -83,6 +83,15 @@ export type ControlDefinition =
   | ControlDefinitionInput
   | ControlDefinitionOutput;
 export type Control = components['schemas']['Control'];
+export type RenderedControl = Omit<Control, 'control'> & {
+  control: ControlDefinitionOutput;
+};
+
+export function isRenderedControl(
+  control: Control
+): control is RenderedControl {
+  return 'condition' in control.control;
+}
 export type AgentControlsResponse =
   components['schemas']['AgentControlsResponse'];
 

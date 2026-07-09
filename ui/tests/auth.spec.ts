@@ -77,9 +77,7 @@ test.describe('API key login flow', () => {
     ).toBeVisible();
     await expect(page.getByTestId('add-control-button')).toHaveCount(0);
     await expect(page.getByLabel('Edit control')).toHaveCount(0);
-    await expect(
-      page.getByLabel('Remove control from agent')
-    ).toHaveCount(0);
+    await expect(page.getByLabel('Remove control from agent')).toHaveCount(0);
 
     const assignedControlSwitches = page.getByRole('switch');
     await expect(assignedControlSwitches).toHaveCount(

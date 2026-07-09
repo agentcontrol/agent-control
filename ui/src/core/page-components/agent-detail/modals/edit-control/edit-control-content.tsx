@@ -23,7 +23,9 @@ import type {
   Control,
   ControlDefinition,
   ProblemDetail,
+  RenderedControl,
 } from '@/core/api/types';
+import { isRenderedControl } from '@/core/api/types';
 import { useAddControlToAgent } from '@/core/hooks/query-hooks/use-add-control-to-agent';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useControlSchema } from '@/core/hooks/query-hooks/use-control-schema';
@@ -120,7 +122,19 @@ export const EditControlContent = (props: EditControlContentProps) => {
     );
   }
 
-  return <RawEditControlContent {...props} />;
+  if (!isRenderedControl(props.control)) {
+    return (
+      <Alert color="yellow" title="Template is not rendered">
+        Complete the template parameters before editing this control.
+      </Alert>
+    );
+  }
+
+  return <RawEditControlContent {...props} control={props.control} />;
+};
+
+type RawEditControlContentProps = Omit<EditControlContentProps, 'control'> & {
+  control: RenderedControl;
 };
 
 const RawEditControlContent = ({
@@ -131,7 +145,7 @@ const RawEditControlContent = ({
   onSuccess,
   initialEditorMode = 'form',
   onCloseRef,
-}: EditControlContentProps) => {
+}: RawEditControlContentProps) => {
   const { data: agentResponse } = useAgent(agentId);
   const { data: controlSchemaResponse } = useControlSchema();
   const { data: globalEvaluators } = useEvaluators();

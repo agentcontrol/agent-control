@@ -239,7 +239,7 @@ def test_cookie_and_header_re_resolve_disabled_revoked_and_expired_keys(
     db_engine,
 ) -> None:
     user, key, secret = _create_user_and_key(admin_client)
-    browser = TestClient(app)
+    browser = TestClient(app, base_url="http://localhost")
     login = browser.post("/api/login", json={"api_key": secret})
     assert login.status_code == 200
     assert login.json() == {"authenticated": True, "is_admin": False}
@@ -294,7 +294,7 @@ def test_cookie_and_header_re_resolve_disabled_revoked_and_expired_keys(
 def test_admin_session_role_survives_refresh(app: object, admin_client: TestClient) -> None:
     # The configured environment admin key remains the bootstrap credential.
     bootstrap_secret = admin_client.headers["X-API-Key"]
-    browser = TestClient(app)
+    browser = TestClient(app, base_url="http://localhost")
     login = browser.post("/api/login", json={"api_key": bootstrap_secret})
     assert login.status_code == 200
     assert login.json()["is_admin"] is True

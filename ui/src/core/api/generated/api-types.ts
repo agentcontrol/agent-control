@@ -71,6 +71,94 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/admin/access/api-keys/{api_key_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke Api Key */
+    delete: operations['revoke_api_key_api_v1_admin_access_api_keys__api_key_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/access/api-keys/{api_key_id}/control-grants': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Api Key Grants */
+    get: operations['get_api_key_grants_api_v1_admin_access_api_keys__api_key_id__control_grants_get'];
+    /** Replace Api Key Grants */
+    put: operations['replace_api_key_grants_api_v1_admin_access_api_keys__api_key_id__control_grants_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/access/users': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Access Users */
+    get: operations['list_access_users_api_v1_admin_access_users_get'];
+    put?: never;
+    /** Create Access User */
+    post: operations['create_access_user_api_v1_admin_access_users_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/access/users/{user_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update Access User */
+    patch: operations['update_access_user_api_v1_admin_access_users__user_id__patch'];
+    trace?: never;
+  };
+  '/api/v1/admin/access/users/{user_id}/api-keys': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Api Keys */
+    get: operations['list_api_keys_api_v1_admin_access_users__user_id__api_keys_get'];
+    put?: never;
+    /** Create Api Key */
+    post: operations['create_api_key_api_v1_admin_access_users__user_id__api_keys_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/agents': {
     parameters: {
       query?: never;
@@ -83,13 +171,15 @@ export interface paths {
      * @description List all registered agents with cursor-based pagination.
      *
      *     Returns a summary of each agent including identifier, policy associations,
-     *     and counts of registered steps and evaluators.
+     *     and counts of registered steps and evaluators. Results are scoped to
+     *     the request's namespace; agents in other namespaces are not visible.
      *
      *     Args:
      *         cursor: Optional cursor for pagination (last agent name from previous page)
      *         limit: Pagination limit (default 20, max 100)
      *         name: Optional name filter (case-insensitive partial match)
      *         db: Database session (injected)
+     *         principal: Authorized request principal
      *
      *     Returns:
      *         ListAgentsResponse with agent summaries and pagination info
@@ -124,12 +214,22 @@ export interface paths {
      *     - strict (default): preserve compatibility checks and conflict errors
      *     - overwrite: latest init payload replaces steps/evaluators and returns change summary
      *
+     *     The returned ``controls`` list is the de-duplicated union of the agent's
+     *     direct controls, policy-derived controls, and (when ``target_type`` and
+     *     ``target_id`` are both supplied on the request) controls attached to that
+     *     target via enabled bindings in the same namespace. The same merge applies
+     *     on ``GET /agents/{name}/controls`` and ``POST /evaluation``. Bindings can
+     *     pre-exist the agent row, so a newly created agent that registers with
+     *     target context can observe target controls immediately.
+     *
      *     Args:
      *         request: Agent metadata and step schemas
      *         db: Database session (injected)
+     *         principal: Authorized request principal for the agent create operation
+     *         target_principal: Optional principal from the target binding read check
      *
      *     Returns:
-     *         InitAgentResponse with created flag and active controls (policy-derived + direct)
+     *         InitAgentResponse with created flag and the effective controls
      */
     post: operations['init_agent_api_v1_agents_initAgent_post'];
     delete?: never;
@@ -154,6 +254,7 @@ export interface paths {
      *     Args:
      *         agent_name: Agent identifier
      *         db: Database session (injected)
+     *         principal: Authorized request principal
      *
      *     Returns:
      *         GetAgentResponse with agent metadata and step list
@@ -179,6 +280,7 @@ export interface paths {
      *         agent_name: Agent identifier
      *         request: Lists of step/evaluator identifiers to remove
      *         db: Database session (injected)
+     *         principal: Authorized request principal
      *
      *     Returns:
      *         PatchAgentResponse with lists of actually removed items
@@ -198,19 +300,37 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List agent's active controls
-     * @description List all protection controls active for an agent.
+     * List agent's associated controls
+     * @description List protection controls effective for an agent.
      *
-     *     Controls include the union of policy-derived and directly associated controls.
+     *     The effective set is the de-duplicated union of the agent's direct
+     *     controls, policy-derived controls, and (when ``target_type`` and
+     *     ``target_id`` are both supplied) controls attached to that target via
+     *     enabled bindings in the same namespace. The same merge applies on
+     *     ``initAgent`` and ``POST /evaluation`` so all three surfaces return the
+     *     same set for the same inputs.
+     *
+     *     By default, the endpoint returns all effective controls, including
+     *     rendered controls, disabled controls, and unrendered template drafts.
+     *     Callers can narrow the response via the state filters. Filters
+     *     intersect, so unrendered drafts require rendered_state='unrendered'
+     *     together with enabled_state='all' or 'disabled'.
      *
      *     Args:
      *         agent_name: Agent identifier
+     *         rendered_state: Whether to return rendered controls, unrendered drafts, or both
+     *         enabled_state: Whether to return enabled controls, disabled controls, or both
+     *         target_type: Optional opaque target kind (paired with target_id)
+     *         target_id: Optional opaque target identifier (paired with target_type)
      *         db: Database session (injected)
+     *         principal: Authorized request principal for the agent read operation
+     *         target_principal: Optional principal from the target binding read check
      *
      *     Returns:
-     *         AgentControlsResponse with list of active controls
+     *         AgentControlsResponse with controls matching the requested state filters
      *
      *     Raises:
+     *         HTTPException 400: target_type and target_id were not supplied together
      *         HTTPException 404: Agent not found
      */
     get: operations['list_agent_controls_api_v1_agents__agent_name__controls_get'];
@@ -266,6 +386,7 @@ export interface paths {
      *         cursor: Optional cursor for pagination (name of last evaluator from previous page)
      *         limit: Pagination limit (default 20, max 100)
      *         db: Database session (injected)
+     *         principal: Authorized request principal
      *
      *     Returns:
      *         ListEvaluatorsResponse with evaluator schemas and pagination
@@ -297,6 +418,7 @@ export interface paths {
      *         agent_name: Agent identifier
      *         evaluator_name: Name of the evaluator
      *         db: Database session (injected)
+     *         principal: Authorized request principal
      *
      *     Returns:
      *         EvaluatorSchemaItem with schema details
@@ -408,6 +530,182 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/auth/runtime-token-exchange': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Exchange a credential for a runtime token bound to a target
+     * @description Mint a short-lived runtime token for the requested target.
+     *
+     *     The caller's credential is authenticated and authorized before the
+     *     resolved principal supplies the actor identity, grant scopes, and
+     *     expiry. This endpoint then mints a local HS256 token whose lifetime
+     *     cannot outlive the grant.
+     *
+     *     Runtime auth must be enabled via
+     *     ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET``; otherwise the endpoint
+     *     returns 503.
+     */
+    post: operations['runtime_token_exchange_api_v1_auth_runtime_token_exchange_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/control-bindings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List control bindings
+     * @description Return bindings in the request namespace with optional filters and
+     *     cursor-based pagination. Bindings are ordered by ID descending
+     *     (newest first). The cursor is opaque to clients: pass back the
+     *     ``next_cursor`` value verbatim to fetch the following page. The
+     *     storage namespace is resolved from the authenticated request.
+     */
+    get: operations['list_control_bindings_api_v1_control_bindings_get'];
+    /**
+     * Create a control binding
+     * @description Attach a control to an opaque external target.
+     *
+     *     Each binding row is scoped to the namespace associated with the
+     *     authenticated request.
+     */
+    put: operations['create_control_binding_api_v1_control_bindings_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/control-bindings/by-key': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Attach a control to a target by natural key (idempotent)
+     * @description Idempotent attach using ``(target_type, target_id, control_id)`` as the
+     *     natural key. Updates ``enabled`` on an existing match; creates a new row
+     *     otherwise.
+     */
+    put: operations['upsert_control_binding_by_key_api_v1_control_bindings_by_key_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update a control binding by natural key
+     * @description Update an existing binding using ``(target_type, target_id, control_id)``.
+     *
+     *     This route is target-scoped because the request body includes the target
+     *     identifiers before authorization runs. Unlike ``PUT /by-key``, it never
+     *     creates a missing binding.
+     */
+    patch: operations['patch_control_binding_by_key_api_v1_control_bindings_by_key_patch'];
+    trace?: never;
+  };
+  '/api/v1/control-bindings/by-key:delete': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Detach a control from a target by natural key (idempotent)
+     * @description Idempotent detach by natural key. Returns ``deleted=False`` when no
+     *     matching binding exists.
+     */
+    post: operations['delete_control_binding_by_key_api_v1_control_bindings_by_key_delete_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/control-bindings/{binding_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a control binding (namespace-wide)
+     * @description Read a single control binding by surrogate ID.
+     *
+     *     Authorization is namespace-wide: the binding's target identifiers
+     *     are not available until after the row is loaded.
+     *     Callers whose authorization model requires per-target permissions
+     *     should use the natural-key endpoints (``PUT /by-key``,
+     *     ``POST /by-key:delete``) and the target-filtered list endpoint, all
+     *     of which include ``(target_type, target_id)`` in the request context.
+     */
+    get: operations['get_control_binding_api_v1_control_bindings__binding_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete a control binding (namespace-wide)
+     * @description Delete a control binding by surrogate ID.
+     *
+     *     See the GET-by-id docstring for the authorization scope: this route
+     *     is namespace-wide because the target identifiers are not available
+     *     before the binding is loaded. Use ``POST /by-key:delete`` for
+     *     target-scoped detach that includes the target in the request context.
+     */
+    delete: operations['delete_control_binding_api_v1_control_bindings__binding_id__delete'];
+    options?: never;
+    head?: never;
+    /**
+     * Update a control binding (namespace-wide)
+     * @description Update the ``enabled`` flag on a control binding.
+     *
+     *     See the GET-by-id docstring for the authorization scope: this route
+     *     is namespace-wide because the target identifiers are not available
+     *     before the binding is loaded. Use ``PUT /by-key`` for target-scoped
+     *     upserts that include the target in the request context.
+     */
+    patch: operations['patch_control_binding_api_v1_control_bindings__binding_id__patch'];
+    trace?: never;
+  };
+  '/api/v1/control-templates/render': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Render a control template preview
+     * @description Render a template-backed control without persisting it.
+     */
+    post: operations['render_control_template_api_v1_control_templates_render_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/controls': {
     parameters: {
       query?: never;
@@ -426,10 +724,17 @@ export interface paths {
      *         limit: Maximum number of controls to return (default 20, max 100)
      *         name: Optional filter by name (partial, case-insensitive match)
      *         enabled: Optional filter by enabled status
+     *         template_backed: Optional filter by whether the control is template-backed
+     *         cloned: Optional filter by whether the control was cloned from another control
      *         step_type: Optional filter by step type (built-ins: 'tool', 'llm')
      *         stage: Optional filter by stage ('pre' or 'post')
      *         execution: Optional filter by execution ('server' or 'sdk')
      *         tag: Optional filter by tag
+     *         include_attachments: Whether to include attachment details for listed controls
+     *         attachment_target_type: Optional target binding type filter for controls and
+     *             attachments
+     *         attachment_target_id: Optional target binding ID filter for controls and
+     *             attachments
      *         db: Database session (injected)
      *
      *     Returns:
@@ -578,10 +883,30 @@ export interface paths {
      *     Raises:
      *         HTTPException 404: Control not found
      *         HTTPException 409: New name conflicts with existing control
-     *         HTTPException 422: Cannot update enabled status (control has no data configured)
+     *         HTTPException 422: Cannot update metadata for corrupted control data
      *         HTTPException 500: Database error during update
      */
     patch: operations['patch_control_api_v1_controls__control_id__patch'];
+    trace?: never;
+  };
+  '/api/v1/controls/{control_id}/clone-and-bind': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Clone a control and bind the clone to a target
+     * @description Clone an active control and attach the clone to an opaque target.
+     */
+    post: operations['clone_and_bind_control_api_v1_controls__control_id__clone_and_bind_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   '/api/v1/controls/{control_id}/data': {
@@ -636,6 +961,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/controls/{control_id}/versions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List control version history
+     * @description List control versions ordered newest-first using cursor-based pagination.
+     */
+    get: operations['list_control_versions_api_v1_controls__control_id__versions_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/controls/{control_id}/versions/{version_num}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a specific control version
+     * @description Return a specific control version, including its raw persisted snapshot.
+     */
+    get: operations['get_control_version_api_v1_controls__control_id__versions__version_num__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/evaluation': {
     parameters: {
       query?: never;
@@ -649,15 +1014,17 @@ export interface paths {
      * Analyze content safety
      * @description Analyze content for safety and control violations.
      *
-     *     Runs all controls assigned to the agent via policy through the
-     *     evaluation engine. Controls are evaluated in parallel with
-     *     cancel-on-deny for efficiency.
+     *     The effective control set is the de-duplicated union of the agent's
+     *     direct controls, policy-derived controls, and (when ``target_type`` and
+     *     ``target_id`` are both supplied) controls attached to that target via
+     *     enabled bindings in the same namespace. The same merge applies on
+     *     ``initAgent`` and ``GET /agents/{name}/controls`` so all three surfaces
+     *     return the same set for the same inputs.
      *
-     *     Custom evaluators must be deployed as Evaluator classes
-     *     with the engine. Their schemas are registered via initAgent.
-     *
-     *     Optionally accepts X-Trace-Id and X-Span-Id headers for
-     *     OpenTelemetry-compatible distributed tracing.
+     *     This endpoint is intentionally evaluation-only. It returns the semantic
+     *     ``EvaluationResponse`` and does not build or ingest observability events
+     *     on the server; SDKs reconstruct and emit those events separately through
+     *     the observability ingestion endpoint.
      */
     post: operations['evaluate_api_v1_evaluation_post'];
     delete?: never;
@@ -1000,6 +1367,64 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** APIKeyGrantResponse */
+    APIKeyGrantResponse: {
+      /** Api Key Id */
+      api_key_id: string;
+      /** Control Ids */
+      control_ids: number[];
+    };
+    /** APIKeyListResponse */
+    APIKeyListResponse: {
+      /** Api Keys */
+      api_keys: components['schemas']['APIKeyResponse'][];
+    };
+    /** APIKeyResponse */
+    APIKeyResponse: {
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Enabled */
+      enabled: boolean;
+      /** Expires At */
+      expires_at: string | null;
+      /** Id */
+      id: string;
+      /** Key Prefix */
+      key_prefix: string;
+      /** Name */
+      name: string;
+      /** Revoked At */
+      revoked_at: string | null;
+      /** User Id */
+      user_id: string;
+    };
+    /** AccessUserListResponse */
+    AccessUserListResponse: {
+      /** Users */
+      users: components['schemas']['AccessUserResponse'][];
+    };
+    /** AccessUserResponse */
+    AccessUserResponse: {
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Enabled */
+      enabled: boolean;
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: 'admin' | 'member';
+    };
     /** @enum {string} */
     ActionDecision: 'deny' | 'steer' | 'observe';
     /**
@@ -1056,7 +1481,7 @@ export interface components {
     AgentControlsResponse: {
       /**
        * Controls
-       * @description List of active controls associated with the agent
+       * @description List of agent-associated controls matching the requested state filters (all associated controls by default, including disabled and unrendered controls)
        */
       controls: components['schemas']['Control'][];
     };
@@ -1189,6 +1614,104 @@ export interface components {
        * @enum {string}
        */
       status: 'queued' | 'partial' | 'failed';
+    };
+    /**
+     * BooleanTemplateParameter
+     * @description Boolean template parameter.
+     */
+    BooleanTemplateParameter: {
+      /**
+       * Default
+       * @description Optional default value
+       */
+      default?: boolean | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'boolean';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+    };
+    /**
+     * CloneAndBindControlRequest
+     * @description Request to clone a control and attach the clone to one target.
+     */
+    CloneAndBindControlRequest: {
+      /**
+       * Name
+       * @description Optional unique name for the cloned control. If omitted, the server generates a name from the source control name.
+       */
+      name?: string | null;
+      /** @description Target binding to create for the cloned control. */
+      target_binding: components['schemas']['CloneAndBindTargetBinding'];
+    };
+    /**
+     * CloneAndBindControlResponse
+     * @description Response from cloning and binding a control.
+     */
+    CloneAndBindControlResponse: {
+      /**
+       * Binding Id
+       * @description Identifier of the created binding.
+       */
+      binding_id: number;
+      /**
+       * Cloned From Control Id
+       * @description Source control ID.
+       */
+      cloned_from_control_id: number;
+      /**
+       * Id
+       * @description Identifier of the cloned control.
+       */
+      id: number;
+      /**
+       * Name
+       * @description Name of the cloned control.
+       */
+      name: string;
+    };
+    /**
+     * CloneAndBindTargetBinding
+     * @description Target binding to create for a cloned control.
+     */
+    CloneAndBindTargetBinding: {
+      /**
+       * Enabled
+       * @description Whether the created binding is active.
+       * @default true
+       */
+      enabled: boolean;
+      /**
+       * Target Id
+       * @description Opaque external identifier within the target_type.
+       */
+      target_id: string;
+      /**
+       * Target Type
+       * @description Opaque attachment kind (caller-defined; e.g. 'environment', 'session').
+       */
+      target_type: string;
     };
     /**
      * ConditionNode
@@ -1335,6 +1858,11 @@ export interface components {
        * @default false
        */
       has_active_session: boolean;
+      /**
+       * Is Admin
+       * @default false
+       */
+      is_admin: boolean;
       /** Requires Api Key */
       requires_api_key: boolean;
     };
@@ -1351,11 +1879,15 @@ export interface components {
      * Control
      * @description A control with identity and configuration.
      *
-     *     Note: Only fully-configured controls (with valid ControlDefinition)
-     *     are returned from API endpoints. Unconfigured controls are filtered out.
+     *     For rendered controls (raw or template-backed), ``control`` is a
+     *     ``ControlDefinition``.  For unrendered template controls, ``control``
+     *     is an ``UnrenderedTemplateControl``.
      */
     Control: {
-      control: components['schemas']['ControlDefinition-Output'];
+      /** Control */
+      control:
+        | components['schemas']['ControlDefinition-Output']
+        | components['schemas']['UnrenderedTemplateControl'];
       /** Id */
       id: number;
       /** Name */
@@ -1370,6 +1902,39 @@ export interface components {
       decision: components['schemas']['ActionDecision'];
       /** @description Steering context object for steer actions. Strongly recommended when decision='steer' to provide correction suggestions. If not provided, the evaluator result message will be used as fallback. */
       steering_context?: components['schemas']['SteeringContext'] | null;
+    };
+    /**
+     * ControlAttachments
+     * @description Attachments for a listed control.
+     */
+    ControlAttachments: {
+      /**
+       * Agents
+       * @description Direct agent associations for this control
+       */
+      agents?: components['schemas']['AgentRef'][];
+      /**
+       * Policies
+       * @description Policy associations for this control
+       */
+      policies?: components['schemas']['PolicyRef'][];
+      /**
+       * Targets
+       * @description Target bindings for this control
+       */
+      targets?: components['schemas']['TargetAttachmentRef'][];
+      /**
+       * Targets Total
+       * @description Total target bindings matching the attachment filters
+       * @default 0
+       */
+      targets_total: number;
+      /**
+       * Targets Truncated
+       * @description Whether the target bindings list was capped
+       * @default false
+       */
+      targets_truncated: boolean;
     };
     /**
      * ControlDefinition
@@ -1438,6 +2003,15 @@ export interface components {
        * @description Tags for categorization
        */
       tags?: string[];
+      /** @description Template metadata for template-backed controls */
+      template?: components['schemas']['TemplateDefinition-Input'] | null;
+      /**
+       * Template Values
+       * @description Resolved parameter values for template-backed controls
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      } | null;
     };
     /**
      * ControlDefinition
@@ -1506,6 +2080,15 @@ export interface components {
        * @description Tags for categorization
        */
       tags?: string[];
+      /** @description Template metadata for template-backed controls */
+      template?: components['schemas']['TemplateDefinition-Output'] | null;
+      /**
+       * Template Values
+       * @description Resolved parameter values for template-backed controls
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      } | null;
     };
     /**
      * ControlExecutionEvent
@@ -1718,6 +2301,16 @@ export interface components {
       /**
        * Step Types
        * @description Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
+       * @example [
+       *       "llm"
+       *     ]
+       * @example [
+       *       "tool"
+       *     ]
+       * @example [
+       *       "llm",
+       *       "tool"
+       *     ]
        */
       step_types?: string[] | null;
     };
@@ -1770,6 +2363,9 @@ export interface components {
      *         error_count: Number of errors during evaluation
      *         avg_confidence: Average confidence score
      *         avg_duration_ms: Average execution duration in milliseconds
+     *
+     *     Invariant:
+     *         deny_count + steer_count + observe_count == match_count
      */
     ControlStats: {
       /**
@@ -1870,6 +2466,15 @@ export interface components {
      * @description Summary of a control for list responses.
      */
     ControlSummary: {
+      /** @description Action applied when the control matches. */
+      action?: components['schemas']['ControlAction'] | null;
+      /** @description Expanded attachment details. Present when list controls is called with include_attachments=true. */
+      attachments?: components['schemas']['ControlAttachments'] | null;
+      /**
+       * Cloned From Control Id
+       * @description Source control ID when this control is a clone.
+       */
+      cloned_from_control_id?: number | null;
       /**
        * Description
        * @description Control description
@@ -1911,6 +2516,17 @@ export interface components {
        * @description Control tags
        */
       tags?: string[];
+      /**
+       * Template Backed
+       * @description Whether the control was created from a template
+       * @default false
+       */
+      template_backed: boolean;
+      /**
+       * Template Rendered
+       * @description Whether a template-backed control has been rendered. True for rendered templates, False for unrendered templates, None for non-template controls.
+       */
+      template_rendered?: boolean | null;
       /** @description Agent using this control */
       used_by_agent?: components['schemas']['AgentRef'] | null;
       /**
@@ -1920,10 +2536,108 @@ export interface components {
        */
       used_by_agents_count: number;
     };
+    /**
+     * ControlVersionSummary
+     * @description Summary of a single control version.
+     */
+    ControlVersionSummary: {
+      /**
+       * Created At
+       * @description ISO 8601 timestamp when this version was created
+       */
+      created_at: string;
+      /**
+       * Event Type
+       * @description Machine-readable event type for this version
+       */
+      event_type: string;
+      /**
+       * Note
+       * @description Human-readable note describing the change
+       */
+      note?: string | null;
+      /**
+       * Version Num
+       * @description Monotonic version number for the control
+       */
+      version_num: number;
+    };
+    /** CreateAPIKeyRequest */
+    CreateAPIKeyRequest: {
+      /** Expires At */
+      expires_at?: string | null;
+      /** Name */
+      name: string;
+    };
+    /** CreateAPIKeyResponse */
+    CreateAPIKeyResponse: {
+      api_key: components['schemas']['APIKeyResponse'];
+      /** Secret */
+      secret: string;
+    };
+    /** CreateAccessUserRequest */
+    CreateAccessUserRequest: {
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+      /** Name */
+      name: string;
+      /**
+       * Role
+       * @default member
+       * @enum {string}
+       */
+      role: 'admin' | 'member';
+    };
+    /**
+     * CreateControlBindingRequest
+     * @description Request to attach a control to an opaque external target.
+     */
+    CreateControlBindingRequest: {
+      /**
+       * Control Id
+       * @description ID of the control to attach.
+       */
+      control_id: number;
+      /**
+       * Enabled
+       * @description Whether the binding is active. Disabled bindings are preserved but excluded from the effective control set at runtime.
+       * @default true
+       */
+      enabled: boolean;
+      /**
+       * Target Id
+       * @description Opaque external identifier within the target_type.
+       */
+      target_id: string;
+      /**
+       * Target Type
+       * @description Opaque attachment kind (caller-defined; e.g. 'environment', 'session').
+       */
+      target_type: string;
+    };
+    /**
+     * CreateControlBindingResponse
+     * @description Response from creating a control binding.
+     */
+    CreateControlBindingResponse: {
+      /**
+       * Binding Id
+       * @description Identifier of the created binding.
+       */
+      binding_id: number;
+    };
     /** CreateControlRequest */
     CreateControlRequest: {
-      /** @description Control definition to validate and store during creation */
-      data: components['schemas']['ControlDefinition-Input'];
+      /**
+       * Data
+       * @description Control definition to validate and store during creation
+       */
+      data:
+        | components['schemas']['ControlDefinition-Input']
+        | components['schemas']['TemplateControlInput'];
       /**
        * Name
        * @description Unique control name (letters, numbers, hyphens, underscores)
@@ -1955,10 +2669,49 @@ export interface components {
       policy_id: number;
     };
     /**
+     * DeleteControlBindingByKeyRequest
+     * @description Request to detach a control binding by natural key (idempotent).
+     */
+    DeleteControlBindingByKeyRequest: {
+      /** Control Id */
+      control_id: number;
+      /** Target Id */
+      target_id: string;
+      /** Target Type */
+      target_type: string;
+    };
+    /**
+     * DeleteControlBindingByKeyResponse
+     * @description Response from a natural-key detach.
+     */
+    DeleteControlBindingByKeyResponse: {
+      /**
+       * Deleted
+       * @description True when a binding was deleted; False when no matching binding existed.
+       */
+      deleted: boolean;
+    };
+    /**
+     * DeleteControlBindingResponse
+     * @description Response from deleting a control binding.
+     */
+    DeleteControlBindingResponse: {
+      /**
+       * Success
+       * @description Whether the deletion succeeded.
+       */
+      success: boolean;
+    };
+    /**
      * DeleteControlResponse
      * @description Response for deleting a control.
      */
     DeleteControlResponse: {
+      /**
+       * Detached Target Bindings
+       * @description Control binding IDs that were removed before deletion
+       */
+      detached_target_bindings?: number[];
       /**
        * Dissociated From
        * @description Deprecated: policy IDs the control was removed from before deletion
@@ -1992,6 +2745,48 @@ export interface components {
       success: boolean;
     };
     /**
+     * EnumTemplateParameter
+     * @description String enum template parameter.
+     */
+    EnumTemplateParameter: {
+      /**
+       * Allowed Values
+       * @description Allowed string values for the parameter
+       */
+      allowed_values: string[];
+      /**
+       * Default
+       * @description Optional default value
+       */
+      default?: string | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'enum';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+    };
+    /**
      * EvaluationRequest
      * @description Request model for evaluation analysis.
      *
@@ -2002,6 +2797,12 @@ export interface components {
      *         agent_name: Unique identifier of the agent making the request
      *         step: Step payload for evaluation
      *         stage: 'pre' (before execution) or 'post' (after execution)
+     *         target_type: Optional opaque target kind. When set together with
+     *             ``target_id``, the server merges controls bound to that target
+     *             into the effective set, in addition to the agent's direct and
+     *             policy-derived controls.
+     *         target_id: Optional opaque target identifier. Required when
+     *             ``target_type`` is set.
      * @example {
      *       "agent_name": "customer-service-bot",
      *       "stage": "pre",
@@ -2075,6 +2876,16 @@ export interface components {
       stage: 'pre' | 'post';
       /** @description Agent step payload to evaluate */
       step: components['schemas']['Step'];
+      /**
+       * Target Id
+       * @description Optional opaque target identifier. Required when target_type is set.
+       */
+      target_id?: string | null;
+      /**
+       * Target Type
+       * @description Optional opaque target kind. When set together with target_id, the server merges controls bound to that target into the effective set, in addition to the agent's direct and policy-derived controls.
+       */
+      target_type?: string | null;
     };
     /**
      * EvaluationResponse
@@ -2440,18 +3251,61 @@ export interface components {
        */
       steps: components['schemas']['StepSchema'][];
     };
+    /**
+     * GetControlBindingResponse
+     * @description Detail view of a single control binding.
+     */
+    GetControlBindingResponse: {
+      /** Control Id */
+      control_id: number;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Enabled */
+      enabled: boolean;
+      /** Id */
+      id: number;
+      /** Namespace Key */
+      namespace_key: string;
+      /** Target Id */
+      target_id: string;
+      /** Target Type */
+      target_type: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
     /** GetControlDataResponse */
     GetControlDataResponse: {
-      /** @description Control data payload */
-      data: components['schemas']['ControlDefinition-Output'];
+      /**
+       * Data
+       * @description Control data payload (rendered control or unrendered template)
+       */
+      data:
+        | components['schemas']['ControlDefinition-Output']
+        | components['schemas']['UnrenderedTemplateControl'];
     };
     /**
      * GetControlResponse
      * @description Response containing control details.
      */
     GetControlResponse: {
-      /** @description Control configuration data (None if not yet configured) */
-      data?: components['schemas']['ControlDefinition-Output'] | null;
+      /**
+       * Cloned From Control Id
+       * @description Source control ID when this control is a clone.
+       */
+      cloned_from_control_id?: number | null;
+      /**
+       * Data
+       * @description Control configuration data. A ControlDefinition for raw/rendered controls or an UnrenderedTemplateControl for unrendered templates.
+       */
+      data:
+        | components['schemas']['ControlDefinition-Output']
+        | components['schemas']['UnrenderedTemplateControl'];
       /**
        * Id
        * @description Control ID
@@ -2472,6 +3326,39 @@ export interface components {
       schema: {
         [key: string]: unknown;
       };
+    };
+    /**
+     * GetControlVersionResponse
+     * @description Response containing a full control version snapshot.
+     */
+    GetControlVersionResponse: {
+      /**
+       * Created At
+       * @description ISO 8601 timestamp when this version was created
+       */
+      created_at: string;
+      /**
+       * Event Type
+       * @description Machine-readable event type for this version
+       */
+      event_type: string;
+      /**
+       * Note
+       * @description Human-readable note describing the change
+       */
+      note?: string | null;
+      /**
+       * Snapshot
+       * @description Raw persisted snapshot of the control state at this version, including metadata such as name, deleted_at, and cloned_from_control_id.
+       */
+      snapshot: {
+        [key: string]: unknown;
+      };
+      /**
+       * Version Num
+       * @description Monotonic version number for the control
+       */
+      version_num: number;
     };
     /**
      * GetPolicyControlsResponse
@@ -2653,6 +3540,16 @@ export interface components {
        * @description List of steps available to the agent
        */
       steps?: components['schemas']['StepSchema'][];
+      /**
+       * Target Id
+       * @description Optional opaque target identifier. Required when target_type is supplied.
+       */
+      target_id?: string | null;
+      /**
+       * Target Type
+       * @description Optional opaque target kind. When supplied with target_id, the returned controls include controls bound to that target via control bindings, in addition to the agent's direct and policy-derived controls.
+       */
+      target_type?: string | null;
     };
     /**
      * InitAgentResponse
@@ -2679,10 +3576,16 @@ export interface components {
       overwrite_changes?: components['schemas']['InitAgentOverwriteChanges'];
     };
     JSONObject: {
-      [key: string]: components['schemas']['JSONValue'];
+      [key: string]: components['schemas']['JSONValue-Input'];
     };
     /** @description Any JSON value */
-    JSONValue: unknown;
+    'JSONValue-Input': unknown;
+    /** @description Any JSON value */
+    'JSONValue-Output': unknown;
+    /** @description Any JSON value */
+    'JsonValue-Input': unknown;
+    /** @description Any JSON value */
+    'JsonValue-Output': unknown;
     /**
      * ListAgentsResponse
      * @description Response for listing agents.
@@ -2695,6 +3598,29 @@ export interface components {
       agents: components['schemas']['AgentSummary'][];
       /** @description Pagination metadata */
       pagination: components['schemas']['PaginationInfo'];
+    };
+    /**
+     * ListControlBindingsResponse
+     * @description Paginated/filtered list of control bindings.
+     */
+    ListControlBindingsResponse: {
+      /** Bindings */
+      bindings?: components['schemas']['GetControlBindingResponse'][];
+      /** @description Cursor-based pagination metadata. */
+      pagination: components['schemas']['PaginationInfo'];
+    };
+    /**
+     * ListControlVersionsResponse
+     * @description Response for listing control versions.
+     */
+    ListControlVersionsResponse: {
+      /** @description Pagination metadata */
+      pagination: components['schemas']['PaginationInfo'];
+      /**
+       * Versions
+       * @description Control versions ordered newest-first
+       */
+      versions: components['schemas']['ControlVersionSummary'][];
     };
     /**
      * ListControlsResponse
@@ -2795,6 +3721,59 @@ export interface components {
       steps_removed?: components['schemas']['StepKey'][];
     };
     /**
+     * PatchControlBindingByKeyRequest
+     * @description Request to update an existing control binding by natural key.
+     */
+    PatchControlBindingByKeyRequest: {
+      /**
+       * Control Id
+       * @description ID of the bound control.
+       */
+      control_id: number;
+      /**
+       * Enabled
+       * @description New enabled value for the binding.
+       */
+      enabled: boolean;
+      /**
+       * Target Id
+       * @description Opaque external identifier within the target_type.
+       */
+      target_id: string;
+      /**
+       * Target Type
+       * @description Opaque attachment kind.
+       */
+      target_type: string;
+    };
+    /**
+     * PatchControlBindingRequest
+     * @description Request to update a control binding's enabled flag.
+     */
+    PatchControlBindingRequest: {
+      /**
+       * Enabled
+       * @description New enabled value for the binding.
+       */
+      enabled: boolean;
+    };
+    /**
+     * PatchControlBindingResponse
+     * @description Response from updating a control binding.
+     */
+    PatchControlBindingResponse: {
+      /**
+       * Enabled
+       * @description Current enabled value.
+       */
+      enabled: boolean;
+      /**
+       * Success
+       * @description Whether the update succeeded.
+       */
+      success: boolean;
+    };
+    /**
      * PatchControlRequest
      * @description Request to update control metadata (name, enabled status).
      */
@@ -2832,6 +3811,59 @@ export interface components {
       success: boolean;
     };
     /**
+     * PolicyRef
+     * @description Reference to a policy attached to a control.
+     */
+    PolicyRef: {
+      /**
+       * Policy Id
+       * @description Policy ID
+       */
+      policy_id: number;
+    };
+    /**
+     * RegexTemplateParameter
+     * @description RE2 regex template parameter.
+     */
+    RegexTemplateParameter: {
+      /**
+       * Default
+       * @description Optional default regex pattern
+       */
+      default?: string | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Placeholder
+       * @description Optional placeholder regex
+       */
+      placeholder?: string | null;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'regex_re2';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+    };
+    /**
      * RemoveAgentControlResponse
      * @description Response for removing a direct agent-control association.
      */
@@ -2853,12 +3885,93 @@ export interface components {
       success: boolean;
     };
     /**
+     * RenderControlTemplateRequest
+     * @description Request to render a template-backed control without persisting it.
+     */
+    RenderControlTemplateRequest: {
+      /** @description Template definition to render */
+      template: components['schemas']['TemplateDefinition-Input'];
+      /**
+       * Template Values
+       * @description Template parameter values used during rendering
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      };
+    };
+    /**
+     * RenderControlTemplateResponse
+     * @description Rendered template preview response.
+     */
+    RenderControlTemplateResponse: {
+      /** @description Rendered control definition including template metadata */
+      control: components['schemas']['ControlDefinition-Output'];
+    };
+    /** ReplaceAPIKeyGrantsRequest */
+    ReplaceAPIKeyGrantsRequest: {
+      /** Control Ids */
+      control_ids?: number[];
+    };
+    /**
+     * RuntimeTokenExchangeRequest
+     * @description Body for the runtime token exchange endpoint.
+     */
+    RuntimeTokenExchangeRequest: {
+      /**
+       * Target Id
+       * @description Opaque target identifier.
+       */
+      target_id: string;
+      /**
+       * Target Type
+       * @description Opaque target kind (e.g., ``session``).
+       */
+      target_type: string;
+    };
+    /**
+     * RuntimeTokenExchangeResponse
+     * @description Issued runtime token plus its expiry.
+     */
+    RuntimeTokenExchangeResponse: {
+      /**
+       * Expires At
+       * Format: date-time
+       * @description UTC timestamp at which the token expires.
+       */
+      expires_at: string;
+      /**
+       * Scopes
+       * @description Granted runtime scopes; always includes ``runtime.use``.
+       */
+      scopes: string[];
+      /**
+       * Target Id
+       * @description Target the token is bound to.
+       */
+      target_id: string;
+      /**
+       * Target Type
+       * @description Target the token is bound to.
+       */
+      target_type: string;
+      /**
+       * Token
+       * @description Short-lived runtime token (HS256 JWT).
+       */
+      token: string;
+    };
+    /**
      * SetControlDataRequest
      * @description Request to update control configuration data.
      */
     SetControlDataRequest: {
-      /** @description Control configuration data (replaces existing) */
-      data: components['schemas']['ControlDefinition-Input'];
+      /**
+       * Data
+       * @description Control configuration data (replaces existing)
+       */
+      data:
+        | components['schemas']['ControlDefinition-Input']
+        | components['schemas']['TemplateControlInput'];
     };
     /** SetControlDataResponse */
     SetControlDataResponse: {
@@ -2997,14 +4110,14 @@ export interface components {
       /** @description Optional context (conversation history, metadata, etc.) */
       context?: components['schemas']['JSONObject'] | null;
       /** @description Input content for this step */
-      input: components['schemas']['JSONValue'];
+      input: components['schemas']['JSONValue-Input'];
       /**
        * Name
        * @description Step name (tool name or model/chain id)
        */
       name: string;
       /** @description Output content for this step (None for pre-checks) */
-      output?: components['schemas']['JSONValue'] | null;
+      output?: components['schemas']['JSONValue-Input'] | null;
       /**
        * Type
        * @description Step type (e.g., 'tool', 'llm')
@@ -3107,6 +4220,178 @@ export interface components {
       type: string;
     };
     /**
+     * StringListTemplateParameter
+     * @description List-of-strings template parameter.
+     */
+    StringListTemplateParameter: {
+      /**
+       * Default
+       * @description Optional default value
+       */
+      default?: string[] | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Placeholder
+       * @description Optional placeholder/example list
+       */
+      placeholder?: string[] | null;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'string_list';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+    };
+    /**
+     * StringTemplateParameter
+     * @description String-valued template parameter.
+     */
+    StringTemplateParameter: {
+      /**
+       * Default
+       * @description Optional default value
+       */
+      default?: string | null;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Placeholder
+       * @description Optional placeholder text
+       */
+      placeholder?: string | null;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'string';
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+    };
+    /**
+     * TargetAttachmentRef
+     * @description Reference to a target binding attached to a control.
+     */
+    TargetAttachmentRef: {
+      /**
+       * Binding Id
+       * @description Control binding ID
+       */
+      binding_id: number;
+      /**
+       * Enabled
+       * @description Whether this target binding is enabled
+       */
+      enabled: boolean;
+      /**
+       * Target Id
+       * @description Opaque target identifier
+       */
+      target_id: string;
+      /**
+       * Target Type
+       * @description Opaque target kind
+       */
+      target_type: string;
+    };
+    /**
+     * TemplateControlInput
+     * @description Template-backed input payload for control create/update requests.
+     */
+    TemplateControlInput: {
+      /** @description Template definition to render */
+      template: components['schemas']['TemplateDefinition-Input'];
+      /**
+       * Template Values
+       * @description Template parameter values keyed by parameter name
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      };
+    };
+    /**
+     * TemplateDefinition
+     * @description Reusable template with typed parameters and a JSON definition template.
+     */
+    'TemplateDefinition-Input': {
+      /** @description Template payload containing $param binding objects */
+      definition_template: components['schemas']['JsonValue-Input'];
+      /**
+       * Description
+       * @description Metadata describing the template itself
+       */
+      description?: string | null;
+      /**
+       * Parameters
+       * @description Typed parameter definitions keyed by parameter name
+       */
+      parameters?: {
+        [key: string]: components['schemas']['TemplateParameterDefinition'];
+      };
+    };
+    /**
+     * TemplateDefinition
+     * @description Reusable template with typed parameters and a JSON definition template.
+     */
+    'TemplateDefinition-Output': {
+      /** @description Template payload containing $param binding objects */
+      definition_template: components['schemas']['JsonValue-Output'];
+      /**
+       * Description
+       * @description Metadata describing the template itself
+       */
+      description?: string | null;
+      /**
+       * Parameters
+       * @description Typed parameter definitions keyed by parameter name
+       */
+      parameters?: {
+        [key: string]: components['schemas']['TemplateParameterDefinition'];
+      };
+    };
+    TemplateParameterDefinition:
+      | components['schemas']['StringTemplateParameter']
+      | components['schemas']['StringListTemplateParameter']
+      | components['schemas']['EnumTemplateParameter']
+      | components['schemas']['BooleanTemplateParameter']
+      | components['schemas']['RegexTemplateParameter'];
+    TemplateValue: string | boolean | string[];
+    /**
      * TimeseriesBucket
      * @description Single data point in a time-series.
      *
@@ -3168,12 +4453,104 @@ export interface components {
       timestamp: string;
     };
     /**
+     * UnrenderedTemplateControl
+     * @description Stored state of a template control that hasn't been rendered yet.
+     *
+     *     An unrendered template has a template definition and possibly partial
+     *     parameter values, but no concrete condition/action/execution fields.
+     *     It is always ``enabled=False`` and excluded from evaluation.
+     */
+    UnrenderedTemplateControl: {
+      /**
+       * Enabled
+       * @description Unrendered templates are always disabled
+       * @default false
+       * @constant
+       */
+      enabled: false;
+      /** @description Template definition awaiting parameter values */
+      template: components['schemas']['TemplateDefinition-Output'];
+      /**
+       * Template Values
+       * @description Partial or empty parameter values
+       */
+      template_values?: {
+        [key: string]: components['schemas']['TemplateValue'];
+      };
+    };
+    /** UpdateAccessUserRequest */
+    UpdateAccessUserRequest: {
+      /** Enabled */
+      enabled?: boolean | null;
+      /** Name */
+      name?: string | null;
+      /** Role */
+      role?: ('admin' | 'member') | null;
+    };
+    /**
+     * UpsertControlBindingRequest
+     * @description Request to attach (or update) a control binding by natural key.
+     *
+     *     Idempotent: an existing binding with the same
+     *     ``(target_type, target_id, control_id)`` is updated in-place;
+     *     otherwise a new binding is created.
+     */
+    UpsertControlBindingRequest: {
+      /**
+       * Control Id
+       * @description ID of the control to attach.
+       */
+      control_id: number;
+      /**
+       * Enabled
+       * @description Whether the binding is active.
+       * @default true
+       */
+      enabled: boolean;
+      /**
+       * Target Id
+       * @description Opaque external identifier within the target_type.
+       */
+      target_id: string;
+      /**
+       * Target Type
+       * @description Opaque attachment kind.
+       */
+      target_type: string;
+    };
+    /**
+     * UpsertControlBindingResponse
+     * @description Response from a natural-key upsert.
+     */
+    UpsertControlBindingResponse: {
+      /**
+       * Binding Id
+       * @description Identifier of the binding.
+       */
+      binding_id: number;
+      /**
+       * Created
+       * @description True when a new binding was created; False when an existing binding was updated in place.
+       */
+      created: boolean;
+      /**
+       * Enabled
+       * @description Current enabled value.
+       */
+      enabled: boolean;
+    };
+    /**
      * ValidateControlDataRequest
      * @description Request to validate control configuration data without saving.
      */
     ValidateControlDataRequest: {
-      /** @description Control configuration data to validate */
-      data: components['schemas']['ControlDefinition-Input'];
+      /**
+       * Data
+       * @description Control configuration data to validate
+       */
+      data:
+        | components['schemas']['ControlDefinition-Input']
+        | components['schemas']['TemplateControlInput'];
     };
     /** ValidateControlDataResponse */
     ValidateControlDataResponse: {
@@ -3273,6 +4650,255 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  revoke_api_key_api_v1_admin_access_api_keys__api_key_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        api_key_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_api_key_grants_api_v1_admin_access_api_keys__api_key_id__control_grants_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        api_key_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['APIKeyGrantResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  replace_api_key_grants_api_v1_admin_access_api_keys__api_key_id__control_grants_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        api_key_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReplaceAPIKeyGrantsRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['APIKeyGrantResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_access_users_api_v1_admin_access_users_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessUserListResponse'];
+        };
+      };
+    };
+  };
+  create_access_user_api_v1_admin_access_users_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateAccessUserRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessUserResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  update_access_user_api_v1_admin_access_users__user_id__patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateAccessUserRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessUserResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_api_keys_api_v1_admin_access_users__user_id__api_keys_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['APIKeyListResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_api_key_api_v1_admin_access_users__user_id__api_keys_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateAPIKeyRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CreateAPIKeyResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
       };
     };
   };
@@ -3410,7 +5036,16 @@ export interface operations {
   };
   list_agent_controls_api_v1_agents__agent_name__controls_get: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Rendered-state filter. Default 'all' returns both rendered controls and unrendered template drafts. */
+        rendered_state?: 'rendered' | 'unrendered' | 'all';
+        /** @description Enabled-state filter. Default 'all' returns both enabled and disabled associated controls. Unrendered template drafts are disabled, so combine with rendered_state='rendered' to exclude them. */
+        enabled_state?: 'enabled' | 'disabled' | 'all';
+        /** @description Optional opaque target kind. When supplied with target_id, the response includes controls bound to that target via enabled bindings, in addition to the agent's direct and policy-derived controls. */
+        target_type?: string | null;
+        /** @description Optional opaque target identifier. Required when target_type is supplied. */
+        target_id?: string | null;
+      };
       header?: never;
       path: {
         agent_name: string;
@@ -3419,7 +5054,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description List of controls from agent policy and direct associations */
+      /** @description List of associated controls by default, including rendered, unrendered, enabled, and disabled controls */
       200: {
         headers: {
           [name: string]: unknown;
@@ -3789,6 +5424,338 @@ export interface operations {
       };
     };
   };
+  runtime_token_exchange_api_v1_auth_runtime_token_exchange_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuntimeTokenExchangeRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RuntimeTokenExchangeResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_control_bindings_api_v1_control_bindings_get: {
+    parameters: {
+      query?: {
+        /** @description Opaque cursor returned as ``next_cursor`` on the previous page. Pass it back unchanged to fetch the next page. */
+        cursor?: string | null;
+        /** @description Maximum bindings to return (default 20, max 100). */
+        limit?: number;
+        target_type?: string | null;
+        target_id?: string | null;
+        control_id?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Bindings matching the supplied filters */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ListControlBindingsResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_control_binding_api_v1_control_bindings_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateControlBindingRequest'];
+      };
+    };
+    responses: {
+      /** @description Created binding ID */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CreateControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  upsert_control_binding_by_key_api_v1_control_bindings_by_key_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpsertControlBindingRequest'];
+      };
+    };
+    responses: {
+      /** @description Created or updated binding */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UpsertControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  patch_control_binding_by_key_api_v1_control_bindings_by_key_patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PatchControlBindingByKeyRequest'];
+      };
+    };
+    responses: {
+      /** @description Updated enabled flag */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PatchControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_control_binding_by_key_api_v1_control_bindings_by_key_delete_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DeleteControlBindingByKeyRequest'];
+      };
+    };
+    responses: {
+      /** @description Whether a row was deleted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeleteControlBindingByKeyResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_control_binding_api_v1_control_bindings__binding_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        binding_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The requested binding */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GetControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_control_binding_api_v1_control_bindings__binding_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        binding_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deletion confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeleteControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  patch_control_binding_api_v1_control_bindings__binding_id__patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        binding_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PatchControlBindingRequest'];
+      };
+    };
+    responses: {
+      /** @description Updated enabled flag */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PatchControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  render_control_template_api_v1_control_templates_render_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RenderControlTemplateRequest'];
+      };
+    };
+    responses: {
+      /** @description Rendered control preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RenderControlTemplateResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   list_controls_api_v1_controls_get: {
     parameters: {
       query?: {
@@ -3799,6 +5766,10 @@ export interface operations {
         name?: string | null;
         /** @description Filter by enabled status */
         enabled?: boolean | null;
+        /** @description Filter by whether the control is template-backed */
+        template_backed?: boolean | null;
+        /** @description Filter by whether the control was cloned from another control */
+        cloned?: boolean | null;
         /** @description Filter by step type (built-ins: 'tool', 'llm') */
         step_type?: string | null;
         /** @description Filter by stage ('pre' or 'post') */
@@ -3807,6 +5778,12 @@ export interface operations {
         execution?: string | null;
         /** @description Filter by tag */
         tag?: string | null;
+        /** @description When true, include direct agent associations, policy associations, and target bindings for each listed control. */
+        include_attachments?: boolean;
+        /** @description Optional target_type filter applied to the returned controls and expanded target bindings. Only used when include_attachments=true. */
+        attachment_target_type?: string | null;
+        /** @description Optional target_id filter applied to the returned controls and expanded target bindings. Only used when include_attachments=true. */
+        attachment_target_id?: string | null;
       };
       header?: never;
       path?: never;
@@ -4020,6 +5997,41 @@ export interface operations {
       };
     };
   };
+  clone_and_bind_control_api_v1_controls__control_id__clone_and_bind_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CloneAndBindControlRequest'];
+      };
+    };
+    responses: {
+      /** @description Created clone and binding identifiers */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CloneAndBindControlResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   get_control_data_api_v1_controls__control_id__data_get: {
     parameters: {
       query?: never;
@@ -4086,13 +6098,77 @@ export interface operations {
       };
     };
   };
+  list_control_versions_api_v1_controls__control_id__versions_get: {
+    parameters: {
+      query?: {
+        /** @description Version number to start after (newest-first pagination) */
+        cursor?: number | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Paginated control version summaries */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ListControlVersionsResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_control_version_api_v1_controls__control_id__versions__version_num__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        control_id: number;
+        version_num: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Full control version snapshot */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GetControlVersionResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   evaluate_api_v1_evaluation_post: {
     parameters: {
       query?: never;
-      header?: {
-        'X-Trace-Id'?: string | null;
-        'X-Span-Id'?: string | null;
-      };
+      header?: never;
       path?: never;
       cookie?: never;
     };

@@ -154,6 +154,15 @@ export function ControlStoreModal({
             });
             return;
           }
+          if (!('condition' in controlData.data)) {
+            notifications.show({
+              title: 'Template is not rendered',
+              message:
+                'Complete the template parameters before copying this control.',
+              color: 'yellow',
+            });
+            return;
+          }
           // Find the control summary from the list
           const controlSummary = controls.find((c) => c.id === id);
           if (controlSummary) {

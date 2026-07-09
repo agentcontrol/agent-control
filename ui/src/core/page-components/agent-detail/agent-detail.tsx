@@ -130,11 +130,14 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     const allControls = controlsResponse?.controls || [];
     if (!searchQuery.trim()) return allControls;
     const query = searchQuery.toLowerCase();
-    return allControls.filter(
-      (control) =>
+    return allControls.filter((control) => {
+      const description =
+        'description' in control.control ? control.control.description : null;
+      return (
         control.name.toLowerCase().includes(query) ||
-        control.control?.description?.toLowerCase().includes(query)
-    );
+        description?.toLowerCase().includes(query)
+      );
+    });
   }, [controlsResponse, searchQuery]);
 
   // Sync selectedControl to URL controlId when edit modal is open.
