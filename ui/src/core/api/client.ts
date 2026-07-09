@@ -18,7 +18,7 @@ import type {
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === 'true';
-const API_URL =
+export const API_URL =
   configuredApiUrl ?? (isStaticExport ? '' : 'http://localhost:8000');
 
 export const apiClient = createClient<paths>({
@@ -39,10 +39,14 @@ export function onUnauthorized(listener: UnauthorizedListener): () => void {
   return () => unauthorizedListeners.delete(listener);
 }
 
+export function notifyUnauthorized(): void {
+  unauthorizedListeners.forEach((listener) => listener());
+}
+
 apiClient.use({
   async onResponse({ response }) {
     if (response.status === 401) {
-      unauthorizedListeners.forEach((fn) => fn());
+      notifyUnauthorized();
     }
     return response;
   },
