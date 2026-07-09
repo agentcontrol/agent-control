@@ -207,6 +207,16 @@ class Settings(BaseSettings):
         """Parse CORS origins from string or list."""
         return self._parse_list_setting(self.cors_origins)
 
+    def get_cors_policy(self, *, authentication_enabled: bool) -> tuple[list[str], bool]:
+        """Return origins and credential posture, rejecting unsafe wildcard auth."""
+        origins = self.get_cors_origins()
+        if authentication_enabled and "*" in origins:
+            raise ValueError(
+                "AGENT_CONTROL_CORS_ORIGINS must be an explicit allowlist "
+                "when API-key authentication is enabled"
+            )
+        return origins, authentication_enabled
+
     def get_allow_methods(self) -> list[str]:
         """Parse allow_methods from string or list."""
         return self._parse_list_setting(self.allow_methods)

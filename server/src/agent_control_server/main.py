@@ -5,20 +5,22 @@ import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlsplit
 
 import uvicorn
 from agent_control_engine import discover_evaluators, list_evaluators
 from agent_control_models import HealthResponse
 from agent_control_telemetry import DEFAULT_CONTROL_EVENT_SINK_NAME, ControlEventSinkSelection
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from starlette.responses import JSONResponse
 from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from . import __version__ as server_version
 from .auth import get_api_key_from_header
-from .config import observability_settings, settings
+from .config import auth_settings, observability_settings, settings
 from .db import AsyncSessionLocal, async_engine
 from .endpoints.admin_access import router as admin_access_router
 from .endpoints.agents import router as agent_router
@@ -70,6 +72,33 @@ PROMETHEUS_SKIP_PATHS = [
     "/openapi.json",
     "/redoc",
 ]
+
+
+def _normalize_http_origin(value: str | None) -> str | None:
+    """Normalize an HTTP(S) origin, including browser-default ports."""
+    if not value:
+        return None
+    try:
+        parsed = urlsplit(value.strip())
+        port = parsed.port
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    hostname = (parsed.hostname or "").lower()
+    if (
+        scheme not in {"http", "https"}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    if port == (80 if scheme == "http" else 443):
+        port = None
+    host = f"[{hostname}]" if ":" in hostname else hostname
+    return f"{scheme}://{host}{f':{port}' if port is not None else ''}"
 
 
 def _default_log_level() -> str:
@@ -236,13 +265,49 @@ Agent → Policy → Control(s)
 add_prometheus_metrics(app, settings.prometheus_metrics_prefix)
 
 # Configure CORS
+cors_origins, cors_allow_credentials = settings.get_cors_policy(
+    authentication_enabled=auth_settings.api_key_enabled
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.get_cors_origins(),
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_allow_credentials,
     allow_methods=settings.get_allow_methods(),
     allow_headers=settings.get_allow_headers(),
 )
+
+
+@app.middleware("http")
+async def reject_untrusted_cookie_origin(request: Request, call_next):  # type: ignore[no-untyped-def]
+    """Reject cross-origin state changes authenticated only by a UI cookie."""
+    if (
+        auth_settings.api_key_enabled
+        and request.method not in {"GET", "HEAD", "OPTIONS"}
+        and "agent_control_session" in request.cookies
+        and not request.headers.get("X-API-Key")
+    ):
+        origin = request.headers.get("Origin")
+        normalized_origin = _normalize_http_origin(origin)
+        # The explicit CORS allowlist is the canonical public-origin source
+        # behind TLS-terminating or host-rewriting proxies. The normalized
+        # request URL remains a safe same-origin fallback when the proxy
+        # preserves Host (the normal deployment). We intentionally do not
+        # trust caller-supplied X-Forwarded-Host directly.
+        allowed_origins = {
+            normalized
+            for candidate in cors_origins
+            if (normalized := _normalize_http_origin(candidate)) is not None
+        }
+        request_origin = _normalize_http_origin(f"{request.url.scheme}://{request.url.netloc}")
+        if request_origin is not None:
+            allowed_origins.add(request_origin)
+        if origin is not None and normalized_origin not in allowed_origins:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Cookie-authenticated request origin is not allowed."},
+            )
+    return await call_next(request)
+
 
 @app.middleware("http")
 async def attach_version_header(request, call_next):  # type: ignore[no-untyped-def]
@@ -379,9 +444,7 @@ def custom_openapi() -> dict[str, Any]:
     # API-key security for it, so patch only this operation in the generated spec.
     controls_schema_path = f"{api_v1_prefix}/controls/schema"
     controls_schema_operation = (
-        openapi_schema.get("paths", {})
-        .get(controls_schema_path, {})
-        .get("get")
+        openapi_schema.get("paths", {}).get(controls_schema_path, {}).get("get")
     )
     if isinstance(controls_schema_operation, dict):
         controls_schema_operation["security"] = []

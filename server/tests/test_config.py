@@ -1,5 +1,7 @@
 """Tests for server configuration helpers."""
 
+import pytest
+
 from agent_control_server.config import (
     AgentControlServerDatabaseConfig,
     LoggingSettings,
@@ -222,6 +224,24 @@ def test_settings_returns_cors_origins_list_unchanged() -> None:
 
     # Then: the list is returned as-is
     assert origins == ["https://a.example", "https://b.example"]
+
+
+def test_settings_rejects_credentialed_wildcard_cors() -> None:
+    config = Settings(cors_origins="*")
+
+    with pytest.raises(ValueError, match="explicit allowlist"):
+        config.get_cors_policy(authentication_enabled=True)
+
+    assert config.get_cors_policy(authentication_enabled=False) == (["*"], False)
+
+
+def test_settings_allows_credentials_for_explicit_cors_origins() -> None:
+    config = Settings(cors_origins="https://console.example")
+
+    assert config.get_cors_policy(authentication_enabled=True) == (
+        ["https://console.example"],
+        True,
+    )
 
 
 def test_observability_settings_support_prefixed_env_vars(monkeypatch) -> None:

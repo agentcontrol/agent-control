@@ -174,7 +174,7 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
     assert {evaluator["name"] for evaluator in get_data["evaluators"]} == {"eval-a", "eval-c"}
 
 
-def test_init_agent_overwrite_existing_agent_requires_update_auth(
+def test_init_agent_noop_overwrite_skips_update_auth_but_mutation_requires_it(
     client: TestClient,
 ) -> None:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
@@ -189,8 +189,18 @@ def test_init_agent_overwrite_existing_agent_requires_update_auth(
         "/api/v1/agents/initAgent",
         json=_init_payload(agent_name=agent_name, conflict_mode="overwrite"),
     )
+    assert overwrite_resp.status_code == 200
+    assert overwrite_resp.json()["overwrite_applied"] is False
 
-    assert overwrite_resp.status_code == 403
+    changed_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(
+            agent_name=agent_name,
+            agent_description="changed",
+            conflict_mode="overwrite",
+        ),
+    )
+    assert changed_resp.status_code == 403
 
 
 def test_init_agent_force_replace_existing_agent_requires_update_auth(

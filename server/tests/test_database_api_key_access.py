@@ -160,6 +160,25 @@ def test_access_management_is_admin_only_and_secrets_are_one_time(
     assert db_client.get("/api/v1/evaluators").status_code == 200
 
 
+def test_database_admin_key_is_unrestricted_and_rejects_bucket_grants(
+    app: object,
+    admin_client: TestClient,
+) -> None:
+    control_id = _create_control(admin_client, "admin-unrestricted")
+    _, key, secret = _create_user_and_key(admin_client, role="admin")
+
+    grant = admin_client.put(
+        f"/api/v1/admin/access/api-keys/{key['id']}/control-grants",
+        json={"control_ids": [control_id]},
+    )
+    assert grant.status_code == 422
+    assert "namespace-wide" in grant.text
+
+    database_admin = _db_key_client(app, secret)
+    visible = database_admin.get(f"/api/v1/controls/{control_id}")
+    assert visible.status_code == 200
+
+
 def test_scoped_key_sees_only_assigned_controls_policies_bindings_and_counts(
     app: object,
     admin_client: TestClient,
@@ -303,6 +322,20 @@ def test_admin_session_role_survives_refresh(app: object, admin_client: TestClie
     assert config.json()["has_active_session"] is True
     assert config.json()["is_admin"] is True
 
+    forged = browser.post(
+        "/api/v1/admin/access/users",
+        headers={"Origin": "https://attacker.example"},
+        json={"name": "forged-admin", "role": "admin"},
+    )
+    assert forged.status_code == 403
+
+    normalized_same_origin = browser.post(
+        "/api/v1/admin/access/users",
+        headers={"Origin": "http://localhost:80"},
+        json={"name": "normalized-origin-admin", "role": "admin"},
+    )
+    assert normalized_same_origin.status_code == 201
+
 
 def test_observability_grants_filter_reads_and_reject_mixed_batch_atomically(
     app: object,
@@ -407,6 +440,44 @@ def test_observability_grants_filter_reads_and_reject_mixed_batch_atomically(
     assert admin_query.json()["total"] == 3
 
 
+def test_soft_delete_revokes_member_grant_and_blocks_new_events(
+    app: object,
+    admin_client: TestClient,
+    setup_observability: object,
+) -> None:
+    _ = setup_observability
+    control_id = _create_control(admin_client, "deleted-event")
+    _, key, secret = _create_user_and_key(admin_client)
+    _grant_controls(admin_client, key["id"], [control_id])
+    member = _db_key_client(app, secret)
+    agent_name = f"defenseclaw-deleted-{uuid.uuid4().hex[:8]}"
+    request = BatchEventsRequest(
+        events=[_event(agent_name=agent_name, control_id=control_id, marker="7")]
+    )
+
+    accepted = member.post("/api/v1/observability/events", json=request.model_dump(mode="json"))
+    assert accepted.status_code == 202
+
+    deleted = admin_client.delete(f"/api/v1/controls/{control_id}")
+    assert deleted.status_code == 200, deleted.text
+
+    member_history = member.post(
+        "/api/v1/observability/events/query", json={"agent_name": agent_name}
+    )
+    assert member_history.status_code == 200
+    assert member_history.json()["total"] == 0
+    assert member.get(f"/api/v1/controls/{control_id}/versions").status_code == 404
+
+    rejected = member.post("/api/v1/observability/events", json=request.model_dump(mode="json"))
+    assert rejected.status_code in {403, 404}
+
+    admin_history = admin_client.post(
+        "/api/v1/observability/events/query", json={"agent_name": agent_name}
+    )
+    assert admin_history.status_code == 200
+    assert admin_history.json()["total"] == 1
+
+
 def test_scoped_runtime_token_cannot_evaluate_unassigned_target_bucket(
     app: object,
     admin_client: TestClient,
@@ -499,9 +570,7 @@ def test_scoped_runtime_token_cannot_evaluate_unassigned_target_bucket(
             "/api/v1/observability/events",
             json=runtime_event.model_dump(mode="json"),
         )
-        second_runtime = TestClient(
-            app, headers={"Authorization": f"Bearer {second_token}"}
-        )
+        second_runtime = TestClient(app, headers={"Authorization": f"Bearer {second_token}"})
         second_ingest = second_runtime.post(
             "/api/v1/observability/events",
             json=second_runtime_event.model_dump(mode="json"),

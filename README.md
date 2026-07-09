@@ -78,6 +78,7 @@ export AGENT_CONTROL_SERVER_HOST_PORT=18000
 export AGENT_CONTROL_DB_HOST_PORT=15432
 export AGENT_CONTROL_API_KEY_ENABLED=true
 export AGENT_CONTROL_ADMIN_API_KEYS="bootstrap-admin-key"
+export AGENT_CONTROL_CORS_ORIGINS="https://agent-control.example.com"
 export AGENT_CONTROL_POSTGRES_PASSWORD="postgres-password"
 
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
@@ -89,6 +90,8 @@ curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/
 `AGENT_CONTROL_API_KEYS` is not accepted. With authentication enabled,
 non-admin SDK and UI keys must be created through access management so each
 key is tied to an enabled user and explicit control grants.
+Authenticated deployments must set `AGENT_CONTROL_CORS_ORIGINS` to an
+explicit UI-origin allowlist; credentialed wildcard CORS is rejected.
 
 Sign in to the dashboard with that key, open **Access management**, and then:
 

@@ -173,14 +173,22 @@ async def _get_user_or_404(db: AsyncSession, *, namespace_key: str, user_id: str
 
 
 async def _get_key_or_404(
-    db: AsyncSession, *, namespace_key: str, api_key_id: str
+    db: AsyncSession,
+    *,
+    namespace_key: str,
+    api_key_id: str,
+    for_update: bool = False,
 ) -> APIKeyCredential:
-    result = await db.execute(
-        select(APIKeyCredential).where(
-            APIKeyCredential.namespace_key == namespace_key,
-            APIKeyCredential.id == api_key_id,
-        )
+    statement = select(APIKeyCredential).where(
+        APIKeyCredential.namespace_key == namespace_key,
+        APIKeyCredential.id == api_key_id,
     )
+    if for_update:
+        # Serialize grant replacement for one credential. Without this row
+        # lock, two delete-then-insert requests can interleave and turn a
+        # deterministic PUT into a primary-key 500.
+        statement = statement.with_for_update()
+    result = await db.execute(statement)
     key = result.scalar_one_or_none()
     if key is None:
         raise NotFoundError(
@@ -294,7 +302,15 @@ async def create_api_key(
         expires_at=body.expires_at,
     )
     db.add(key)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ConflictError(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="API key creation conflicted with another request. Retry with a new key.",
+            resource="APIKeyCredential",
+        ) from exc
     await db.refresh(key)
     return CreateAPIKeyResponse(api_key=_key_response(key), secret=secret)
 
@@ -339,7 +355,26 @@ async def replace_api_key_grants(
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.ACCESS_MANAGE)),
 ) -> APIKeyGrantResponse:
-    await _get_key_or_404(db, namespace_key=principal.namespace_key, api_key_id=api_key_id)
+    key = await _get_key_or_404(
+        db,
+        namespace_key=principal.namespace_key,
+        api_key_id=api_key_id,
+        for_update=True,
+    )
+    user_result = await db.execute(
+        select(AccessUser.role).where(
+            AccessUser.namespace_key == principal.namespace_key,
+            AccessUser.id == key.user_id,
+        )
+    )
+    if user_result.scalar_one() == "admin":
+        raise APIValidationError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail="Administrator API keys are namespace-wide and cannot receive bucket grants.",
+            resource="APIKeyCredential",
+            resource_id=api_key_id,
+            hint="Create a member user for a bucket-scoped SDK or Monitor credential.",
+        )
     requested_ids = sorted(set(body.control_ids))
     if requested_ids:
         result = await db.execute(
@@ -375,5 +410,14 @@ async def replace_api_key_grants(
             for control_id in requested_ids
         ]
     )
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ConflictError(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Rule bucket assignments changed concurrently. Reload and try again.",
+            resource="APIKeyCredential",
+            resource_id=api_key_id,
+        ) from exc
     return APIKeyGrantResponse(api_key_id=api_key_id, control_ids=requested_ids)

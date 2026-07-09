@@ -684,9 +684,6 @@ async def init_agent(
         )
         return InitAgentResponse(created=created, controls=controls)
 
-    if request.force_replace or request.conflict_mode == ConflictMode.OVERWRITE:
-        await _authorize_existing_agent_overwrite(http_request, principal)
-
     # Parse existing data via AgentData Pydantic model
     try:
         data_model = AgentData.model_validate(existing.data)
@@ -728,6 +725,21 @@ async def init_agent(
 
     # --- Update agent metadata ---
     new_metadata = request.agent.model_dump(mode="json")
+    # APIAgent supplies timestamp defaults when callers omit them. Those
+    # generated values must not turn an otherwise identical SDK registration
+    # into an update on every process start. Preserve the stored server values
+    # unless the caller explicitly sent a timestamp field.
+    # Creation time is immutable server state. The Python SDK currently emits
+    # a fresh generated value on every initAgent call even when the application
+    # did not supply one, so always retain the stored value for existing agents.
+    if "agent_created_at" in data_model.agent_metadata:
+        new_metadata["agent_created_at"] = data_model.agent_metadata["agent_created_at"]
+    for generated_field in ("agent_updated_at",):
+        if (
+            generated_field not in request.agent.model_fields_set
+            and generated_field in data_model.agent_metadata
+        ):
+            new_metadata[generated_field] = data_model.agent_metadata[generated_field]
     metadata_changed = data_model.agent_metadata != new_metadata
     if metadata_changed:
         data_model.agent_metadata = new_metadata
@@ -914,11 +926,11 @@ async def init_agent(
 
         data_model.evaluators = new_evaluators
 
-    if (
-        not request.force_replace
-        and request.conflict_mode != ConflictMode.OVERWRITE
-        and (steps_changed or evaluators_changed or metadata_changed)
-    ):
+    # SDKs legitimately re-register the same agent in overwrite mode on every
+    # process start. Authorize AGENTS_UPDATE only after diffing the payload so a
+    # scoped member can perform a true no-op, while every actual mutation (and
+    # every force replacement) remains admin-only.
+    if request.force_replace or steps_changed or evaluators_changed or metadata_changed:
         await _authorize_existing_agent_overwrite(http_request, principal)
 
     if steps_changed or evaluators_changed or metadata_changed or force_write:

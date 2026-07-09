@@ -1,6 +1,7 @@
 """Tests for API key authentication."""
 
 import uuid
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -257,6 +258,20 @@ class TestAdminWriteEndpointAuthorization:
 
         init_response = non_admin_client.post("/api/v1/agents/initAgent", json=init_payload)
         assert init_response.status_code == 200
+
+        idempotent_payload = {**init_payload, "conflict_mode": "overwrite"}
+        idempotent_response = non_admin_client.post(
+            "/api/v1/agents/initAgent", json=idempotent_payload
+        )
+        assert idempotent_response.status_code == 200
+        assert idempotent_response.json()["overwrite_applied"] is False
+
+        changed_payload = deepcopy(idempotent_payload)
+        changed_payload["agent"]["agent_description"] = "Unauthorized change"
+        changed_response = non_admin_client.post(
+            "/api/v1/agents/initAgent", json=changed_payload
+        )
+        assert changed_response.status_code == 403
 
         controls_response = non_admin_client.get(f"/api/v1/agents/{agent_name}/controls")
         assert controls_response.status_code == 200

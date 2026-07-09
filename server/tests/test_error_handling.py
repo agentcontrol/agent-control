@@ -334,8 +334,14 @@ def test_delete_control_rollback_on_failure(
             bindings_result = MagicMock()
             bindings_result.scalars.return_value.__iter__ = lambda self: iter([])
             bindings_result.scalars.return_value = []
+            grant_delete_result = MagicMock()
             mock_session.execute = AsyncMock(
-                side_effect=[control_result, assoc_result, bindings_result]
+                side_effect=[
+                    control_result,
+                    assoc_result,
+                    bindings_result,
+                    grant_delete_result,
+                ]
             )
             mock_session.delete = AsyncMock()
             mock_session.rollback = AsyncMock()

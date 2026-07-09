@@ -533,6 +533,7 @@ class ControlExecutionEventDB(Base):
             ["namespace_key", "access_user_id"],
             ["access_users.namespace_key", "access_users.id"],
             name="control_execution_events_access_user_fkey",
+            ondelete="RESTRICT",
         ),
         Index("ix_events_namespace_agent_time", "namespace_key", "agent_name", timestamp.desc()),
         Index(

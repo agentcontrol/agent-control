@@ -139,11 +139,12 @@ def upgrade() -> None:
         "access_users",
         ["namespace_key", "access_user_id"],
         ["namespace_key", "id"],
+        ondelete="RESTRICT",
     )
     op.create_index(
         "ix_events_namespace_user_agent_time",
         "control_execution_events",
-        ["namespace_key", "access_user_id", "agent_name", "timestamp"],
+        ["namespace_key", "access_user_id", "agent_name", sa.text("timestamp DESC")],
     )
 
 
