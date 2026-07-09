@@ -13,9 +13,8 @@ from agent_control_server import __version__ as server_version
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.config import auth_settings
 from agent_control_server.models import AccessUser, APIKeyCredential
-from agent_control_server.services.access import hash_api_key
 
-from .conftest import TEST_ACCESS_USER_ID, TEST_API_KEY
+from .conftest import TEST_API_KEY
 from .utils import VALID_CONTROL_PAYLOAD
 
 
@@ -313,44 +312,26 @@ class TestAdminWriteEndpointAuthorization:
         assert set_policy_response.status_code == 200
 
 
-class TestMultipleApiKeys:
-    """Test support for multiple API keys (key rotation)."""
+class TestConfiguredKeys:
+    """Test the single member credential and bootstrap administrator keys."""
 
     @pytest.fixture(autouse=True)
-    def setup_multiple_keys(
+    def setup_keys(
         self,
         monkeypatch: pytest.MonkeyPatch,
         setup_auth: None,
-        db_engine,
     ) -> None:
-        """Create multiple DB-managed member keys for rotation testing."""
+        """Use the shared DB member key plus two bootstrap administrator keys."""
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
         monkeypatch.setattr(auth_settings, "api_keys", "")
         monkeypatch.setattr(auth_settings, "admin_api_keys", "admin1,admin2")
         # Clear cached properties so they get recomputed with new values
         for attr in ("_parsed_api_keys", "_parsed_admin_api_keys", "_all_valid_keys"):
             auth_settings.__dict__.pop(attr, None)
-        with db_engine.begin() as connection:
-            connection.execute(
-                APIKeyCredential.__table__.insert(),
-                [
-                    {
-                        "id": f"00000000-0000-0000-0000-00000000020{index}",
-                        "namespace_key": "default",
-                        "user_id": TEST_ACCESS_USER_ID,
-                        "name": f"rotation-key-{index}",
-                        "key_prefix": key[:12],
-                        "key_hash": hash_api_key(key),
-                        "enabled": True,
-                    }
-                    for index, key in enumerate(("key1", "key2", "key3"), start=1)
-                ],
-            )
-
-    def test_first_key_works(self, app: object) -> None:
-        """Given multiple API keys configured, when using first key, then request succeeds."""
+    def test_member_key_works(self, app: object) -> None:
+        """The user's single database-managed key authenticates."""
         # Given:
-        client = TestClient(app, headers={"X-API-Key": "key1"})
+        client = TestClient(app, headers={"X-API-Key": TEST_API_KEY})
 
         # When:
         response = client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")
@@ -358,10 +339,10 @@ class TestMultipleApiKeys:
         # Then: (404 for non-existent resource, but NOT 401)
         assert response.status_code == 404
 
-    def test_second_key_works(self, app: object) -> None:
-        """Given multiple API keys configured, when using second key, then request succeeds."""
+    def test_second_bootstrap_admin_key_works(self, app: object) -> None:
+        """Multiple bootstrap admin keys remain valid for operational rotation."""
         # Given:
-        client = TestClient(app, headers={"X-API-Key": "key2"})
+        client = TestClient(app, headers={"X-API-Key": "admin2"})
 
         # When:
         response = client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")
@@ -383,7 +364,7 @@ class TestMultipleApiKeys:
     def test_unlisted_key_rejected(self, app: object) -> None:
         """Given unlisted API key, when requesting endpoint, then returns 401."""
         # Given:
-        client = TestClient(app, headers={"X-API-Key": "key4"})
+        client = TestClient(app, headers={"X-API-Key": "unlisted-key"})
 
         # When:
         response = client.get("/api/v1/agents/00000000-0000-0000-0000-000000000000")

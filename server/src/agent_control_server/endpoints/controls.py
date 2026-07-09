@@ -54,7 +54,7 @@ from ..errors import (
     NotFoundError,
 )
 from ..logging_utils import get_logger
-from ..models import Agent, AgentData, APIKeyControlGrant
+from ..models import AccessUserControlGrant, Agent, AgentData
 from ..services.condition_traversal import iter_condition_leaves_with_paths
 from ..services.control_bindings import ControlBindingsService
 from ..services.control_definitions import parse_control_definition_or_api_error
@@ -1491,9 +1491,9 @@ async def delete_control(
     # Remove them in the same transaction as the soft delete so member keys
     # cannot continue reading versions or ingesting new events for this ID.
     await db.execute(
-        delete(APIKeyControlGrant).where(
-            APIKeyControlGrant.namespace_key == namespace_key,
-            APIKeyControlGrant.control_id == control_id,
+        delete(AccessUserControlGrant).where(
+            AccessUserControlGrant.namespace_key == namespace_key,
+            AccessUserControlGrant.control_id == control_id,
         )
     )
     control_name = control.name

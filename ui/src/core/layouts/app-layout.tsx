@@ -10,10 +10,12 @@ import {
 } from '@mantine/core';
 import {
   IconBook,
+  IconChartBar,
   IconChevronRight,
   IconHexagons,
   IconLogout,
   IconMoon,
+  IconShield,
   IconSun,
   IconUsers,
 } from '@tabler/icons-react';
@@ -167,6 +169,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const canManageAccess =
     auth.status === 'not-required' ||
     (auth.status === 'authenticated' && auth.isAdmin);
+  const isManagedWorkspace = auth.status === 'authenticated';
   const [mobileOpened, setMobileOpened] = useState(false);
   const [desktopOpened, _setDesktopOpened] = useState(true);
   // TODO: Agent list temporarily disabled in sidebar
@@ -204,7 +207,10 @@ export function AppLayout({ children }: AppLayoutProps) {
           <Stack gap={0}>
             <Stack px="md">
               <Group h="50px" justify="space-between" align="center">
-                <UnstyledButton component={Link} href="/">
+                <UnstyledButton
+                  component={Link}
+                  href={isManagedWorkspace ? '/controls' : '/'}
+                >
                   <Group gap="xs">
                     <Box className={classes.logoIcon} component="span">
                       <span className={classes.lightIcon}>
@@ -247,21 +253,55 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Divider className={classes.divider} />
 
             <Stack gap={4} p="md">
-              <NavItem
-                href="/"
-                icon={
-                  <IconHexagons
-                    color="var(--jds-color-muted-foreground)"
-                    size={18}
-                    stroke={2}
+              {isManagedWorkspace ? (
+                <>
+                  <NavItem
+                    href="/controls"
+                    icon={
+                      <IconShield
+                        color="var(--jds-color-muted-foreground)"
+                        size={18}
+                        stroke={2}
+                      />
+                    }
+                    label="Controls"
+                    active={
+                      router.pathname === '/controls' ||
+                      (router.pathname === '/' && isManagedWorkspace)
+                    }
+                    onClick={closeNavbar}
                   />
-                }
-                label="My agents"
-                active={
-                  router.pathname === '/' || router.pathname === '/agents'
-                }
-                onClick={closeNavbar}
-              />
+                  <NavItem
+                    href="/monitor"
+                    icon={
+                      <IconChartBar
+                        color="var(--jds-color-muted-foreground)"
+                        size={18}
+                        stroke={2}
+                      />
+                    }
+                    label="Monitor"
+                    active={router.pathname === '/monitor'}
+                    onClick={closeNavbar}
+                  />
+                </>
+              ) : (
+                <NavItem
+                  href="/"
+                  icon={
+                    <IconHexagons
+                      color="var(--jds-color-muted-foreground)"
+                      size={18}
+                      stroke={2}
+                    />
+                  }
+                  label="My agents"
+                  active={
+                    router.pathname === '/' || router.pathname === '/agents'
+                  }
+                  onClick={closeNavbar}
+                />
+              )}
 
               {canManageAccess ? (
                 <NavItem
@@ -337,12 +377,36 @@ const BREADCRUMB_TRANSITION = { duration: 0.2, ease: 'easeOut' as const };
 
 function Header() {
   const router = useRouter();
+  const { auth } = useAuth();
   const isAgentPage = router.pathname === '/agents' && !!router.query.id;
   const agentId = isAgentPage ? (router.query.id as string) : '';
   const { data: agentData } = useAgent(agentId);
   const agentDisplayName = agentData?.agent?.agent_name ?? agentId ?? null;
 
   const getBreadcrumb = () => {
+    if (router.pathname === '/' && auth.status === 'authenticated') {
+      return (
+        <Text size="sm" fw={500}>
+          Controls
+        </Text>
+      );
+    }
+    if (router.pathname === '/controls') {
+      return (
+        <Text size="sm" fw={500}>
+          Controls
+        </Text>
+      );
+    }
+
+    if (router.pathname === '/monitor') {
+      return (
+        <Text size="sm" fw={500}>
+          Monitor
+        </Text>
+      );
+    }
+
     if (router.pathname === '/admin/access') {
       return (
         <Text size="sm" fw={500}>

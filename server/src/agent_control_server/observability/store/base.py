@@ -125,6 +125,7 @@ class EventStore(ABC):
         *,
         namespace_key: str,
         access_user_id: str | None = None,
+        api_key_id: str | None = None,
     ) -> int:
         """Store raw events.
 
@@ -132,6 +133,7 @@ class EventStore(ABC):
             events: List of control execution events to store
             namespace_key: Namespace that owns the stored events
             access_user_id: Server-resolved owner for member data isolation
+            api_key_id: Server-resolved credential used to ingest the events
 
         Returns:
             Number of events successfully stored

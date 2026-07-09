@@ -30,6 +30,7 @@ import {
   IconCopy,
   IconKey,
   IconPlus,
+  IconRefresh,
   IconShieldLock,
   IconTrash,
   IconUsers,
@@ -37,27 +38,29 @@ import {
 import { useMemo, useState } from 'react';
 
 import type {
+  AccessUserControlGrant,
   AccessUserResponse,
   AccessUserRole,
-  ApiKeyControlGrant,
   ApiKeyResponse,
-  CreateApiKeyResponse,
+  CredentialSecretResponse,
 } from '@/core/api/access';
 import type { ControlSummary } from '@/core/api/types';
 import { useAccessUsers } from '@/core/hooks/query-hooks/access/use-access-users';
-import { useApiKeyControlGrants } from '@/core/hooks/query-hooks/access/use-api-key-control-grants';
 import { useCreateAccessUser } from '@/core/hooks/query-hooks/access/use-create-access-user';
-import { useCreateApiKey } from '@/core/hooks/query-hooks/access/use-create-api-key';
+import { useIssueApiKey } from '@/core/hooks/query-hooks/access/use-issue-api-key';
 import { useRevokeApiKey } from '@/core/hooks/query-hooks/access/use-revoke-api-key';
+import { useRotateApiKey } from '@/core/hooks/query-hooks/access/use-rotate-api-key';
 import { useUpdateAccessUser } from '@/core/hooks/query-hooks/access/use-update-access-user';
-import { useUpdateApiKeyControlGrants } from '@/core/hooks/query-hooks/access/use-update-api-key-control-grants';
+import { useUpdateUserControlGrants } from '@/core/hooks/query-hooks/access/use-update-user-control-grants';
 import { useUserApiKeys } from '@/core/hooks/query-hooks/access/use-user-api-keys';
+import { useUserControlGrants } from '@/core/hooks/query-hooks/access/use-user-control-grants';
 import { useAllControls } from '@/core/hooks/query-hooks/use-controls';
 import { useAuth } from '@/core/providers/auth-provider';
 import { openDestructiveConfirmModal } from '@/core/utils/modals';
 
-type SecretState = CreateApiKeyResponse & {
+type SecretState = CredentialSecretResponse & {
   userName: string;
+  action: 'created' | 'issued' | 'rotated';
 };
 
 type ControlOption = {
@@ -71,6 +74,13 @@ function formatTimestamp(value: string | null | undefined): string {
   return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString();
 }
 
+function isActiveCredential(apiKey: ApiKeyResponse): boolean {
+  if (!apiKey.enabled || apiKey.revoked_at) return false;
+  return (
+    !apiKey.expires_at || new Date(apiKey.expires_at).getTime() > Date.now()
+  );
+}
+
 function AccessDenied() {
   return (
     <Center h="calc(100vh - 54px)" p="xl">
@@ -80,9 +90,8 @@ function AccessDenied() {
         color="orange"
         maw={560}
       >
-        API keys, users, and rule bucket assignments can only be managed by an
-        administrator. Member keys remain read-only for rule changes; SDK agent
-        registration and enforcement-event reporting stay available.
+        Users, credentials, and rule bucket assignments can only be managed by
+        an administrator. Member access is read-only.
       </Alert>
     </Center>
   );
@@ -97,12 +106,18 @@ function SecretModal({
 }) {
   const secret = secretState?.secret ?? '';
   const defenseClawCommand = 'defenseclaw keys set AGENT_CONTROL_API_KEY';
+  const title =
+    secretState?.action === 'rotated'
+      ? 'API key rotated'
+      : secretState?.action === 'issued'
+        ? 'API key issued'
+        : 'User and API key created';
 
   return (
     <Modal
       opened={secretState !== null}
       onClose={onClose}
-      title="API key created"
+      title={title}
       centered
       size="lg"
       closeOnClickOutside={false}
@@ -111,64 +126,42 @@ function SecretModal({
       {secretState ? (
         <Stack gap="md">
           <Alert icon={<IconKey size={18} />} color="yellow" title="Copy now">
-            This secret is shown only once. Store it in a secrets manager before
-            closing this dialog.
+            This secret is shown only once. It signs {secretState.userName} into
+            both the UI and DefenseClaw SDK. Store it before closing.
           </Alert>
 
-          <Stack gap={6}>
-            <Text size="sm" fw={500}>
-              {secretState.api_key.name} for {secretState.userName}
-            </Text>
-            <Group gap="xs" wrap="nowrap">
-              <Code block style={{ flex: 1, overflowWrap: 'anywhere' }}>
-                {secret}
-              </Code>
-              <CopyButton value={secret} timeout={2000}>
-                {({ copied, copy }) => (
-                  <Tooltip label={copied ? 'Copied' : 'Copy API key'}>
-                    <Button
-                      variant="outline"
-                      onClick={copy}
-                      aria-label="Copy API key"
-                      data-testid="copy-api-key"
-                      leftSection={
-                        copied ? (
-                          <IconCheck size={16} />
-                        ) : (
-                          <IconCopy size={16} />
-                        )
-                      }
-                    >
-                      {copied ? 'Copied' : 'Copy'}
-                    </Button>
-                  </Tooltip>
-                )}
-              </CopyButton>
-            </Group>
-          </Stack>
+          <Group gap="xs" wrap="nowrap">
+            <Code block style={{ flex: 1, overflowWrap: 'anywhere' }}>
+              {secret}
+            </Code>
+            <CopyButton value={secret} timeout={2000}>
+              {({ copied, copy }) => (
+                <Tooltip label={copied ? 'Copied' : 'Copy API key'}>
+                  <Button
+                    variant="outline"
+                    onClick={copy}
+                    aria-label="Copy API key"
+                    data-testid="copy-api-key"
+                    leftSection={
+                      copied ? <IconCheck size={16} /> : <IconCopy size={16} />
+                    }
+                  >
+                    {copied ? 'Copied' : 'Copy'}
+                  </Button>
+                </Tooltip>
+              )}
+            </CopyButton>
+          </Group>
 
           <Divider />
 
           <Stack gap="xs">
             <Text size="sm" fw={600}>
-              Use with the Agent Control SDK
+              Use with Agent Control and DefenseClaw
             </Text>
             <Text size="xs" c="dimmed">
-              Inject the copied key through your secret manager under this
-              environment-variable name. Do not put the secret in shell history
-              or process arguments.
-            </Text>
-            <Code block>AGENT_CONTROL_API_KEY</Code>
-          </Stack>
-
-          <Stack gap="xs">
-            <Text size="sm" fw={600}>
-              Store with DefenseClaw
-            </Text>
-            <Text size="xs" c="dimmed">
-              Run this command, then paste the key at DefenseClaw&apos;s hidden
-              prompt. The secret is not placed in shell history or process
-              arguments.
+              Use this key to sign in to Agent Control. Store the same value for
+              DefenseClaw through its hidden prompt:
             </Text>
             <Group gap="xs" wrap="nowrap">
               <Code block style={{ flex: 1, overflowWrap: 'anywhere' }}>
@@ -200,7 +193,11 @@ function SecretModal({
   );
 }
 
-function CreateUserForm() {
+function CreateUserForm({
+  onSecretCreated,
+}: {
+  onSecretCreated: (secretState: SecretState) => void;
+}) {
   const createUser = useCreateAccessUser();
   const form = useForm<{ name: string; role: AccessUserRole }>({
     initialValues: { name: '', role: 'member' },
@@ -210,17 +207,24 @@ function CreateUserForm() {
   });
 
   const handleSubmit = form.onSubmit(async (values) => {
+    const name = values.name.trim();
     try {
-      await createUser.mutateAsync({
-        name: values.name.trim(),
+      const created = await createUser.mutateAsync({
+        name,
         role: values.role,
         enabled: true,
       });
       form.reset();
+      onSecretCreated({
+        api_key: created.api_key,
+        secret: created.secret,
+        userName: created.user.name,
+        action: 'created',
+      });
       notifications.show({
         color: 'green',
         title: 'User created',
-        message: `${values.name.trim()} can now receive an API key.`,
+        message: `${name} now has one API key for UI and SDK access.`,
       });
     } catch {
       // The inline alert below remains visible until the next attempt.
@@ -235,6 +239,10 @@ function CreateUserForm() {
             <IconPlus size={18} />
             <Text fw={600}>Create user</Text>
           </Group>
+          <Text size="xs" c="dimmed">
+            Creating a user automatically issues their single API key. The key
+            works for both the Agent Control UI and DefenseClaw SDK.
+          </Text>
 
           <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <TextInput
@@ -246,7 +254,7 @@ function CreateUserForm() {
             <Select
               label="Role"
               data={[
-                { value: 'member', label: 'Member (rule read-only)' },
+                { value: 'member', label: 'Member (assigned buckets)' },
                 { value: 'admin', label: 'Administrator (unrestricted)' },
               ]}
               allowDeselect={false}
@@ -256,7 +264,8 @@ function CreateUserForm() {
 
           {createUser.isError ? (
             <Alert color="red" icon={<IconAlertCircle size={16} />}>
-              The user could not be created. Check the name and try again.
+              The user and key could not be created. Check the name and try
+              again.
             </Alert>
           ) : null}
 
@@ -266,7 +275,7 @@ function CreateUserForm() {
               loading={createUser.isPending}
               data-testid="create-access-user"
             >
-              Create user
+              Create user and key
             </Button>
           </Group>
         </Stack>
@@ -276,32 +285,31 @@ function CreateUserForm() {
 }
 
 function LoadedGrantEditor({
-  apiKey,
+  user,
   grant,
   controlOptions,
 }: {
-  apiKey: ApiKeyResponse;
-  grant: ApiKeyControlGrant;
+  user: AccessUserResponse;
+  grant: AccessUserControlGrant;
   controlOptions: ControlOption[];
 }) {
   const initialControlIds = grant.control_ids.map(String);
   const [selectedControlIds, setSelectedControlIds] =
     useState<string[]>(initialControlIds);
-  const updateGrants = useUpdateApiKeyControlGrants();
+  const updateGrants = useUpdateUserControlGrants();
   const initialSignature = [...initialControlIds].sort().join(',');
   const selectedSignature = [...selectedControlIds].sort().join(',');
-  const isRevoked = Boolean(apiKey.revoked_at) || !apiKey.enabled;
 
   const handleSave = async () => {
     try {
       await updateGrants.mutateAsync({
-        apiKeyId: apiKey.id,
+        userId: user.id,
         controlIds: selectedControlIds.map(Number),
       });
       notifications.show({
         color: 'green',
         title: 'Rule buckets updated',
-        message: `${apiKey.name} now has ${selectedControlIds.length} assigned bucket${selectedControlIds.length === 1 ? '' : 's'}.`,
+        message: `${user.name} now has ${selectedControlIds.length} assigned bucket${selectedControlIds.length === 1 ? '' : 's'}.`,
       });
     } catch {
       // The inline alert below remains visible until another save succeeds.
@@ -312,7 +320,7 @@ function LoadedGrantEditor({
     <Stack gap="xs">
       <MultiSelect
         label="Assigned rule buckets"
-        description="This key can download these controls and view only their execution history."
+        description="Assignments belong to this user and survive API key rotation."
         data={controlOptions}
         value={selectedControlIds}
         onChange={setSelectedControlIds}
@@ -323,9 +331,9 @@ function LoadedGrantEditor({
         }
         searchable
         clearable
-        disabled={isRevoked || controlOptions.length === 0}
+        disabled={!user.enabled || controlOptions.length === 0}
         nothingFoundMessage="No matching rule buckets"
-        aria-label={`Assigned rule buckets for ${apiKey.name}`}
+        aria-label={`Assigned rule buckets for ${user.name}`}
       />
 
       {updateGrants.isError ? (
@@ -341,11 +349,11 @@ function LoadedGrantEditor({
           onClick={() => void handleSave()}
           loading={updateGrants.isPending}
           disabled={
-            isRevoked ||
+            !user.enabled ||
             controlOptions.length === 0 ||
             initialSignature === selectedSignature
           }
-          data-testid={`save-grants-${apiKey.id}`}
+          data-testid={`save-grants-${user.id}`}
         >
           Save assignments
         </Button>
@@ -354,26 +362,30 @@ function LoadedGrantEditor({
   );
 }
 
-function GrantEditor({
-  apiKey,
+function UserGrantEditor({
+  user,
   controlOptions,
   controlsError,
+  expanded,
 }: {
-  apiKey: ApiKeyResponse;
+  user: AccessUserResponse;
   controlOptions: ControlOption[];
   controlsError: boolean;
+  expanded: boolean;
 }) {
-  const isRevoked = Boolean(apiKey.revoked_at) || !apiKey.enabled;
-  const grants = useApiKeyControlGrants(apiKey.id, !isRevoked);
+  const grants = useUserControlGrants(
+    user.id,
+    expanded && user.role === 'member'
+  );
 
-  if (isRevoked) {
+  if (user.role === 'admin') {
     return (
-      <Text size="xs" c="dimmed">
-        Rule bucket assignments are locked because this key is revoked.
-      </Text>
+      <Alert color="violet" icon={<IconShieldLock size={16} />}>
+        Administrators are namespace-wide. Rule bucket assignments do not
+        restrict them.
+      </Alert>
     );
   }
-
   if (controlsError) {
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />}>
@@ -381,7 +393,6 @@ function GrantEditor({
       </Alert>
     );
   }
-
   if (grants.isLoading) {
     return (
       <Group gap="xs">
@@ -392,42 +403,91 @@ function GrantEditor({
       </Group>
     );
   }
-
   if (grants.isError || !grants.data) {
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />}>
-        Assignments for this key could not be loaded.
+        Assignments for this user could not be loaded.
       </Alert>
     );
   }
 
-  const grantSignature = [...grants.data.control_ids].sort().join(',');
+  const signature = [...grants.data.control_ids].sort().join(',');
   return (
     <LoadedGrantEditor
-      key={`${apiKey.id}:${grantSignature}`}
-      apiKey={apiKey}
+      key={`${user.id}:${signature}`}
+      user={user}
       grant={grants.data}
       controlOptions={controlOptions}
     />
   );
 }
 
-function ApiKeyCard({
-  apiKey,
-  userId,
-  userRole,
-  controlOptions,
-  controlsError,
+function UserCredential({
+  user,
+  expanded,
+  onSecretCreated,
 }: {
-  apiKey: ApiKeyResponse;
-  userId: string;
-  userRole: AccessUserRole;
-  controlOptions: ControlOption[];
-  controlsError: boolean;
+  user: AccessUserResponse;
+  expanded: boolean;
+  onSecretCreated: (secretState: SecretState) => void;
 }) {
+  const keys = useUserApiKeys(user.id, expanded);
+  const issueKey = useIssueApiKey();
+  const rotateKey = useRotateApiKey();
   const revokeKey = useRevokeApiKey();
-  const isRevoked = Boolean(apiKey.revoked_at) || !apiKey.enabled;
-  const [showAssignments, setShowAssignments] = useState(false);
+  const liveKey = keys.data?.find(isActiveCredential);
+  const activeKey = user.enabled ? liveKey : undefined;
+  const latestKey = keys.data?.[0];
+  const previousKeyCount = Math.max((keys.data?.length ?? 0) - 1, 0);
+
+  const showSecret = (
+    created: CredentialSecretResponse,
+    action: SecretState['action']
+  ) => {
+    onSecretCreated({ ...created, userName: user.name, action });
+  };
+
+  const handleIssue = async () => {
+    try {
+      const created = await issueKey.mutateAsync({ userId: user.id });
+      showSecret(created, 'issued');
+    } catch {
+      notifications.show({
+        color: 'red',
+        title: 'Unable to issue API key',
+        message: 'No credential was changed. Reload and try again.',
+      });
+    }
+  };
+
+  const handleRotate = () => {
+    openDestructiveConfirmModal({
+      title: 'Rotate API key?',
+      confirmLabel: 'Rotate key',
+      children: (
+        <Text size="sm">
+          The current key for <strong>{user.name}</strong> will stop working
+          immediately. Their bucket assignments and enforcement history will be
+          preserved.
+        </Text>
+      ),
+      onConfirm: () => {
+        rotateKey.mutate(
+          { userId: user.id },
+          {
+            onSuccess: (created) => showSecret(created, 'rotated'),
+            onError: () => {
+              notifications.show({
+                color: 'red',
+                title: 'Unable to rotate API key',
+                message: 'The existing key remains active. Try again.',
+              });
+            },
+          }
+        );
+      },
+    });
+  };
 
   const handleRevoke = () => {
     openDestructiveConfirmModal({
@@ -435,19 +495,19 @@ function ApiKeyCard({
       confirmLabel: 'Revoke key',
       children: (
         <Text size="sm">
-          <strong>{apiKey.name}</strong> will immediately lose SDK and UI
-          access. This cannot be undone.
+          <strong>{user.name}</strong> will immediately lose UI and SDK access.
+          Their bucket assignments and enforcement history will be preserved.
         </Text>
       ),
       onConfirm: () => {
         revokeKey.mutate(
-          { apiKeyId: apiKey.id, userId },
+          { userId: user.id },
           {
             onSuccess: () => {
               notifications.show({
                 color: 'green',
                 title: 'API key revoked',
-                message: `${apiKey.name} can no longer authenticate.`,
+                message: `${user.name} can no longer authenticate.`,
               });
             },
             onError: () => {
@@ -463,212 +523,103 @@ function ApiKeyCard({
     });
   };
 
+  if (keys.isLoading) {
+    return (
+      <Group gap="xs">
+        <Loader size="xs" />
+        <Text size="xs" c="dimmed">
+          Loading credential...
+        </Text>
+      </Group>
+    );
+  }
+  if (keys.isError) {
+    return (
+      <Alert color="red" icon={<IconAlertCircle size={16} />}>
+        The credential state for this user could not be loaded.
+      </Alert>
+    );
+  }
+
   return (
-    <Paper withBorder p="md" radius="md" data-testid={`api-key-${apiKey.id}`}>
+    <Paper withBorder p="md" radius="md" data-testid={`credential-${user.id}`}>
       <Stack gap="md">
-        <Group justify="space-between" align="flex-start">
-          <Stack gap={2}>
+        <Group justify="space-between" align="flex-start" wrap="wrap">
+          <Stack gap={3}>
             <Group gap="xs">
               <IconKey size={16} />
               <Text size="sm" fw={600}>
-                {apiKey.name}
+                API credential
               </Text>
-              <Badge color={isRevoked ? 'gray' : 'green'} variant="light">
-                {isRevoked ? 'Revoked' : 'Active'}
+              <Badge color={activeKey ? 'green' : 'gray'} variant="light">
+                {activeKey ? 'Active' : liveKey ? 'Suspended' : 'Not active'}
               </Badge>
             </Group>
-            <Text size="xs" c="dimmed">
-              Prefix {apiKey.key_prefix} · Created{' '}
-              {formatTimestamp(apiKey.created_at)}
-            </Text>
-            {apiKey.expires_at ? (
+            {latestKey ? (
               <Text size="xs" c="dimmed">
-                Expires {formatTimestamp(apiKey.expires_at)}
+                Prefix {latestKey.key_prefix} · Issued{' '}
+                {formatTimestamp(latestKey.created_at)}
+              </Text>
+            ) : (
+              <Text size="xs" c="dimmed">
+                No credential has been issued.
+              </Text>
+            )}
+            <Text size="xs" c="dimmed">
+              One active key signs this user into both the UI and DefenseClaw
+              SDK.
+            </Text>
+            {previousKeyCount > 0 ? (
+              <Text size="xs" c="dimmed">
+                {previousKeyCount} previous revoked credential
+                {previousKeyCount === 1 ? '' : 's'} retained for audit.
               </Text>
             ) : null}
           </Stack>
 
-          <Button
-            size="sm"
-            variant="outline"
-            color="red"
-            onClick={handleRevoke}
-            loading={revokeKey.isPending}
-            disabled={isRevoked}
-            leftSection={<IconTrash size={15} />}
-            aria-label={`Revoke ${apiKey.name}`}
-            data-testid={`revoke-api-key-${apiKey.id}`}
-          >
-            Revoke
-          </Button>
-        </Group>
-
-        <Divider />
-
-        {userRole === 'admin' ? (
-          <Alert color="violet" icon={<IconShieldLock size={16} />}>
-            Administrator keys are namespace-wide. Rule bucket assignments do
-            not restrict them.
-          </Alert>
-        ) : (
-          <Stack gap="sm">
-            <Group justify="space-between">
-              <Text size="xs" c="dimmed">
-                Load assignments only when you need to review or change this
-                key.
-              </Text>
+          <Group gap="xs">
+            {liveKey ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleRotate}
+                  loading={rotateKey.isPending}
+                  disabled={!user.enabled || revokeKey.isPending}
+                  leftSection={<IconRefresh size={15} />}
+                  data-testid={`rotate-api-key-${user.id}`}
+                >
+                  Rotate
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  color="red"
+                  onClick={handleRevoke}
+                  loading={revokeKey.isPending}
+                  disabled={rotateKey.isPending}
+                  leftSection={<IconTrash size={15} />}
+                  data-testid={`revoke-api-key-${user.id}`}
+                >
+                  Revoke
+                </Button>
+              </>
+            ) : (
               <Button
                 size="sm"
-                variant="ghost"
-                onClick={() => setShowAssignments((value) => !value)}
-                disabled={isRevoked}
-                data-testid={`toggle-grants-${apiKey.id}`}
+                onClick={() => void handleIssue()}
+                loading={issueKey.isPending}
+                disabled={!user.enabled}
+                leftSection={<IconKey size={15} />}
+                data-testid={`issue-api-key-${user.id}`}
               >
-                {showAssignments ? 'Hide assignments' : 'Manage assignments'}
+                Issue key
               </Button>
-            </Group>
-            {showAssignments ? (
-              <GrantEditor
-                apiKey={apiKey}
-                controlOptions={controlOptions}
-                controlsError={controlsError}
-              />
-            ) : null}
-          </Stack>
-        )}
+            )}
+          </Group>
+        </Group>
       </Stack>
     </Paper>
-  );
-}
-
-function UserApiKeys({
-  user,
-  controlOptions,
-  controlsError,
-  onSecretCreated,
-}: {
-  user: AccessUserResponse;
-  controlOptions: ControlOption[];
-  controlsError: boolean;
-  onSecretCreated: (secretState: SecretState) => void;
-}) {
-  const keys = useUserApiKeys(user.id);
-  const createKey = useCreateApiKey();
-  const [keyName, setKeyName] = useState('');
-
-  const handleCreateKey = async () => {
-    const trimmedName = keyName.trim();
-    if (!trimmedName) return;
-
-    try {
-      const created = await createKey.mutateAsync({
-        userId: user.id,
-        request: { name: trimmedName },
-      });
-      setKeyName('');
-      onSecretCreated({ ...created, userName: user.name });
-      createKey.reset();
-    } catch {
-      // The inline alert below remains visible until the next attempt.
-    }
-  };
-
-  return (
-    <Stack gap="lg">
-      <Paper
-        withBorder
-        p="md"
-        radius="md"
-        bg="var(--mantine-color-default-hover)"
-      >
-        <Stack gap="sm">
-          <Text size="sm" fw={600}>
-            Create API key
-          </Text>
-          <Text size="xs" c="dimmed">
-            The generated key signs this user into their enforcement history and
-            authenticates Agent Control SDK requests. Member keys cannot change
-            rule buckets.
-          </Text>
-          <Group align="flex-end" wrap="wrap">
-            <TextInput
-              label="Key name"
-              placeholder="DefenseClaw production"
-              value={keyName}
-              onChange={(event) => setKeyName(event.currentTarget.value)}
-              disabled={!user.enabled}
-              flex={1}
-              miw={220}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  void handleCreateKey();
-                }
-              }}
-            />
-            <Button
-              onClick={() => void handleCreateKey()}
-              loading={createKey.isPending}
-              disabled={!user.enabled || keyName.trim().length === 0}
-              leftSection={<IconKey size={16} />}
-              data-testid={`create-api-key-${user.id}`}
-            >
-              Generate key
-            </Button>
-          </Group>
-          {!user.enabled ? (
-            <Text size="xs" c="orange">
-              Enable this user before creating another key.
-            </Text>
-          ) : null}
-          {createKey.isError ? (
-            <Alert color="red" icon={<IconAlertCircle size={16} />}>
-              The API key could not be generated. Try again.
-            </Alert>
-          ) : null}
-        </Stack>
-      </Paper>
-
-      {keys.isLoading ? (
-        <Center py="xl">
-          <Stack align="center" gap="xs">
-            <Loader size="sm" />
-            <Text size="xs" c="dimmed">
-              Loading API keys...
-            </Text>
-          </Stack>
-        </Center>
-      ) : keys.isError ? (
-        <Alert color="red" icon={<IconAlertCircle size={16} />}>
-          API keys for this user could not be loaded.
-        </Alert>
-      ) : keys.data?.length ? (
-        <Stack gap="sm">
-          {keys.data.map((apiKey) => (
-            <ApiKeyCard
-              key={apiKey.id}
-              apiKey={apiKey}
-              userId={user.id}
-              userRole={user.role}
-              controlOptions={controlOptions}
-              controlsError={controlsError}
-            />
-          ))}
-        </Stack>
-      ) : (
-        <Center py="xl">
-          <Stack align="center" gap={4}>
-            <IconKey size={24} color="var(--mantine-color-dimmed)" />
-            <Text size="sm" fw={500}>
-              No API keys
-            </Text>
-            <Text size="xs" c="dimmed" ta="center">
-              Generate a key to grant this user SDK and monitor access.
-            </Text>
-          </Stack>
-        </Center>
-      )}
-    </Stack>
   );
 }
 
@@ -687,9 +638,9 @@ function UserPanel({
 }) {
   const updateUser = useUpdateAccessUser();
 
-  const handleEnabledChange = (enabled: boolean) => {
+  const update = (request: { enabled?: boolean; role?: AccessUserRole }) => {
     updateUser.mutate(
-      { userId: user.id, request: { enabled } },
+      { userId: user.id, request },
       {
         onError: () => {
           notifications.show({
@@ -727,33 +678,62 @@ function UserPanel({
       </Accordion.Control>
       <Accordion.Panel>
         <Stack gap="lg">
-          <Group justify="space-between">
-            <Stack gap={2}>
-              <Text size="sm" fw={600}>
-                User access
-              </Text>
-              <Text size="xs" c="dimmed">
-                Disabling a user invalidates all of their API keys.
-              </Text>
-            </Stack>
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+            <Select
+              label="Role"
+              description="Members are limited to assigned rule buckets."
+              value={user.role}
+              data={[
+                { value: 'member', label: 'Member' },
+                { value: 'admin', label: 'Administrator' },
+              ]}
+              allowDeselect={false}
+              onChange={(value) =>
+                value && update({ role: value as AccessUserRole })
+              }
+              disabled={updateUser.isPending}
+              aria-label={`Role for ${user.name}`}
+            />
             <Switch
-              label="Enabled"
+              mt="xl"
+              label="User enabled"
+              description="Disabling the user immediately invalidates their key."
               checked={user.enabled}
               onChange={(event) =>
-                handleEnabledChange(event.currentTarget.checked)
+                update({ enabled: event.currentTarget.checked })
               }
               disabled={updateUser.isPending}
               aria-label={`Enable ${user.name}`}
             />
-          </Group>
+          </SimpleGrid>
+
           <Divider />
+
           {expanded ? (
-            <UserApiKeys
-              user={user}
-              controlOptions={controlOptions}
-              controlsError={controlsError}
-              onSecretCreated={onSecretCreated}
-            />
+            <>
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                  Credential
+                </Text>
+                <UserCredential
+                  user={user}
+                  expanded={expanded}
+                  onSecretCreated={onSecretCreated}
+                />
+              </Stack>
+
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                  Rule bucket access
+                </Text>
+                <UserGrantEditor
+                  user={user}
+                  controlOptions={controlOptions}
+                  controlsError={controlsError}
+                  expanded={expanded}
+                />
+              </Stack>
+            </>
           ) : null}
         </Stack>
       </Accordion.Panel>
@@ -764,15 +744,17 @@ function UserPanel({
 function AdminAccessContent() {
   const users = useAccessUsers();
   const controls = useAllControls();
-  const [secretState, setSecretState] = useState<SecretState | null>(null);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [secretState, setSecretState] = useState<SecretState | null>(null);
 
   const controlOptions = useMemo<ControlOption[]>(() => {
-    const summaries = (controls.data ?? []) as ControlSummary[];
-    return summaries.map((control) => ({
+    const options = (controls.data ?? []).map((control: ControlSummary) => ({
       value: String(control.id),
       label: control.name,
     }));
+    return options.toSorted((left, right) =>
+      left.label.localeCompare(right.label)
+    );
   }, [controls.data]);
 
   return (
@@ -786,10 +768,10 @@ function AdminAccessContent() {
                 Access management
               </Title>
             </Group>
-            <Text size="sm" c="dimmed" maw={720}>
-              Create users, issue API keys, and choose which rule buckets each
-              key can download and monitor. Members cannot change rule
-              definitions or assignments.
+            <Text size="sm" c="dimmed" maw={760}>
+              Create users, rotate their single API key, and assign rule
+              buckets. The same key authenticates the UI and DefenseClaw SDK;
+              assignments and Monitor history remain owned by the user.
             </Text>
           </Stack>
           <Badge color="violet" variant="light" size="lg">
@@ -797,16 +779,16 @@ function AdminAccessContent() {
           </Badge>
         </Group>
 
-        <CreateUserForm />
+        <CreateUserForm onSecretCreated={setSecretState} />
 
         <Stack gap="md">
           <Group justify="space-between">
             <Stack gap={2}>
               <Title order={3} fw={600}>
-                Users and API keys
+                Users
               </Title>
               <Text size="xs" c="dimmed">
-                Expand a user to manage credentials and rule bucket access.
+                Expand a user to manage their credential and rule bucket access.
               </Text>
             </Stack>
             {users.data ? (
@@ -874,8 +856,7 @@ function AdminAccessContent() {
                   <IconUsers size={28} color="var(--mantine-color-dimmed)" />
                   <Text fw={600}>No users yet</Text>
                   <Text size="sm" c="dimmed" ta="center">
-                    Create the first member, then generate an API key for their
-                    SDK and monitor access.
+                    Create the first user to issue their UI and SDK key.
                   </Text>
                 </Stack>
               </Center>

@@ -61,6 +61,7 @@ class DirectEventIngestor(EventIngestor):
         *,
         namespace_key: str,
         access_user_id: str | None = None,
+        api_key_id: str | None = None,
     ) -> IngestResult:
         """Ingest events by writing them directly to the configured sink.
 
@@ -68,6 +69,7 @@ class DirectEventIngestor(EventIngestor):
             events: List of control execution events to ingest
             namespace_key: Namespace that owns the events
             access_user_id: Server-resolved owner for member data isolation
+            api_key_id: Server-resolved credential used to ingest the events
 
         Returns:
             IngestResult with counts of received, processed, and dropped events
@@ -85,9 +87,10 @@ class DirectEventIngestor(EventIngestor):
                     events,
                     namespace_key=namespace_key,
                     access_user_id=access_user_id,
+                    api_key_id=api_key_id,
                 )
             else:
-                if access_user_id is not None:
+                if access_user_id is not None or api_key_id is not None:
                     raise RuntimeError(
                         "Configured observability sink cannot persist access-user provenance"
                     )

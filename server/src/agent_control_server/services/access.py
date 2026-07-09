@@ -10,7 +10,7 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import AsyncSessionLocal
-from ..models import AccessUser, APIKeyControlGrant, APIKeyCredential, Control
+from ..models import AccessUser, AccessUserControlGrant, APIKeyCredential, Control
 
 
 @dataclass(frozen=True)
@@ -67,15 +67,15 @@ async def _identity_from_rows(
     allowed_control_ids: frozenset[int] | None = None
     if not is_admin:
         result = await db.execute(
-            select(APIKeyControlGrant.control_id)
+            select(AccessUserControlGrant.control_id)
             .join(
                 Control,
-                (Control.namespace_key == APIKeyControlGrant.namespace_key)
-                & (Control.id == APIKeyControlGrant.control_id),
+                (Control.namespace_key == AccessUserControlGrant.namespace_key)
+                & (Control.id == AccessUserControlGrant.control_id),
             )
             .where(
-                APIKeyControlGrant.namespace_key == credential.namespace_key,
-                APIKeyControlGrant.api_key_id == credential.id,
+                AccessUserControlGrant.namespace_key == credential.namespace_key,
+                AccessUserControlGrant.user_id == user.id,
                 Control.deleted_at.is_(None),
             )
         )

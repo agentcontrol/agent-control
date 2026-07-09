@@ -19,7 +19,7 @@ from agent_control_server.auth_framework.config import (
 from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
 from agent_control_server.auth_framework.runtime_token import verify_runtime_token
 from agent_control_server.endpoints.system import SESSION_COOKIE_NAME, decode_session_jwt
-from agent_control_server.models import APIKeyCredential
+from agent_control_server.models import APIKeyCredential, ControlExecutionEventDB
 
 from .utils import VALID_CONTROL_PAYLOAD, canonicalize_control_payload
 
@@ -31,7 +31,7 @@ def _create_user_and_key(
     *,
     role: str = "member",
     user_name: str | None = None,
-    key_name: str = "DefenseClaw SDK",
+    key_name: str | None = None,
     expires_at: datetime | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], str]:
     user_response = admin_client.post(
@@ -42,18 +42,23 @@ def _create_user_and_key(
         },
     )
     assert user_response.status_code == 201, user_response.text
-    user = user_response.json()
+    created = user_response.json()
+    user = created["user"]
+    if key_name is None and expires_at is None:
+        return user, created["api_key"], created["secret"]
 
-    body: dict[str, Any] = {"name": key_name}
+    body: dict[str, Any] = {}
+    if key_name is not None:
+        body["name"] = key_name
     if expires_at is not None:
         body["expires_at"] = expires_at.isoformat()
     key_response = admin_client.post(
-        f"/api/v1/admin/access/users/{user['id']}/api-keys",
+        f"/api/v1/admin/access/users/{user['id']}/api-key/rotate",
         json=body,
     )
     assert key_response.status_code == 201, key_response.text
-    created = key_response.json()
-    return user, created["api_key"], created["secret"]
+    rotated = key_response.json()
+    return user, rotated["api_key"], rotated["secret"]
 
 
 def _db_key_client(app: object, secret: str) -> TestClient:
@@ -86,9 +91,9 @@ def _register_agent(admin_client: TestClient, agent_name: str) -> None:
     assert response.status_code == 200, response.text
 
 
-def _grant_controls(admin_client: TestClient, api_key_id: str, control_ids: list[int]) -> None:
+def _grant_controls(admin_client: TestClient, user_id: str, control_ids: list[int]) -> None:
     response = admin_client.put(
-        f"/api/v1/admin/access/api-keys/{api_key_id}/control-grants",
+        f"/api/v1/admin/access/users/{user_id}/control-grants",
         json={"control_ids": control_ids},
     )
     assert response.status_code == 200, response.text
@@ -144,13 +149,13 @@ def test_access_management_is_admin_only_and_secrets_are_one_time(
     assert len(digest) == 64
 
     invalid_bool_grant = admin_client.put(
-        f"/api/v1/admin/access/api-keys/{key['id']}/control-grants",
+        f"/api/v1/admin/access/users/{user['id']}/control-grants",
         json={"control_ids": [True]},
     )
     assert invalid_bool_grant.status_code == 422
 
     missing_control = admin_client.put(
-        f"/api/v1/admin/access/api-keys/{key['id']}/control-grants",
+        f"/api/v1/admin/access/users/{user['id']}/control-grants",
         json={"control_ids": [999999]},
     )
     assert missing_control.status_code == 422
@@ -158,6 +163,80 @@ def test_access_management_is_admin_only_and_secrets_are_one_time(
     # The newly created DB key authenticates even though it is not in env key lists.
     db_client = _db_key_client(app, secret)
     assert db_client.get("/api/v1/evaluators").status_code == 200
+
+
+def test_one_active_key_per_user_rotation_preserves_grants_history_and_event_owner(
+    app: object,
+    admin_client: TestClient,
+    setup_observability: object,
+    db_engine,
+) -> None:
+    _ = setup_observability
+    control_id = _create_control(admin_client, "rotation")
+    user, old_key, old_secret = _create_user_and_key(admin_client)
+    _grant_controls(admin_client, user["id"], [control_id])
+    old_client = _db_key_client(app, old_secret)
+    agent_name = f"defenseclaw-rotation-{uuid.uuid4().hex[:8]}"
+    event = _event(agent_name=agent_name, control_id=control_id, marker="6")
+
+    accepted = old_client.post(
+        "/api/v1/observability/events",
+        json=BatchEventsRequest(events=[event]).model_dump(mode="json"),
+    )
+    assert accepted.status_code == 202, accepted.text
+
+    duplicate_issue = admin_client.post(
+        f"/api/v1/admin/access/users/{user['id']}/api-key",
+        json={},
+    )
+    assert duplicate_issue.status_code == 409
+    assert "Rotate it instead" in duplicate_issue.text
+
+    rotated = admin_client.post(
+        f"/api/v1/admin/access/users/{user['id']}/api-key/rotate",
+        json={},
+    )
+    assert rotated.status_code == 201, rotated.text
+    replacement = rotated.json()
+    assert replacement["api_key"]["id"] != old_key["id"]
+    assert old_secret not in rotated.text
+
+    assert old_client.get("/api/v1/evaluators").status_code == 401
+    replacement_client = _db_key_client(app, replacement["secret"])
+    visible = replacement_client.get(f"/api/v1/controls/{control_id}")
+    assert visible.status_code == 200
+    history = replacement_client.post(
+        "/api/v1/observability/events/query",
+        json={"agent_name": agent_name},
+    )
+    assert history.status_code == 200
+    assert history.json()["total"] == 1
+    assert history.json()["events"][0]["control_execution_id"] == event.control_execution_id
+
+    grants = admin_client.get(
+        f"/api/v1/admin/access/users/{user['id']}/control-grants"
+    )
+    assert grants.status_code == 200
+    assert grants.json()["control_ids"] == [control_id]
+
+    credential_history = admin_client.get(
+        f"/api/v1/admin/access/users/{user['id']}/api-keys"
+    ).json()["api_keys"]
+    assert len(credential_history) == 2
+    assert sum(key["enabled"] and key["revoked_at"] is None for key in credential_history) == 1
+
+    with db_engine.begin() as connection:
+        provenance = connection.execute(
+            select(
+                ControlExecutionEventDB.access_user_id,
+                ControlExecutionEventDB.api_key_id,
+            ).where(
+                ControlExecutionEventDB.control_execution_id
+                == event.control_execution_id
+            )
+        ).one()
+    assert provenance.access_user_id == user["id"]
+    assert provenance.api_key_id == old_key["id"]
 
 
 def test_database_admin_key_is_unrestricted_and_rejects_bucket_grants(
@@ -168,7 +247,7 @@ def test_database_admin_key_is_unrestricted_and_rejects_bucket_grants(
     _, key, secret = _create_user_and_key(admin_client, role="admin")
 
     grant = admin_client.put(
-        f"/api/v1/admin/access/api-keys/{key['id']}/control-grants",
+        f"/api/v1/admin/access/users/{key['user_id']}/control-grants",
         json={"control_ids": [control_id]},
     )
     assert grant.status_code == 422
@@ -216,7 +295,7 @@ def test_scoped_key_sees_only_assigned_controls_policies_bindings_and_counts(
         binding_ids[control_id] = int(binding.json()["binding_id"])
 
     _, key, secret = _create_user_and_key(admin_client)
-    _grant_controls(admin_client, key["id"], [allowed_id])
+    _grant_controls(admin_client, key["user_id"], [allowed_id])
     scoped = _db_key_client(app, secret)
 
     controls = scoped.get("/api/v1/controls")
@@ -283,13 +362,13 @@ def test_cookie_and_header_re_resolve_disabled_revoked_and_expired_keys(
 
     enabled = admin_client.patch(f"/api/v1/admin/access/users/{user['id']}", json={"enabled": True})
     assert enabled.status_code == 200
-    first_revoke = admin_client.delete(f"/api/v1/admin/access/api-keys/{key['id']}")
+    first_revoke = admin_client.delete(f"/api/v1/admin/access/users/{user['id']}/api-key")
     assert first_revoke.status_code == 204
     listed = admin_client.get(f"/api/v1/admin/access/users/{user['id']}/api-keys").json()[
         "api_keys"
     ][0]
     revoked_at = listed["revoked_at"]
-    second_revoke = admin_client.delete(f"/api/v1/admin/access/api-keys/{key['id']}")
+    second_revoke = admin_client.delete(f"/api/v1/admin/access/users/{user['id']}/api-key")
     assert second_revoke.status_code == 204
     listed_again = admin_client.get(f"/api/v1/admin/access/users/{user['id']}/api-keys").json()[
         "api_keys"
@@ -346,10 +425,10 @@ def test_observability_grants_filter_reads_and_reject_mixed_batch_atomically(
     allowed_id = _create_control(admin_client, "event-allowed")
     hidden_id = _create_control(admin_client, "event-hidden")
     _, key, secret = _create_user_and_key(admin_client)
-    _grant_controls(admin_client, key["id"], [allowed_id])
+    _grant_controls(admin_client, key["user_id"], [allowed_id])
     scoped = _db_key_client(app, secret)
     _, second_key, second_secret = _create_user_and_key(admin_client)
-    _grant_controls(admin_client, second_key["id"], [allowed_id])
+    _grant_controls(admin_client, second_key["user_id"], [allowed_id])
     second_scoped = _db_key_client(app, second_secret)
     agent_name = f"defenseclaw-events-{uuid.uuid4().hex[:8]}"
 
@@ -448,7 +527,7 @@ def test_soft_delete_revokes_member_grant_and_blocks_new_events(
     _ = setup_observability
     control_id = _create_control(admin_client, "deleted-event")
     _, key, secret = _create_user_and_key(admin_client)
-    _grant_controls(admin_client, key["id"], [control_id])
+    _grant_controls(admin_client, key["user_id"], [control_id])
     member = _db_key_client(app, secret)
     agent_name = f"defenseclaw-deleted-{uuid.uuid4().hex[:8]}"
     request = BatchEventsRequest(
@@ -501,10 +580,10 @@ def test_scoped_runtime_token_cannot_evaluate_unassigned_target_bucket(
         assert binding.status_code == 200
 
     _, key, secret = _create_user_and_key(admin_client)
-    _grant_controls(admin_client, key["id"], [allowed_id])
+    _grant_controls(admin_client, key["user_id"], [allowed_id])
     scoped = _db_key_client(app, secret)
     _, second_key, second_secret = _create_user_and_key(admin_client)
-    _grant_controls(admin_client, second_key["id"], [allowed_id])
+    _grant_controls(admin_client, second_key["user_id"], [allowed_id])
     second_scoped = _db_key_client(app, second_secret)
 
     set_runtime_auth_config(RuntimeAuthConfig(secret=_RUNTIME_SECRET, ttl_seconds=300))

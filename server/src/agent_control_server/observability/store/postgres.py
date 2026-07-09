@@ -112,6 +112,7 @@ class PostgresEventStore(EventStore):
         *,
         namespace_key: str,
         access_user_id: str | None = None,
+        api_key_id: str | None = None,
     ) -> int:
         """Store raw events in PostgreSQL.
 
@@ -127,6 +128,7 @@ class PostgresEventStore(EventStore):
             events: List of control execution events to store
             namespace_key: Namespace that owns the events
             access_user_id: Server-resolved owner for member data isolation
+            api_key_id: Server-resolved credential used to ingest the events
 
         Returns:
             Number of events successfully stored
@@ -143,6 +145,7 @@ class PostgresEventStore(EventStore):
             values.append({
                 "namespace_key": namespace_key,
                 "access_user_id": access_user_id,
+                "api_key_id": api_key_id,
                 "control_execution_id": event.control_execution_id,
                 "timestamp": event.timestamp,
                 "agent_name": event.agent_name,
@@ -154,10 +157,10 @@ class PostgresEventStore(EventStore):
             await session.execute(
                 text("""
                     INSERT INTO control_execution_events (
-                        namespace_key, access_user_id, control_execution_id,
+                        namespace_key, access_user_id, api_key_id, control_execution_id,
                         timestamp, agent_name, data
                     ) VALUES (
-                        :namespace_key, :access_user_id, :control_execution_id,
+                        :namespace_key, :access_user_id, :api_key_id, :control_execution_id,
                         :timestamp, :agent_name, CAST(:data AS JSONB)
                     )
                     ON CONFLICT (namespace_key, control_execution_id) DO NOTHING

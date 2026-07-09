@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from agent_control_server.auth_framework import set_authorizer
 from agent_control_server.auth_framework.providers import NoAuthProvider
 
-from .conftest import TEST_API_KEY_ID
+from .conftest import TEST_ACCESS_USER_ID
 from .utils import VALID_CONTROL_PAYLOAD
 
 _CONTROLS_URL = "/api/v1/controls"
@@ -56,7 +56,7 @@ def _create_control(client: TestClient, name: str | None = None) -> int:
 
 def _grant_test_key(client: TestClient, control_id: int) -> None:
     response = client.put(
-        f"/api/v1/admin/access/api-keys/{TEST_API_KEY_ID}/control-grants",
+        f"/api/v1/admin/access/users/{TEST_ACCESS_USER_ID}/control-grants",
         json={"control_ids": [control_id]},
     )
     assert response.status_code == 200, response.text

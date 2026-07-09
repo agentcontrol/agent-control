@@ -264,39 +264,45 @@ export const api = {
           body,
         }),
     },
-    apiKeys: {
+    credentials: {
       list: (userId: string) =>
         apiClient.GET('/api/v1/admin/access/users/{user_id}/api-keys', {
           params: { path: { user_id: userId } },
         }),
-      create: (
+      issue: (
         userId: string,
-        body: paths['/api/v1/admin/access/users/{user_id}/api-keys']['post']['requestBody']['content']['application/json']
+        body: paths['/api/v1/admin/access/users/{user_id}/api-key']['post']['requestBody']['content']['application/json']
       ) =>
-        apiClient.POST('/api/v1/admin/access/users/{user_id}/api-keys', {
+        apiClient.POST('/api/v1/admin/access/users/{user_id}/api-key', {
           params: { path: { user_id: userId } },
           body,
         }),
-      revoke: (apiKeyId: string) =>
-        apiClient.DELETE('/api/v1/admin/access/api-keys/{api_key_id}', {
-          params: { path: { api_key_id: apiKeyId } },
-        }),
-      getControlGrants: (apiKeyId: string) =>
-        apiClient.GET(
-          '/api/v1/admin/access/api-keys/{api_key_id}/control-grants',
-          { params: { path: { api_key_id: apiKeyId } } }
-        ),
-      updateControlGrants: (
-        apiKeyId: string,
-        body: paths['/api/v1/admin/access/api-keys/{api_key_id}/control-grants']['put']['requestBody']['content']['application/json']
+      rotate: (
+        userId: string,
+        body: paths['/api/v1/admin/access/users/{user_id}/api-key/rotate']['post']['requestBody']['content']['application/json']
       ) =>
-        apiClient.PUT(
-          '/api/v1/admin/access/api-keys/{api_key_id}/control-grants',
-          {
-            params: { path: { api_key_id: apiKeyId } },
-            body,
-          }
-        ),
+        apiClient.POST('/api/v1/admin/access/users/{user_id}/api-key/rotate', {
+          params: { path: { user_id: userId } },
+          body,
+        }),
+      revoke: (userId: string) =>
+        apiClient.DELETE('/api/v1/admin/access/users/{user_id}/api-key', {
+          params: { path: { user_id: userId } },
+        }),
+    },
+    grants: {
+      get: (userId: string) =>
+        apiClient.GET('/api/v1/admin/access/users/{user_id}/control-grants', {
+          params: { path: { user_id: userId } },
+        }),
+      update: (
+        userId: string,
+        body: paths['/api/v1/admin/access/users/{user_id}/control-grants']['put']['requestBody']['content']['application/json']
+      ) =>
+        apiClient.PUT('/api/v1/admin/access/users/{user_id}/control-grants', {
+          params: { path: { user_id: userId } },
+          body,
+        }),
     },
   },
   observability: {

@@ -131,6 +131,7 @@ async def ingest_events(
             request.events,
             namespace_key=principal.namespace_key,
             access_user_id=principal.user_id,
+            api_key_id=principal.api_key_id,
         )
 
     duration_ms = (time.perf_counter() - start_time) * 1000

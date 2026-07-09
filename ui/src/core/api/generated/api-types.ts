@@ -4,161 +4,6 @@
  */
 
 export interface paths {
-  '/api/config': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * UI configuration
-     * @description Return configuration flags that drive UI behavior.
-     *
-     *     If authentication is enabled, this also reports whether the current
-     *     request has an active session (via header or cookie), allowing the UI
-     *     to skip the login prompt on refresh when a valid cookie is present.
-     */
-    get: operations['get_config_api_config_get'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/login': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Login with API key
-     * @description Validate an API key and issue a signed JWT session cookie.
-     *
-     *     The raw API key is transmitted only in this single request and is never
-     *     stored in the cookie.  Subsequent requests authenticate via the JWT.
-     */
-    post: operations['login_api_login_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/logout': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Logout (clear session cookie)
-     * @description Clear the session cookie.
-     */
-    post: operations['logout_api_logout_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/access/api-keys/{api_key_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    /** Revoke Api Key */
-    delete: operations['revoke_api_key_api_v1_admin_access_api_keys__api_key_id__delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/access/api-keys/{api_key_id}/control-grants': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get Api Key Grants */
-    get: operations['get_api_key_grants_api_v1_admin_access_api_keys__api_key_id__control_grants_get'];
-    /** Replace Api Key Grants */
-    put: operations['replace_api_key_grants_api_v1_admin_access_api_keys__api_key_id__control_grants_put'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/access/users': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List Access Users */
-    get: operations['list_access_users_api_v1_admin_access_users_get'];
-    put?: never;
-    /** Create Access User */
-    post: operations['create_access_user_api_v1_admin_access_users_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/access/users/{user_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /** Update Access User */
-    patch: operations['update_access_user_api_v1_admin_access_users__user_id__patch'];
-    trace?: never;
-  };
-  '/api/v1/admin/access/users/{user_id}/api-keys': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** List Api Keys */
-    get: operations['list_api_keys_api_v1_admin_access_users__user_id__api_keys_get'];
-    put?: never;
-    /** Create Api Key */
-    post: operations['create_api_key_api_v1_admin_access_users__user_id__api_keys_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   '/api/v1/agents': {
     parameters: {
       query?: never;
@@ -292,6 +137,125 @@ export interface paths {
     patch: operations['patch_agent_api_v1_agents__agent_name__patch'];
     trace?: never;
   };
+  '/api/v1/agents/{agent_name}/policies/{policy_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Associate policy with agent
+     * @description Associate a policy with an agent (idempotent).
+     */
+    post: operations['add_agent_policy_api_v1_agents__agent_name__policies__policy_id__post'];
+    /**
+     * Remove policy association from agent
+     * @description Remove a policy association from an agent.
+     *
+     *     Idempotent for existing resources: removing a non-associated link is a no-op.
+     *     Missing agent/policy resources still return 404.
+     */
+    delete: operations['remove_agent_policy_api_v1_agents__agent_name__policies__policy_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/agents/{agent_name}/policy/{policy_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Assign policy to agent (compatibility)
+     * @description Compatibility endpoint that replaces all policy associations with one policy.
+     */
+    post: operations['set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/agents/{agent_name}/policies': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List policies associated with agent
+     * @description List policy IDs associated with an agent.
+     */
+    get: operations['get_agent_policies_api_v1_agents__agent_name__policies_get'];
+    put?: never;
+    post?: never;
+    /**
+     * Remove all policy associations from agent
+     * @description Remove all policy associations from an agent.
+     */
+    delete: operations['remove_all_agent_policies_api_v1_agents__agent_name__policies_delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/agents/{agent_name}/policy': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get agent's assigned policy (compatibility)
+     * @description Compatibility endpoint that returns the first associated policy.
+     */
+    get: operations['get_agent_policy_api_v1_agents__agent_name__policy_get'];
+    put?: never;
+    post?: never;
+    /**
+     * Remove agent's policy assignment (compatibility)
+     * @description Compatibility endpoint that removes all policy associations.
+     */
+    delete: operations['delete_agent_policy_api_v1_agents__agent_name__policy_delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/agents/{agent_name}/controls/{control_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Associate control directly with agent
+     * @description Associate a control directly with an agent (idempotent).
+     */
+    post: operations['add_agent_control_api_v1_agents__agent_name__controls__control_id__post'];
+    /**
+     * Remove direct control association from agent
+     * @description Remove a direct control association from an agent (idempotent).
+     */
+    delete: operations['remove_agent_control_api_v1_agents__agent_name__controls__control_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/agents/{agent_name}/controls': {
     parameters: {
       query?: never;
@@ -337,30 +301,6 @@ export interface paths {
     put?: never;
     post?: never;
     delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/agents/{agent_name}/controls/{control_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Associate control directly with agent
-     * @description Associate a control directly with an agent (idempotent).
-     */
-    post: operations['add_agent_control_api_v1_agents__agent_name__controls__control_id__post'];
-    /**
-     * Remove direct control association from agent
-     * @description Remove a direct control association from an agent (idempotent).
-     */
-    delete: operations['remove_agent_control_api_v1_agents__agent_name__controls__control_id__delete'];
     options?: never;
     head?: never;
     patch?: never;
@@ -435,102 +375,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/agents/{agent_name}/policies': {
+  '/api/v1/admin/access/users': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * List policies associated with agent
-     * @description List policy IDs associated with an agent.
-     */
-    get: operations['get_agent_policies_api_v1_agents__agent_name__policies_get'];
+    /** List Access Users */
+    get: operations['list_access_users_api_v1_admin_access_users_get'];
     put?: never;
-    post?: never;
-    /**
-     * Remove all policy associations from agent
-     * @description Remove all policy associations from an agent.
-     */
-    delete: operations['remove_all_agent_policies_api_v1_agents__agent_name__policies_delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/agents/{agent_name}/policies/{policy_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Associate policy with agent
-     * @description Associate a policy with an agent (idempotent).
-     */
-    post: operations['add_agent_policy_api_v1_agents__agent_name__policies__policy_id__post'];
-    /**
-     * Remove policy association from agent
-     * @description Remove a policy association from an agent.
-     *
-     *     Idempotent for existing resources: removing a non-associated link is a no-op.
-     *     Missing agent/policy resources still return 404.
-     */
-    delete: operations['remove_agent_policy_api_v1_agents__agent_name__policies__policy_id__delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/agents/{agent_name}/policy': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /**
-     * Get agent's assigned policy (compatibility)
-     * @description Compatibility endpoint that returns the first associated policy.
-     */
-    get: operations['get_agent_policy_api_v1_agents__agent_name__policy_get'];
-    put?: never;
-    post?: never;
-    /**
-     * Remove agent's policy assignment (compatibility)
-     * @description Compatibility endpoint that removes all policy associations.
-     */
-    delete: operations['delete_agent_policy_api_v1_agents__agent_name__policy_delete'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/agents/{agent_name}/policy/{policy_id}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Assign policy to agent (compatibility)
-     * @description Compatibility endpoint that replaces all policy associations with one policy.
-     */
-    post: operations['set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post'];
+    /** Create Access User */
+    post: operations['create_access_user_api_v1_admin_access_users_post'];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  '/api/v1/auth/runtime-token-exchange': {
+  '/api/v1/admin/access/users/{user_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -539,27 +402,15 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /**
-     * Exchange a credential for a runtime token bound to a target
-     * @description Mint a short-lived runtime token for the requested target.
-     *
-     *     The caller's credential is authenticated and authorized before the
-     *     resolved principal supplies the actor identity, grant scopes, and
-     *     expiry. This endpoint then mints a local HS256 token whose lifetime
-     *     cannot outlive the grant.
-     *
-     *     Runtime auth must be enabled via
-     *     ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET``; otherwise the endpoint
-     *     returns 503.
-     */
-    post: operations['runtime_token_exchange_api_v1_auth_runtime_token_exchange_post'];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
-    patch?: never;
+    /** Update Access User */
+    patch: operations['update_access_user_api_v1_admin_access_users__user_id__patch'];
     trace?: never;
   };
-  '/api/v1/control-bindings': {
+  '/api/v1/admin/access/users/{user_id}/api-keys': {
     parameters: {
       query?: never;
       header?: never;
@@ -567,22 +418,11 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List control bindings
-     * @description Return bindings in the request namespace with optional filters and
-     *     cursor-based pagination. Bindings are ordered by ID descending
-     *     (newest first). The cursor is opaque to clients: pass back the
-     *     ``next_cursor`` value verbatim to fetch the following page. The
-     *     storage namespace is resolved from the authenticated request.
+     * List Api Keys
+     * @description Return credential audit history, newest first, without secrets.
      */
-    get: operations['list_control_bindings_api_v1_control_bindings_get'];
-    /**
-     * Create a control binding
-     * @description Attach a control to an opaque external target.
-     *
-     *     Each binding row is scoped to the namespace associated with the
-     *     authenticated request.
-     */
-    put: operations['create_control_binding_api_v1_control_bindings_put'];
+    get: operations['list_api_keys_api_v1_admin_access_users__user_id__api_keys_get'];
+    put?: never;
     post?: never;
     delete?: never;
     options?: never;
@@ -590,37 +430,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/control-bindings/by-key': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    /**
-     * Attach a control to a target by natural key (idempotent)
-     * @description Idempotent attach using ``(target_type, target_id, control_id)`` as the
-     *     natural key. Updates ``enabled`` on an existing match; creates a new row
-     *     otherwise.
-     */
-    put: operations['upsert_control_binding_by_key_api_v1_control_bindings_by_key_put'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Update a control binding by natural key
-     * @description Update an existing binding using ``(target_type, target_id, control_id)``.
-     *
-     *     This route is target-scoped because the request body includes the target
-     *     identifiers before authorization runs. Unlike ``PUT /by-key``, it never
-     *     creates a missing binding.
-     */
-    patch: operations['patch_control_binding_by_key_api_v1_control_bindings_by_key_patch'];
-    trace?: never;
-  };
-  '/api/v1/control-bindings/by-key:delete': {
+  '/api/v1/admin/access/users/{user_id}/api-key': {
     parameters: {
       query?: never;
       header?: never;
@@ -630,63 +440,93 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Detach a control from a target by natural key (idempotent)
-     * @description Idempotent detach by natural key. Returns ``deleted=False`` when no
-     *     matching binding exists.
+     * Issue Api Key
+     * @description Issue a key only when the user does not already have an active one.
      */
-    post: operations['delete_control_binding_by_key_api_v1_control_bindings_by_key_delete_post'];
+    post: operations['issue_api_key_api_v1_admin_access_users__user_id__api_key_post'];
+    /**
+     * Revoke Api Key
+     * @description Revoke the user's current key; repeated revocation is idempotent.
+     */
+    delete: operations['revoke_api_key_api_v1_admin_access_users__user_id__api_key_delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/access/users/{user_id}/api-key/rotate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Rotate Api Key
+     * @description Atomically revoke the current key and issue its replacement.
+     */
+    post: operations['rotate_api_key_api_v1_admin_access_users__user_id__api_key_rotate_post'];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  '/api/v1/control-bindings/{binding_id}': {
+  '/api/v1/admin/access/users/{user_id}/control-grants': {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /**
-     * Get a control binding (namespace-wide)
-     * @description Read a single control binding by surrogate ID.
-     *
-     *     Authorization is namespace-wide: the binding's target identifiers
-     *     are not available until after the row is loaded.
-     *     Callers whose authorization model requires per-target permissions
-     *     should use the natural-key endpoints (``PUT /by-key``,
-     *     ``POST /by-key:delete``) and the target-filtered list endpoint, all
-     *     of which include ``(target_type, target_id)`` in the request context.
-     */
-    get: operations['get_control_binding_api_v1_control_bindings__binding_id__get'];
-    put?: never;
+    /** Get Access User Grants */
+    get: operations['get_access_user_grants_api_v1_admin_access_users__user_id__control_grants_get'];
+    /** Replace Access User Grants */
+    put: operations['replace_access_user_grants_api_v1_admin_access_users__user_id__control_grants_put'];
     post?: never;
-    /**
-     * Delete a control binding (namespace-wide)
-     * @description Delete a control binding by surrogate ID.
-     *
-     *     See the GET-by-id docstring for the authorization scope: this route
-     *     is namespace-wide because the target identifiers are not available
-     *     before the binding is loaded. Use ``POST /by-key:delete`` for
-     *     target-scoped detach that includes the target in the request context.
-     */
-    delete: operations['delete_control_binding_api_v1_control_bindings__binding_id__delete'];
+    delete?: never;
     options?: never;
     head?: never;
-    /**
-     * Update a control binding (namespace-wide)
-     * @description Update the ``enabled`` flag on a control binding.
-     *
-     *     See the GET-by-id docstring for the authorization scope: this route
-     *     is namespace-wide because the target identifiers are not available
-     *     before the binding is loaded. Use ``PUT /by-key`` for target-scoped
-     *     upserts that include the target in the request context.
-     */
-    patch: operations['patch_control_binding_api_v1_control_bindings__binding_id__patch'];
+    patch?: never;
     trace?: never;
   };
-  '/api/v1/control-templates/render': {
+  '/api/v1/policies': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Create a new policy
+     * @description Create a new empty policy with a unique name.
+     *
+     *     Policies contain controls and can be assigned to agents.
+     *     A newly created policy has no controls until they are explicitly added.
+     *
+     *     Args:
+     *         request: Policy creation request with unique name
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         CreatePolicyResponse with the new policy's ID
+     *
+     *     Raises:
+     *         HTTPException 409: Policy with this name already exists
+     *         HTTPException 500: Database error during creation
+     */
+    put: operations['create_policy_api_v1_policies_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/policies/{policy_id}/controls/{control_id}': {
     parameters: {
       query?: never;
       header?: never;
@@ -696,10 +536,74 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Render a control template preview
-     * @description Render a template-backed control without persisting it.
+     * Add control to policy
+     * @description Associate a control with a policy.
+     *
+     *     This operation is idempotent - adding the same control multiple times has no effect.
+     *     Agents with this policy will immediately see the added control.
+     *
+     *     Args:
+     *         policy_id: ID of the policy
+     *         control_id: ID of the control to add
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         AssocResponse with success flag
+     *
+     *     Raises:
+     *         HTTPException 404: Policy or control not found
+     *         HTTPException 500: Database error
      */
-    post: operations['render_control_template_api_v1_control_templates_render_post'];
+    post: operations['add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post'];
+    /**
+     * Remove control from policy
+     * @description Remove a control from a policy.
+     *
+     *     This operation is idempotent - removing a non-associated control has no effect.
+     *     Agents with this policy will immediately lose the removed control.
+     *
+     *     Args:
+     *         policy_id: ID of the policy
+     *         control_id: ID of the control to remove
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         AssocResponse with success flag
+     *
+     *     Raises:
+     *         HTTPException 404: Policy or control not found
+     *         HTTPException 500: Database error
+     */
+    delete: operations['remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/policies/{policy_id}/controls': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List policy's controls
+     * @description List all controls associated with a policy.
+     *
+     *     Args:
+     *         policy_id: ID of the policy
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         GetPolicyControlsResponse with list of control IDs
+     *
+     *     Raises:
+     *         HTTPException 404: Policy not found
+     */
+    get: operations['list_policy_controls_api_v1_policies__policy_id__controls_get'];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -770,6 +674,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/controls/{control_id}/clone-and-bind': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Clone a control and bind the clone to a target
+     * @description Clone an active control and attach the clone to an opaque target.
+     */
+    post: operations['clone_and_bind_control_api_v1_controls__control_id__clone_and_bind_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/controls/schema': {
     parameters: {
       query?: never;
@@ -784,33 +708,6 @@ export interface paths {
     get: operations['get_control_schema_api_v1_controls_schema_get'];
     put?: never;
     post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/controls/validate': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Validate control configuration
-     * @description Validate control configuration data without saving it.
-     *
-     *     Args:
-     *         request: Control configuration data to validate
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         ValidateControlDataResponse with success=True if valid
-     */
-    post: operations['validate_control_data_api_v1_controls_validate_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -887,26 +784,6 @@ export interface paths {
      *         HTTPException 500: Database error during update
      */
     patch: operations['patch_control_api_v1_controls__control_id__patch'];
-    trace?: never;
-  };
-  '/api/v1/controls/{control_id}/clone-and-bind': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /**
-     * Clone a control and bind the clone to a target
-     * @description Clone an active control and attach the clone to an opaque target.
-     */
-    post: operations['clone_and_bind_control_api_v1_controls__control_id__clone_and_bind_post'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
     trace?: never;
   };
   '/api/v1/controls/{control_id}/data': {
@@ -995,6 +872,209 @@ export interface paths {
     get: operations['get_control_version_api_v1_controls__control_id__versions__version_num__get'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/controls/validate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Validate control configuration
+     * @description Validate control configuration data without saving it.
+     *
+     *     Args:
+     *         request: Control configuration data to validate
+     *         db: Database session (injected)
+     *
+     *     Returns:
+     *         ValidateControlDataResponse with success=True if valid
+     */
+    post: operations['validate_control_data_api_v1_controls_validate_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/control-bindings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List control bindings
+     * @description Return bindings in the request namespace with optional filters and
+     *     cursor-based pagination. Bindings are ordered by ID descending
+     *     (newest first). The cursor is opaque to clients: pass back the
+     *     ``next_cursor`` value verbatim to fetch the following page. The
+     *     storage namespace is resolved from the authenticated request.
+     */
+    get: operations['list_control_bindings_api_v1_control_bindings_get'];
+    /**
+     * Create a control binding
+     * @description Attach a control to an opaque external target.
+     *
+     *     Each binding row is scoped to the namespace associated with the
+     *     authenticated request.
+     */
+    put: operations['create_control_binding_api_v1_control_bindings_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/control-bindings/{binding_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a control binding (namespace-wide)
+     * @description Read a single control binding by surrogate ID.
+     *
+     *     Authorization is namespace-wide: the binding's target identifiers
+     *     are not available until after the row is loaded.
+     *     Callers whose authorization model requires per-target permissions
+     *     should use the natural-key endpoints (``PUT /by-key``,
+     *     ``POST /by-key:delete``) and the target-filtered list endpoint, all
+     *     of which include ``(target_type, target_id)`` in the request context.
+     */
+    get: operations['get_control_binding_api_v1_control_bindings__binding_id__get'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete a control binding (namespace-wide)
+     * @description Delete a control binding by surrogate ID.
+     *
+     *     See the GET-by-id docstring for the authorization scope: this route
+     *     is namespace-wide because the target identifiers are not available
+     *     before the binding is loaded. Use ``POST /by-key:delete`` for
+     *     target-scoped detach that includes the target in the request context.
+     */
+    delete: operations['delete_control_binding_api_v1_control_bindings__binding_id__delete'];
+    options?: never;
+    head?: never;
+    /**
+     * Update a control binding (namespace-wide)
+     * @description Update the ``enabled`` flag on a control binding.
+     *
+     *     See the GET-by-id docstring for the authorization scope: this route
+     *     is namespace-wide because the target identifiers are not available
+     *     before the binding is loaded. Use ``PUT /by-key`` for target-scoped
+     *     upserts that include the target in the request context.
+     */
+    patch: operations['patch_control_binding_api_v1_control_bindings__binding_id__patch'];
+    trace?: never;
+  };
+  '/api/v1/control-bindings/by-key': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Attach a control to a target by natural key (idempotent)
+     * @description Idempotent attach using ``(target_type, target_id, control_id)`` as the
+     *     natural key. Updates ``enabled`` on an existing match; creates a new row
+     *     otherwise.
+     */
+    put: operations['upsert_control_binding_by_key_api_v1_control_bindings_by_key_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Update a control binding by natural key
+     * @description Update an existing binding using ``(target_type, target_id, control_id)``.
+     *
+     *     This route is target-scoped because the request body includes the target
+     *     identifiers before authorization runs. Unlike ``PUT /by-key``, it never
+     *     creates a missing binding.
+     */
+    patch: operations['patch_control_binding_by_key_api_v1_control_bindings_by_key_patch'];
+    trace?: never;
+  };
+  '/api/v1/control-bindings/by-key:delete': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Detach a control from a target by natural key (idempotent)
+     * @description Idempotent detach by natural key. Returns ``deleted=False`` when no
+     *     matching binding exists.
+     */
+    post: operations['delete_control_binding_by_key_api_v1_control_bindings_by_key_delete_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/auth/runtime-token-exchange': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Exchange a credential for a runtime token bound to a target
+     * @description Mint a short-lived runtime token for the requested target.
+     *
+     *     The caller's credential is authenticated and authorized before the
+     *     resolved principal supplies the actor identity, grant scopes, and
+     *     expiry. This endpoint then mints a local HS256 token whose lifetime
+     *     cannot outlive the grant.
+     *
+     *     Runtime auth must be enabled via
+     *     ``AGENT_CONTROL_RUNTIME_TOKEN_SECRET``; otherwise the endpoint
+     *     returns 503.
+     */
+    post: operations['runtime_token_exchange_api_v1_auth_runtime_token_exchange_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/control-templates/render': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Render a control template preview
+     * @description Render a template-backed control without persisting it.
+     */
+    post: operations['render_control_template_api_v1_control_templates_render_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1220,41 +1300,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/policies': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    /**
-     * Create a new policy
-     * @description Create a new empty policy with a unique name.
-     *
-     *     Policies contain controls and can be assigned to agents.
-     *     A newly created policy has no controls until they are explicitly added.
-     *
-     *     Args:
-     *         request: Policy creation request with unique name
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         CreatePolicyResponse with the new policy's ID
-     *
-     *     Raises:
-     *         HTTPException 409: Policy with this name already exists
-     *         HTTPException 500: Database error during creation
-     */
-    put: operations['create_policy_api_v1_policies_put'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/policies/{policy_id}/controls': {
+  '/api/config': {
     parameters: {
       query?: never;
       header?: never;
@@ -1262,20 +1308,14 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * List policy's controls
-     * @description List all controls associated with a policy.
+     * UI configuration
+     * @description Return configuration flags that drive UI behavior.
      *
-     *     Args:
-     *         policy_id: ID of the policy
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         GetPolicyControlsResponse with list of control IDs
-     *
-     *     Raises:
-     *         HTTPException 404: Policy not found
+     *     If authentication is enabled, this also reports whether the current
+     *     request has an active session (via header or cookie), allowing the UI
+     *     to skip the login prompt on refresh when a valid cookie is present.
      */
-    get: operations['list_policy_controls_api_v1_policies__policy_id__controls_get'];
+    get: operations['get_config_api_config_get'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1284,7 +1324,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  '/api/v1/policies/{policy_id}/controls/{control_id}': {
+  '/api/login': {
     parameters: {
       query?: never;
       header?: never;
@@ -1294,45 +1334,34 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Add control to policy
-     * @description Associate a control with a policy.
+     * Login with API key
+     * @description Validate an API key and issue a signed JWT session cookie.
      *
-     *     This operation is idempotent - adding the same control multiple times has no effect.
-     *     Agents with this policy will immediately see the added control.
-     *
-     *     Args:
-     *         policy_id: ID of the policy
-     *         control_id: ID of the control to add
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         AssocResponse with success flag
-     *
-     *     Raises:
-     *         HTTPException 404: Policy or control not found
-     *         HTTPException 500: Database error
+     *     The raw API key is transmitted only in this single request and is never
+     *     stored in the cookie.  Subsequent requests authenticate via the JWT.
      */
-    post: operations['add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post'];
+    post: operations['login_api_login_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/logout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
     /**
-     * Remove control from policy
-     * @description Remove a control from a policy.
-     *
-     *     This operation is idempotent - removing a non-associated control has no effect.
-     *     Agents with this policy will immediately lose the removed control.
-     *
-     *     Args:
-     *         policy_id: ID of the policy
-     *         control_id: ID of the control to remove
-     *         db: Database session (injected)
-     *
-     *     Returns:
-     *         AssocResponse with success flag
-     *
-     *     Raises:
-     *         HTTPException 404: Policy or control not found
-     *         HTTPException 500: Database error
+     * Logout (clear session cookie)
+     * @description Clear the session cookie.
      */
-    delete: operations['remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete'];
+    post: operations['logout_api_logout_post'];
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -1367,39 +1396,42 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
-    /** APIKeyGrantResponse */
-    APIKeyGrantResponse: {
-      /** Api Key Id */
-      api_key_id: string;
-      /** Control Ids */
-      control_ids: number[];
-    };
-    /** APIKeyListResponse */
+    /**
+     * APIKeyListResponse
+     * @description Credential audit history; plaintext secrets are never returned.
+     */
     APIKeyListResponse: {
       /** Api Keys */
       api_keys: components['schemas']['APIKeyResponse'][];
     };
     /** APIKeyResponse */
     APIKeyResponse: {
+      /** Id */
+      id: string;
+      /** User Id */
+      user_id: string;
+      /** Name */
+      name: string;
+      /** Key Prefix */
+      key_prefix: string;
+      /** Enabled */
+      enabled: boolean;
+      /** Expires At */
+      expires_at: string | null;
+      /** Revoked At */
+      revoked_at: string | null;
       /**
        * Created At
        * Format: date-time
        */
       created_at: string;
-      /** Enabled */
-      enabled: boolean;
-      /** Expires At */
-      expires_at: string | null;
-      /** Id */
-      id: string;
-      /** Key Prefix */
-      key_prefix: string;
-      /** Name */
-      name: string;
-      /** Revoked At */
-      revoked_at: string | null;
+    };
+    /** AccessUserGrantResponse */
+    AccessUserGrantResponse: {
       /** User Id */
       user_id: string;
+      /** Control Ids */
+      control_ids: number[];
     };
     /** AccessUserListResponse */
     AccessUserListResponse: {
@@ -1408,13 +1440,6 @@ export interface components {
     };
     /** AccessUserResponse */
     AccessUserResponse: {
-      /**
-       * Created At
-       * Format: date-time
-       */
-      created_at: string;
-      /** Enabled */
-      enabled: boolean;
       /** Id */
       id: string;
       /** Name */
@@ -1424,6 +1449,13 @@ export interface components {
        * @enum {string}
        */
       role: 'admin' | 'member';
+      /** Enabled */
+      enabled: boolean;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
     };
     /** @enum {string} */
     ActionDecision: 'deny' | 'steer' | 'observe';
@@ -1445,27 +1477,20 @@ export interface components {
      */
     Agent: {
       /**
-       * Agent Created At
-       * @description ISO 8601 timestamp when agent was created
+       * Agent Name
+       * @description Unique immutable identifier for the agent
        */
-      agent_created_at?: string | null;
+      agent_name: string;
       /**
        * Agent Description
        * @description Optional description of the agent's purpose
        */
       agent_description?: string | null;
       /**
-       * Agent Metadata
-       * @description Free-form metadata dictionary for custom properties
+       * Agent Created At
+       * @description ISO 8601 timestamp when agent was created
        */
-      agent_metadata?: {
-        [key: string]: unknown;
-      } | null;
-      /**
-       * Agent Name
-       * @description Unique immutable identifier for the agent
-       */
-      agent_name: string;
+      agent_created_at?: string | null;
       /**
        * Agent Updated At
        * @description ISO 8601 timestamp when agent was last updated
@@ -1476,6 +1501,13 @@ export interface components {
        * @description Semantic version string (e.g. '1.0.0')
        */
       agent_version?: string | null;
+      /**
+       * Agent Metadata
+       * @description Free-form metadata dictionary for custom properties
+       */
+      agent_metadata?: {
+        [key: string]: unknown;
+      } | null;
     };
     /** AgentControlsResponse */
     AgentControlsResponse: {
@@ -1502,21 +1534,26 @@ export interface components {
      */
     AgentSummary: {
       /**
-       * Active Controls Count
-       * @description Number of active controls for this agent
-       * @default 0
-       */
-      active_controls_count: number;
-      /**
        * Agent Name
        * @description Unique identifier of the agent
        */
       agent_name: string;
       /**
+       * Policy Ids
+       * @description IDs of policies associated with the agent
+       */
+      policy_ids?: number[];
+      /**
        * Created At
        * @description ISO 8601 timestamp when agent was created
        */
       created_at?: string | null;
+      /**
+       * Step Count
+       * @description Number of steps registered with the agent
+       * @default 0
+       */
+      step_count: number;
       /**
        * Evaluator Count
        * @description Number of evaluators registered with the agent
@@ -1524,16 +1561,11 @@ export interface components {
        */
       evaluator_count: number;
       /**
-       * Policy Ids
-       * @description IDs of policies associated with the agent
-       */
-      policy_ids?: number[];
-      /**
-       * Step Count
-       * @description Number of steps registered with the agent
+       * Active Controls Count
+       * @description Number of active controls for this agent
        * @default 0
        */
-      step_count: number;
+      active_controls_count: number;
     };
     /** AssocResponse */
     AssocResponse: {
@@ -1594,20 +1626,20 @@ export interface components {
      */
     BatchEventsResponse: {
       /**
-       * Dropped
-       * @description Number of events dropped
+       * Received
+       * @description Number of events received
        */
-      dropped: number;
+      received: number;
       /**
        * Enqueued
        * @description Number of events enqueued
        */
       enqueued: number;
       /**
-       * Received
-       * @description Number of events received
+       * Dropped
+       * @description Number of events dropped
        */
-      received: number;
+      dropped: number;
       /**
        * Status
        * @description Overall ingestion status
@@ -1621,20 +1653,15 @@ export interface components {
      */
     BooleanTemplateParameter: {
       /**
-       * Default
-       * @description Optional default value
+       * Label
+       * @description Human-readable parameter label
        */
-      default?: boolean | null;
+      label: string;
       /**
        * Description
        * @description Optional description of what the parameter controls
        */
       description?: string | null;
-      /**
-       * Label
-       * @description Human-readable parameter label
-       */
-      label: string;
       /**
        * Required
        * @description Whether the caller must provide a value when no default exists
@@ -1642,15 +1669,20 @@ export interface components {
        */
       required: boolean;
       /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+      /**
        * @description discriminator enum property added by openapi-typescript
        * @enum {string}
        */
       type: 'boolean';
       /**
-       * Ui Hint
-       * @description Optional UI hint for rendering the parameter input
+       * Default
+       * @description Optional default value
        */
-      ui_hint?: string | null;
+      default?: boolean | null;
     };
     /**
      * CloneAndBindControlRequest
@@ -1671,16 +1703,6 @@ export interface components {
      */
     CloneAndBindControlResponse: {
       /**
-       * Binding Id
-       * @description Identifier of the created binding.
-       */
-      binding_id: number;
-      /**
-       * Cloned From Control Id
-       * @description Source control ID.
-       */
-      cloned_from_control_id: number;
-      /**
        * Id
        * @description Identifier of the cloned control.
        */
@@ -1690,6 +1712,16 @@ export interface components {
        * @description Name of the cloned control.
        */
       name: string;
+      /**
+       * Cloned From Control Id
+       * @description Source control ID.
+       */
+      cloned_from_control_id: number;
+      /**
+       * Binding Id
+       * @description Identifier of the created binding.
+       */
+      binding_id: number;
     };
     /**
      * CloneAndBindTargetBinding
@@ -1697,21 +1729,21 @@ export interface components {
      */
     CloneAndBindTargetBinding: {
       /**
-       * Enabled
-       * @description Whether the created binding is active.
-       * @default true
+       * Target Type
+       * @description Opaque attachment kind (caller-defined; e.g. 'environment', 'session').
        */
-      enabled: boolean;
+      target_type: string;
       /**
        * Target Id
        * @description Opaque external identifier within the target_type.
        */
       target_id: string;
       /**
-       * Target Type
-       * @description Opaque attachment kind (caller-defined; e.g. 'environment', 'session').
+       * Enabled
+       * @description Whether the created binding is active.
+       * @default true
        */
-      target_type: string;
+      enabled: boolean;
     };
     /**
      * ConditionNode
@@ -1763,22 +1795,22 @@ export interface components {
      *     }
      */
     'ConditionNode-Input': {
+      /** @description Leaf selector. Must be provided together with evaluator. */
+      selector?: components['schemas']['ControlSelector'] | null;
+      /** @description Leaf evaluator. Must be provided together with selector. */
+      evaluator?: components['schemas']['EvaluatorSpec'] | null;
       /**
        * And
        * @description Logical AND over child conditions.
        */
       and?: components['schemas']['ConditionNode-Input'][] | null;
-      /** @description Leaf evaluator. Must be provided together with selector. */
-      evaluator?: components['schemas']['EvaluatorSpec'] | null;
-      /** @description Logical NOT over a single child condition. */
-      not?: components['schemas']['ConditionNode-Input'] | null;
       /**
        * Or
        * @description Logical OR over child conditions.
        */
       or?: components['schemas']['ConditionNode-Input'][] | null;
-      /** @description Leaf selector. Must be provided together with evaluator. */
-      selector?: components['schemas']['ControlSelector'] | null;
+      /** @description Logical NOT over a single child condition. */
+      not?: components['schemas']['ConditionNode-Input'] | null;
     };
     /**
      * ConditionNode
@@ -1830,28 +1862,30 @@ export interface components {
      *     }
      */
     'ConditionNode-Output': {
+      /** @description Leaf selector. Must be provided together with evaluator. */
+      selector?: components['schemas']['ControlSelector'] | null;
+      /** @description Leaf evaluator. Must be provided together with selector. */
+      evaluator?: components['schemas']['EvaluatorSpec'] | null;
       /**
        * And
        * @description Logical AND over child conditions.
        */
       and?: components['schemas']['ConditionNode-Output'][] | null;
-      /** @description Leaf evaluator. Must be provided together with selector. */
-      evaluator?: components['schemas']['EvaluatorSpec'] | null;
-      /** @description Logical NOT over a single child condition. */
-      not?: components['schemas']['ConditionNode-Output'] | null;
       /**
        * Or
        * @description Logical OR over child conditions.
        */
       or?: components['schemas']['ConditionNode-Output'][] | null;
-      /** @description Leaf selector. Must be provided together with evaluator. */
-      selector?: components['schemas']['ControlSelector'] | null;
+      /** @description Logical NOT over a single child condition. */
+      not?: components['schemas']['ConditionNode-Output'] | null;
     };
     /**
      * ConfigResponse
      * @description Configuration surface exposed to the UI.
      */
     ConfigResponse: {
+      /** Requires Api Key */
+      requires_api_key: boolean;
       auth_mode: components['schemas']['AuthMode'];
       /**
        * Has Active Session
@@ -1863,8 +1897,6 @@ export interface components {
        * @default false
        */
       is_admin: boolean;
-      /** Requires Api Key */
-      requires_api_key: boolean;
     };
     /**
      * ConflictMode
@@ -1884,14 +1916,14 @@ export interface components {
      *     is an ``UnrenderedTemplateControl``.
      */
     Control: {
-      /** Control */
-      control:
-        | components['schemas']['ControlDefinition-Output']
-        | components['schemas']['UnrenderedTemplateControl'];
       /** Id */
       id: number;
       /** Name */
       name: string;
+      /** Control */
+      control:
+        | components['schemas']['ControlDefinition-Output']
+        | components['schemas']['UnrenderedTemplateControl'];
     };
     /**
      * ControlAction
@@ -1975,8 +2007,6 @@ export interface components {
      *     }
      */
     'ControlDefinition-Input': {
-      /** @description What action to take when control matches */
-      action: components['schemas']['ControlAction'];
       /** @description Recursive boolean condition tree. Leaf nodes contain selector + evaluator; composite nodes contain and/or/not. */
       condition: components['schemas']['ConditionNode-Input'];
       /**
@@ -1998,6 +2028,8 @@ export interface components {
       execution: 'server' | 'sdk';
       /** @description Which steps and stages this control applies to */
       scope?: components['schemas']['ControlScope'];
+      /** @description What action to take when control matches */
+      action: components['schemas']['ControlAction'];
       /**
        * Tags
        * @description Tags for categorization
@@ -2052,8 +2084,6 @@ export interface components {
      *     }
      */
     'ControlDefinition-Output': {
-      /** @description What action to take when control matches */
-      action: components['schemas']['ControlAction'];
       /** @description Recursive boolean condition tree. Leaf nodes contain selector + evaluator; composite nodes contain and/or/not. */
       condition: components['schemas']['ConditionNode-Output'];
       /**
@@ -2075,6 +2105,8 @@ export interface components {
       execution: 'server' | 'sdk';
       /** @description Which steps and stages this control applies to */
       scope?: components['schemas']['ControlScope'];
+      /** @description What action to take when control matches */
+      action: components['schemas']['ControlAction'];
       /**
        * Tags
        * @description Tags for categorization
@@ -2138,35 +2170,26 @@ export interface components {
      *     }
      */
     ControlExecutionEvent: {
-      /** @description Action taken by the control */
-      action: components['schemas']['ActionDecision'];
-      /**
-       * Agent Name
-       * @description Identifier of the agent
-       */
-      agent_name: string;
-      /**
-       * Applies To
-       * @description Type of call: 'llm_call' or 'tool_call'
-       * @enum {string}
-       */
-      applies_to: 'llm_call' | 'tool_call';
-      /**
-       * Check Stage
-       * @description Check stage: 'pre' or 'post'
-       * @enum {string}
-       */
-      check_stage: 'pre' | 'post';
-      /**
-       * Confidence
-       * @description Confidence score (0.0 to 1.0)
-       */
-      confidence: number;
       /**
        * Control Execution Id
        * @description Unique ID for this control execution
        */
       control_execution_id?: string;
+      /**
+       * Trace Id
+       * @description Trace ID for distributed tracing (SDK generates OTEL-compatible 32-char hex)
+       */
+      trace_id: string;
+      /**
+       * Span Id
+       * @description Span ID for distributed tracing (SDK generates OTEL-compatible 16-char hex)
+       */
+      span_id: string;
+      /**
+       * Agent Name
+       * @description Identifier of the agent
+       */
+      agent_name: string;
       /**
        * Control Id
        * @description Database ID of the control
@@ -2178,42 +2201,29 @@ export interface components {
        */
       control_name: string;
       /**
-       * Error Message
-       * @description Error message if evaluation failed
+       * Check Stage
+       * @description Check stage: 'pre' or 'post'
+       * @enum {string}
        */
-      error_message?: string | null;
+      check_stage: 'pre' | 'post';
       /**
-       * Evaluator Name
-       * @description Name of the evaluator used
+       * Applies To
+       * @description Type of call: 'llm_call' or 'tool_call'
+       * @enum {string}
        */
-      evaluator_name?: string | null;
-      /**
-       * Execution Duration Ms
-       * @description Execution duration in milliseconds
-       */
-      execution_duration_ms?: number | null;
+      applies_to: 'llm_call' | 'tool_call';
+      /** @description Action taken by the control */
+      action: components['schemas']['ActionDecision'];
       /**
        * Matched
        * @description Whether the evaluator matched (True) or not (False)
        */
       matched: boolean;
       /**
-       * Metadata
-       * @description Additional metadata
+       * Confidence
+       * @description Confidence score (0.0 to 1.0)
        */
-      metadata?: {
-        [key: string]: unknown;
-      };
-      /**
-       * Selector Path
-       * @description Selector path used to extract data
-       */
-      selector_path?: string | null;
-      /**
-       * Span Id
-       * @description Span ID for distributed tracing (SDK generates OTEL-compatible 16-char hex)
-       */
-      span_id: string;
+      confidence: number;
       /**
        * Timestamp
        * Format: date-time
@@ -2221,18 +2231,38 @@ export interface components {
        */
       timestamp?: string;
       /**
-       * Trace Id
-       * @description Trace ID for distributed tracing (SDK generates OTEL-compatible 32-char hex)
+       * Execution Duration Ms
+       * @description Execution duration in milliseconds
        */
-      trace_id: string;
+      execution_duration_ms?: number | null;
+      /**
+       * Evaluator Name
+       * @description Name of the evaluator used
+       */
+      evaluator_name?: string | null;
+      /**
+       * Selector Path
+       * @description Selector path used to extract data
+       */
+      selector_path?: string | null;
+      /**
+       * Error Message
+       * @description Error message if evaluation failed
+       */
+      error_message?: string | null;
+      /**
+       * Metadata
+       * @description Additional metadata
+       */
+      metadata?: {
+        [key: string]: unknown;
+      };
     };
     /**
      * ControlMatch
      * @description Represents a control evaluation result (match, non-match, or error).
      */
     ControlMatch: {
-      /** @description Action configured for this control */
-      action: components['schemas']['ActionDecision'];
       /**
        * Control Execution Id
        * @description Unique ID for this control execution (generated by engine)
@@ -2248,6 +2278,8 @@ export interface components {
        * @description Name of the control
        */
       control_name: string;
+      /** @description Action configured for this control */
+      action: components['schemas']['ActionDecision'];
       /** @description Evaluator result (confidence, message, metadata) */
       result: components['schemas']['EvaluatorResult'];
       /** @description Steering context for steer actions if configured */
@@ -2284,21 +2316,6 @@ export interface components {
      */
     ControlScope: {
       /**
-       * Stages
-       * @description Evaluation stages this control applies to
-       */
-      stages?: ('pre' | 'post')[] | null;
-      /**
-       * Step Name Regex
-       * @description RE2 pattern matched with search() against step name
-       */
-      step_name_regex?: string | null;
-      /**
-       * Step Names
-       * @description Exact step names this control applies to
-       */
-      step_names?: string[] | null;
-      /**
        * Step Types
        * @description Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
        * @example [
@@ -2313,6 +2330,21 @@ export interface components {
        *     ]
        */
       step_types?: string[] | null;
+      /**
+       * Step Names
+       * @description Exact step names this control applies to
+       */
+      step_names?: string[] | null;
+      /**
+       * Step Name Regex
+       * @description RE2 pattern matched with search() against step name
+       */
+      step_name_regex?: string | null;
+      /**
+       * Stages
+       * @description Evaluation stages this control applies to
+       */
+      stages?: ('pre' | 'post')[] | null;
     };
     /**
      * ControlSelector
@@ -2369,16 +2401,6 @@ export interface components {
      */
     ControlStats: {
       /**
-       * Avg Confidence
-       * @description Average confidence
-       */
-      avg_confidence: number;
-      /**
-       * Avg Duration Ms
-       * @description Average duration (ms)
-       */
-      avg_duration_ms?: number | null;
-      /**
        * Control Id
        * @description Control ID
        */
@@ -2388,16 +2410,6 @@ export interface components {
        * @description Control name
        */
       control_name: string;
-      /**
-       * Deny Count
-       * @description Deny actions
-       */
-      deny_count: number;
-      /**
-       * Error Count
-       * @description Evaluation errors
-       */
-      error_count: number;
       /**
        * Execution Count
        * @description Total executions
@@ -2414,15 +2426,35 @@ export interface components {
        */
       non_match_count: number;
       /**
-       * Observe Count
-       * @description Observe actions
+       * Deny Count
+       * @description Deny actions
        */
-      observe_count: number;
+      deny_count: number;
       /**
        * Steer Count
        * @description Steer actions
        */
       steer_count: number;
+      /**
+       * Observe Count
+       * @description Observe actions
+       */
+      observe_count: number;
+      /**
+       * Error Count
+       * @description Evaluation errors
+       */
+      error_count: number;
+      /**
+       * Avg Confidence
+       * @description Average confidence
+       */
+      avg_confidence: number;
+      /**
+       * Avg Duration Ms
+       * @description Average duration (ms)
+       */
+      avg_duration_ms?: number | null;
     };
     /**
      * ControlStatsResponse
@@ -2444,6 +2476,11 @@ export interface components {
        */
       agent_name: string;
       /**
+       * Time Range
+       * @description Time range used
+       */
+      time_range: string;
+      /**
        * Control Id
        * @description Control ID
        */
@@ -2455,21 +2492,22 @@ export interface components {
       control_name: string;
       /** @description Control statistics */
       stats: components['schemas']['StatsTotals'];
-      /**
-       * Time Range
-       * @description Time range used
-       */
-      time_range: string;
     };
     /**
      * ControlSummary
      * @description Summary of a control for list responses.
      */
     ControlSummary: {
-      /** @description Action applied when the control matches. */
-      action?: components['schemas']['ControlAction'] | null;
-      /** @description Expanded attachment details. Present when list controls is called with include_attachments=true. */
-      attachments?: components['schemas']['ControlAttachments'] | null;
+      /**
+       * Id
+       * @description Control ID
+       */
+      id: number;
+      /**
+       * Name
+       * @description Control name
+       */
+      name: string;
       /**
        * Cloned From Control Id
        * @description Source control ID when this control is a clone.
@@ -2491,26 +2529,18 @@ export interface components {
        * @description 'server' or 'sdk'
        */
       execution?: string | null;
-      /**
-       * Id
-       * @description Control ID
-       */
-      id: number;
-      /**
-       * Name
-       * @description Control name
-       */
-      name: string;
-      /**
-       * Stages
-       * @description Evaluation stages in scope
-       */
-      stages?: string[] | null;
+      /** @description Action applied when the control matches. */
+      action?: components['schemas']['ControlAction'] | null;
       /**
        * Step Types
        * @description Step types in scope
        */
       step_types?: string[] | null;
+      /**
+       * Stages
+       * @description Evaluation stages in scope
+       */
+      stages?: string[] | null;
       /**
        * Tags
        * @description Control tags
@@ -2535,6 +2565,8 @@ export interface components {
        * @default 0
        */
       used_by_agents_count: number;
+      /** @description Expanded attachment details. Present when list controls is called with include_attachments=true. */
+      attachments?: components['schemas']['ControlAttachments'] | null;
     };
     /**
      * ControlVersionSummary
@@ -2542,10 +2574,10 @@ export interface components {
      */
     ControlVersionSummary: {
       /**
-       * Created At
-       * @description ISO 8601 timestamp when this version was created
+       * Version Num
+       * @description Monotonic version number for the control
        */
-      created_at: string;
+      version_num: number;
       /**
        * Event Type
        * @description Machine-readable event type for this version
@@ -2557,31 +2589,16 @@ export interface components {
        */
       note?: string | null;
       /**
-       * Version Num
-       * @description Monotonic version number for the control
+       * Created At
+       * @description ISO 8601 timestamp when this version was created
        */
-      version_num: number;
+      created_at: string;
     };
-    /** CreateAPIKeyRequest */
-    CreateAPIKeyRequest: {
-      /** Expires At */
-      expires_at?: string | null;
-      /** Name */
-      name: string;
-    };
-    /** CreateAPIKeyResponse */
-    CreateAPIKeyResponse: {
-      api_key: components['schemas']['APIKeyResponse'];
-      /** Secret */
-      secret: string;
-    };
-    /** CreateAccessUserRequest */
+    /**
+     * CreateAccessUserRequest
+     * @description Create a user and its first API key in one transaction.
+     */
     CreateAccessUserRequest: {
-      /**
-       * Enabled
-       * @default true
-       */
-      enabled: boolean;
       /** Name */
       name: string;
       /**
@@ -2590,12 +2607,34 @@ export interface components {
        * @enum {string}
        */
       role: 'admin' | 'member';
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+    };
+    /** CreateAccessUserResponse */
+    CreateAccessUserResponse: {
+      user: components['schemas']['AccessUserResponse'];
+      api_key: components['schemas']['APIKeyResponse'];
+      /** Secret */
+      secret: string;
     };
     /**
      * CreateControlBindingRequest
      * @description Request to attach a control to an opaque external target.
      */
     CreateControlBindingRequest: {
+      /**
+       * Target Type
+       * @description Opaque attachment kind (caller-defined; e.g. 'environment', 'session').
+       */
+      target_type: string;
+      /**
+       * Target Id
+       * @description Opaque external identifier within the target_type.
+       */
+      target_id: string;
       /**
        * Control Id
        * @description ID of the control to attach.
@@ -2607,16 +2646,6 @@ export interface components {
        * @default true
        */
       enabled: boolean;
-      /**
-       * Target Id
-       * @description Opaque external identifier within the target_type.
-       */
-      target_id: string;
-      /**
-       * Target Type
-       * @description Opaque attachment kind (caller-defined; e.g. 'environment', 'session').
-       */
-      target_type: string;
     };
     /**
      * CreateControlBindingResponse
@@ -2632,17 +2661,17 @@ export interface components {
     /** CreateControlRequest */
     CreateControlRequest: {
       /**
+       * Name
+       * @description Unique control name (letters, numbers, hyphens, underscores)
+       */
+      name: string;
+      /**
        * Data
        * @description Control definition to validate and store during creation
        */
       data:
         | components['schemas']['ControlDefinition-Input']
         | components['schemas']['TemplateControlInput'];
-      /**
-       * Name
-       * @description Unique control name (letters, numbers, hyphens, underscores)
-       */
-      name: string;
     };
     /** CreateControlResponse */
     CreateControlResponse: {
@@ -2669,16 +2698,32 @@ export interface components {
       policy_id: number;
     };
     /**
+     * CredentialRequest
+     * @description Optional settings for issuing or rotating the user's only active key.
+     */
+    CredentialRequest: {
+      /** Name */
+      name?: string | null;
+      /** Expires At */
+      expires_at?: string | null;
+    };
+    /** CredentialSecretResponse */
+    CredentialSecretResponse: {
+      api_key: components['schemas']['APIKeyResponse'];
+      /** Secret */
+      secret: string;
+    };
+    /**
      * DeleteControlBindingByKeyRequest
      * @description Request to detach a control binding by natural key (idempotent).
      */
     DeleteControlBindingByKeyRequest: {
-      /** Control Id */
-      control_id: number;
-      /** Target Id */
-      target_id: string;
       /** Target Type */
       target_type: string;
+      /** Target Id */
+      target_id: string;
+      /** Control Id */
+      control_id: number;
     };
     /**
      * DeleteControlBindingByKeyResponse
@@ -2708,30 +2753,30 @@ export interface components {
      */
     DeleteControlResponse: {
       /**
-       * Detached Target Bindings
-       * @description Control binding IDs that were removed before deletion
+       * Success
+       * @description Whether the control was deleted
        */
-      detached_target_bindings?: number[];
+      success: boolean;
       /**
        * Dissociated From
        * @description Deprecated: policy IDs the control was removed from before deletion
        */
       dissociated_from?: number[];
       /**
-       * Dissociated From Agents
-       * @description Agent names the control was removed from before deletion
-       */
-      dissociated_from_agents?: string[];
-      /**
        * Dissociated From Policies
        * @description Policy IDs the control was removed from before deletion
        */
       dissociated_from_policies?: number[];
       /**
-       * Success
-       * @description Whether the control was deleted
+       * Dissociated From Agents
+       * @description Agent names the control was removed from before deletion
        */
-      success: boolean;
+      dissociated_from_agents?: string[];
+      /**
+       * Detached Target Bindings
+       * @description Control binding IDs that were removed before deletion
+       */
+      detached_target_bindings?: number[];
     };
     /**
      * DeletePolicyResponse
@@ -2750,6 +2795,32 @@ export interface components {
      */
     EnumTemplateParameter: {
       /**
+       * Label
+       * @description Human-readable parameter label
+       */
+      label: string;
+      /**
+       * Description
+       * @description Optional description of what the parameter controls
+       */
+      description?: string | null;
+      /**
+       * Required
+       * @description Whether the caller must provide a value when no default exists
+       * @default true
+       */
+      required: boolean;
+      /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: 'enum';
+      /**
        * Allowed Values
        * @description Allowed string values for the parameter
        */
@@ -2759,32 +2830,6 @@ export interface components {
        * @description Optional default value
        */
       default?: string | null;
-      /**
-       * Description
-       * @description Optional description of what the parameter controls
-       */
-      description?: string | null;
-      /**
-       * Label
-       * @description Human-readable parameter label
-       */
-      label: string;
-      /**
-       * Required
-       * @description Whether the caller must provide a value when no default exists
-       * @default true
-       */
-      required: boolean;
-      /**
-       * @description discriminator enum property added by openapi-typescript
-       * @enum {string}
-       */
-      type: 'enum';
-      /**
-       * Ui Hint
-       * @description Optional UI hint for rendering the parameter input
-       */
-      ui_hint?: string | null;
     };
     /**
      * EvaluationRequest
@@ -2868,24 +2913,24 @@ export interface components {
        * @description Identifier of the agent making the evaluation request
        */
       agent_name: string;
+      /** @description Agent step payload to evaluate */
+      step: components['schemas']['Step'];
       /**
        * Stage
        * @description Evaluation stage: 'pre' or 'post'
        * @enum {string}
        */
       stage: 'pre' | 'post';
-      /** @description Agent step payload to evaluate */
-      step: components['schemas']['Step'];
-      /**
-       * Target Id
-       * @description Optional opaque target identifier. Required when target_type is set.
-       */
-      target_id?: string | null;
       /**
        * Target Type
        * @description Optional opaque target kind. When set together with target_id, the server merges controls bound to that target into the effective set, in addition to the agent's direct and policy-derived controls.
        */
       target_type?: string | null;
+      /**
+       * Target Id
+       * @description Optional opaque target identifier. Required when target_type is set.
+       */
+      target_id?: string | null;
     };
     /**
      * EvaluationResponse
@@ -2904,35 +2949,35 @@ export interface components {
      */
     EvaluationResponse: {
       /**
+       * Is Safe
+       * @description Whether content is safe
+       */
+      is_safe: boolean;
+      /**
        * Confidence
        * @description Confidence score (0.0 to 1.0)
        */
       confidence: number;
       /**
-       * Errors
-       * @description List of controls that failed during evaluation (if any)
+       * Reason
+       * @description Explanation for the decision
        */
-      errors?: components['schemas']['ControlMatch'][] | null;
-      /**
-       * Is Safe
-       * @description Whether content is safe
-       */
-      is_safe: boolean;
+      reason?: string | null;
       /**
        * Matches
        * @description List of controls that matched/triggered (if any)
        */
       matches?: components['schemas']['ControlMatch'][] | null;
       /**
+       * Errors
+       * @description List of controls that failed during evaluation (if any)
+       */
+      errors?: components['schemas']['ControlMatch'][] | null;
+      /**
        * Non Matches
        * @description List of controls that were evaluated but did not match (if any)
        */
       non_matches?: components['schemas']['ControlMatch'][] | null;
-      /**
-       * Reason
-       * @description Explanation for the decision
-       */
-      reason?: string | null;
     };
     /**
      * EvaluatorInfo
@@ -2940,22 +2985,20 @@ export interface components {
      */
     EvaluatorInfo: {
       /**
-       * Config Schema
-       * @description JSON Schema for config
+       * Name
+       * @description Evaluator name
        */
-      config_schema: {
-        [key: string]: unknown;
-      };
+      name: string;
+      /**
+       * Version
+       * @description Evaluator version
+       */
+      version: string;
       /**
        * Description
        * @description Evaluator description
        */
       description: string;
-      /**
-       * Name
-       * @description Evaluator name
-       */
-      name: string;
       /**
        * Requires Api Key
        * @description Whether evaluator requires API key
@@ -2967,10 +3010,12 @@ export interface components {
        */
       timeout_ms: number;
       /**
-       * Version
-       * @description Evaluator version
+       * Config Schema
+       * @description JSON Schema for config
        */
-      version: string;
+      config_schema: {
+        [key: string]: unknown;
+      };
     };
     /**
      * EvaluatorResult
@@ -2989,20 +3034,15 @@ export interface components {
      */
     EvaluatorResult: {
       /**
-       * Confidence
-       * @description Confidence in the evaluation
-       */
-      confidence: number;
-      /**
-       * Error
-       * @description Error message if evaluation failed internally. When set, matched=False is due to error, not actual evaluation.
-       */
-      error?: string | null;
-      /**
        * Matched
        * @description Whether the pattern matched
        */
       matched: boolean;
+      /**
+       * Confidence
+       * @description Confidence in the evaluation
+       */
+      confidence: number;
       /**
        * Message
        * @description Explanation of the result
@@ -3015,6 +3055,11 @@ export interface components {
       metadata?: {
         [key: string]: unknown;
       } | null;
+      /**
+       * Error
+       * @description Error message if evaluation failed internally. When set, matched=False is due to error, not actual evaluation.
+       */
+      error?: string | null;
     };
     /**
      * EvaluatorSchema
@@ -3024,6 +3069,11 @@ export interface components {
      *     This schema is registered via initAgent for validation and UI purposes.
      */
     EvaluatorSchema: {
+      /**
+       * Name
+       * @description Unique evaluator name
+       */
+      name: string;
       /**
        * Config Schema
        * @description JSON Schema for evaluator config validation
@@ -3036,25 +3086,20 @@ export interface components {
        * @description Optional description
        */
       description?: string | null;
-      /**
-       * Name
-       * @description Unique evaluator name
-       */
-      name: string;
     };
     /**
      * EvaluatorSchemaItem
      * @description Evaluator schema summary for list response.
      */
     EvaluatorSchemaItem: {
+      /** Name */
+      name: string;
+      /** Description */
+      description: string | null;
       /** Config Schema */
       config_schema: {
         [key: string]: unknown;
       };
-      /** Description */
-      description: string | null;
-      /** Name */
-      name: string;
     };
     /**
      * EvaluatorSpec
@@ -3066,6 +3111,14 @@ export interface components {
      *     - Agent-scoped: "my-agent:my-evaluator" (validated in endpoint, not here)
      */
     EvaluatorSpec: {
+      /**
+       * Name
+       * @description Evaluator name or agent-scoped reference (agent:evaluator)
+       * @example regex
+       * @example list
+       * @example my-agent:pii-detector
+       */
+      name: string;
       /**
        * Config
        * @description Evaluator-specific configuration
@@ -3082,14 +3135,6 @@ export interface components {
       config: {
         [key: string]: unknown;
       };
-      /**
-       * Name
-       * @description Evaluator name or agent-scoped reference (agent:evaluator)
-       * @example regex
-       * @example list
-       * @example my-agent:pii-detector
-       */
-      name: string;
     };
     /**
      * EventQueryRequest
@@ -3126,35 +3171,55 @@ export interface components {
      */
     EventQueryRequest: {
       /**
-       * Actions
-       * @description Filter by actions
+       * Trace Id
+       * @description Filter by trace ID (all events for a request)
        */
-      actions?: components['schemas']['ActionDecision'][] | null;
+      trace_id?: string | null;
       /**
-       * Agent Name
-       * @description Filter by agent identifier
+       * Span Id
+       * @description Filter by span ID (all events for a function)
        */
-      agent_name?: string | null;
-      /**
-       * Applies To
-       * @description Filter by call types
-       */
-      applies_to?: ('llm_call' | 'tool_call')[] | null;
-      /**
-       * Check Stages
-       * @description Filter by check stages
-       */
-      check_stages?: ('pre' | 'post')[] | null;
+      span_id?: string | null;
       /**
        * Control Execution Id
        * @description Filter by specific event ID
        */
       control_execution_id?: string | null;
       /**
+       * Agent Name
+       * @description Filter by agent identifier
+       */
+      agent_name?: string | null;
+      /**
        * Control Ids
        * @description Filter by control IDs
        */
       control_ids?: number[] | null;
+      /**
+       * Actions
+       * @description Filter by actions
+       */
+      actions?: components['schemas']['ActionDecision'][] | null;
+      /**
+       * Matched
+       * @description Filter by matched status
+       */
+      matched?: boolean | null;
+      /**
+       * Check Stages
+       * @description Filter by check stages
+       */
+      check_stages?: ('pre' | 'post')[] | null;
+      /**
+       * Applies To
+       * @description Filter by call types
+       */
+      applies_to?: ('llm_call' | 'tool_call')[] | null;
+      /**
+       * Start Time
+       * @description Filter events after this time
+       */
+      start_time?: string | null;
       /**
        * End Time
        * @description Filter events before this time
@@ -3167,31 +3232,11 @@ export interface components {
        */
       limit: number;
       /**
-       * Matched
-       * @description Filter by matched status
-       */
-      matched?: boolean | null;
-      /**
        * Offset
        * @description Pagination offset
        * @default 0
        */
       offset: number;
-      /**
-       * Span Id
-       * @description Filter by span ID (all events for a function)
-       */
-      span_id?: string | null;
-      /**
-       * Start Time
-       * @description Filter events after this time
-       */
-      start_time?: string | null;
-      /**
-       * Trace Id
-       * @description Filter by trace ID (all events for a request)
-       */
-      trace_id?: string | null;
     };
     /**
      * EventQueryResponse
@@ -3210,6 +3255,11 @@ export interface components {
        */
       events: components['schemas']['ControlExecutionEvent'][];
       /**
+       * Total
+       * @description Total matching events
+       */
+      total: number;
+      /**
        * Limit
        * @description Limit used in query
        */
@@ -3219,11 +3269,6 @@ export interface components {
        * @description Offset used in query
        */
       offset: number;
-      /**
-       * Total
-       * @description Total matching events
-       */
-      total: number;
     };
     /** GetAgentPoliciesResponse */
     GetAgentPoliciesResponse: {
@@ -3241,38 +3286,38 @@ export interface components {
       /** @description Agent metadata */
       agent: components['schemas']['Agent'];
       /**
-       * Evaluators
-       * @description Custom evaluators registered with this agent
-       */
-      evaluators?: components['schemas']['EvaluatorSchema'][];
-      /**
        * Steps
        * @description Steps registered with this agent
        */
       steps: components['schemas']['StepSchema'][];
+      /**
+       * Evaluators
+       * @description Custom evaluators registered with this agent
+       */
+      evaluators?: components['schemas']['EvaluatorSchema'][];
     };
     /**
      * GetControlBindingResponse
      * @description Detail view of a single control binding.
      */
     GetControlBindingResponse: {
+      /** Id */
+      id: number;
+      /** Namespace Key */
+      namespace_key: string;
+      /** Target Type */
+      target_type: string;
+      /** Target Id */
+      target_id: string;
       /** Control Id */
       control_id: number;
+      /** Enabled */
+      enabled: boolean;
       /**
        * Created At
        * Format: date-time
        */
       created_at: string;
-      /** Enabled */
-      enabled: boolean;
-      /** Id */
-      id: number;
-      /** Namespace Key */
-      namespace_key: string;
-      /** Target Id */
-      target_id: string;
-      /** Target Type */
-      target_type: string;
       /**
        * Updated At
        * Format: date-time
@@ -3295,6 +3340,16 @@ export interface components {
      */
     GetControlResponse: {
       /**
+       * Id
+       * @description Control ID
+       */
+      id: number;
+      /**
+       * Name
+       * @description Control name
+       */
+      name: string;
+      /**
        * Cloned From Control Id
        * @description Source control ID when this control is a clone.
        */
@@ -3306,16 +3361,6 @@ export interface components {
       data:
         | components['schemas']['ControlDefinition-Output']
         | components['schemas']['UnrenderedTemplateControl'];
-      /**
-       * Id
-       * @description Control ID
-       */
-      id: number;
-      /**
-       * Name
-       * @description Control name
-       */
-      name: string;
     };
     /** GetControlSchemaResponse */
     GetControlSchemaResponse: {
@@ -3333,10 +3378,10 @@ export interface components {
      */
     GetControlVersionResponse: {
       /**
-       * Created At
-       * @description ISO 8601 timestamp when this version was created
+       * Version Num
+       * @description Monotonic version number for the control
        */
-      created_at: string;
+      version_num: number;
       /**
        * Event Type
        * @description Machine-readable event type for this version
@@ -3348,17 +3393,17 @@ export interface components {
        */
       note?: string | null;
       /**
+       * Created At
+       * @description ISO 8601 timestamp when this version was created
+       */
+      created_at: string;
+      /**
        * Snapshot
        * @description Raw persisted snapshot of the control state at this version, including metadata such as name, deleted_at, and cloned_from_control_id.
        */
       snapshot: {
         [key: string]: unknown;
       };
-      /**
-       * Version Num
-       * @description Monotonic version number for the control
-       */
-      version_num: number;
     };
     /**
      * GetPolicyControlsResponse
@@ -3407,16 +3452,6 @@ export interface components {
      */
     InitAgentEvaluatorRemoval: {
       /**
-       * Control Ids
-       * @description IDs of active controls referencing this evaluator
-       */
-      control_ids?: number[];
-      /**
-       * Control Names
-       * @description Names of active controls referencing this evaluator
-       */
-      control_names?: string[];
-      /**
        * Name
        * @description Evaluator name removed by overwrite
        */
@@ -3427,32 +3462,22 @@ export interface components {
        * @default false
        */
       referenced_by_active_controls: boolean;
+      /**
+       * Control Ids
+       * @description IDs of active controls referencing this evaluator
+       */
+      control_ids?: number[];
+      /**
+       * Control Names
+       * @description Names of active controls referencing this evaluator
+       */
+      control_names?: string[];
     };
     /**
      * InitAgentOverwriteChanges
      * @description Detailed change summary for initAgent overwrite mode.
      */
     InitAgentOverwriteChanges: {
-      /**
-       * Evaluator Removals
-       * @description Per-evaluator removal details, including active control references
-       */
-      evaluator_removals?: components['schemas']['InitAgentEvaluatorRemoval'][];
-      /**
-       * Evaluators Added
-       * @description Evaluator names added by overwrite
-       */
-      evaluators_added?: string[];
-      /**
-       * Evaluators Removed
-       * @description Evaluator names removed by overwrite
-       */
-      evaluators_removed?: string[];
-      /**
-       * Evaluators Updated
-       * @description Existing evaluator names updated by overwrite
-       */
-      evaluators_updated?: string[];
       /**
        * Metadata Changed
        * @description Whether agent metadata changed
@@ -3465,15 +3490,35 @@ export interface components {
        */
       steps_added?: components['schemas']['StepKey'][];
       /**
+       * Steps Updated
+       * @description Existing steps updated by overwrite
+       */
+      steps_updated?: components['schemas']['StepKey'][];
+      /**
        * Steps Removed
        * @description Steps removed by overwrite
        */
       steps_removed?: components['schemas']['StepKey'][];
       /**
-       * Steps Updated
-       * @description Existing steps updated by overwrite
+       * Evaluators Added
+       * @description Evaluator names added by overwrite
        */
-      steps_updated?: components['schemas']['StepKey'][];
+      evaluators_added?: string[];
+      /**
+       * Evaluators Updated
+       * @description Existing evaluator names updated by overwrite
+       */
+      evaluators_updated?: string[];
+      /**
+       * Evaluators Removed
+       * @description Evaluator names removed by overwrite
+       */
+      evaluators_removed?: string[];
+      /**
+       * Evaluator Removals
+       * @description Per-evaluator removal details, including active control references
+       */
+      evaluator_removals?: components['schemas']['InitAgentEvaluatorRemoval'][];
     };
     /**
      * InitAgentRequest
@@ -3520,10 +3565,10 @@ export interface components {
       /** @description Agent metadata including ID, name, and version */
       agent: components['schemas']['Agent'];
       /**
-       * @description Conflict handling mode for init registration updates. 'strict' preserves existing compatibility checks. 'overwrite' applies latest-init-wins replacement for steps and evaluators.
-       * @default strict
+       * Steps
+       * @description List of steps available to the agent
        */
-      conflict_mode: components['schemas']['ConflictMode'];
+      steps?: components['schemas']['StepSchema'][];
       /**
        * Evaluators
        * @description Custom evaluator schemas for config validation
@@ -3536,20 +3581,20 @@ export interface components {
        */
       force_replace: boolean;
       /**
-       * Steps
-       * @description List of steps available to the agent
+       * @description Conflict handling mode for init registration updates. 'strict' preserves existing compatibility checks. 'overwrite' applies latest-init-wins replacement for steps and evaluators.
+       * @default strict
        */
-      steps?: components['schemas']['StepSchema'][];
-      /**
-       * Target Id
-       * @description Optional opaque target identifier. Required when target_type is supplied.
-       */
-      target_id?: string | null;
+      conflict_mode: components['schemas']['ConflictMode'];
       /**
        * Target Type
        * @description Optional opaque target kind. When supplied with target_id, the returned controls include controls bound to that target via control bindings, in addition to the agent's direct and policy-derived controls.
        */
       target_type?: string | null;
+      /**
+       * Target Id
+       * @description Optional opaque target identifier. Required when target_type is supplied.
+       */
+      target_id?: string | null;
     };
     /**
      * InitAgentResponse
@@ -3557,15 +3602,15 @@ export interface components {
      */
     InitAgentResponse: {
       /**
-       * Controls
-       * @description Active protection controls for the agent
-       */
-      controls?: components['schemas']['Control'][];
-      /**
        * Created
        * @description True if agent was newly created, False if updated
        */
       created: boolean;
+      /**
+       * Controls
+       * @description Active protection controls for the agent
+       */
+      controls?: components['schemas']['Control'][];
       /**
        * Overwrite Applied
        * @description True if overwrite mode changed registration data on an existing agent
@@ -3614,13 +3659,13 @@ export interface components {
      * @description Response for listing control versions.
      */
     ListControlVersionsResponse: {
-      /** @description Pagination metadata */
-      pagination: components['schemas']['PaginationInfo'];
       /**
        * Versions
        * @description Control versions ordered newest-first
        */
       versions: components['schemas']['ControlVersionSummary'][];
+      /** @description Pagination metadata */
+      pagination: components['schemas']['PaginationInfo'];
     };
     /**
      * ListControlsResponse
@@ -3668,25 +3713,25 @@ export interface components {
      */
     PaginationInfo: {
       /**
-       * Has More
-       * @description Whether there are more pages available
-       */
-      has_more: boolean;
-      /**
        * Limit
        * @description Number of items per page
        */
       limit: number;
+      /**
+       * Total
+       * @description Total number of items
+       */
+      total: number;
       /**
        * Next Cursor
        * @description Cursor for fetching the next page (null if no more pages)
        */
       next_cursor?: string | null;
       /**
-       * Total
-       * @description Total number of items
+       * Has More
+       * @description Whether there are more pages available
        */
-      total: number;
+      has_more: boolean;
     };
     /**
      * PatchAgentRequest
@@ -3694,15 +3739,15 @@ export interface components {
      */
     PatchAgentRequest: {
       /**
-       * Remove Evaluators
-       * @description Evaluator names to remove from the agent
-       */
-      remove_evaluators?: string[];
-      /**
        * Remove Steps
        * @description Step identifiers to remove from the agent
        */
       remove_steps?: components['schemas']['StepKey'][];
+      /**
+       * Remove Evaluators
+       * @description Evaluator names to remove from the agent
+       */
+      remove_evaluators?: string[];
     };
     /**
      * PatchAgentResponse
@@ -3710,21 +3755,31 @@ export interface components {
      */
     PatchAgentResponse: {
       /**
-       * Evaluators Removed
-       * @description Evaluator names that were removed
-       */
-      evaluators_removed?: string[];
-      /**
        * Steps Removed
        * @description Step identifiers that were removed
        */
       steps_removed?: components['schemas']['StepKey'][];
+      /**
+       * Evaluators Removed
+       * @description Evaluator names that were removed
+       */
+      evaluators_removed?: string[];
     };
     /**
      * PatchControlBindingByKeyRequest
      * @description Request to update an existing control binding by natural key.
      */
     PatchControlBindingByKeyRequest: {
+      /**
+       * Target Type
+       * @description Opaque attachment kind.
+       */
+      target_type: string;
+      /**
+       * Target Id
+       * @description Opaque external identifier within the target_type.
+       */
+      target_id: string;
       /**
        * Control Id
        * @description ID of the bound control.
@@ -3735,16 +3790,6 @@ export interface components {
        * @description New enabled value for the binding.
        */
       enabled: boolean;
-      /**
-       * Target Id
-       * @description Opaque external identifier within the target_type.
-       */
-      target_id: string;
-      /**
-       * Target Type
-       * @description Opaque attachment kind.
-       */
-      target_type: string;
     };
     /**
      * PatchControlBindingRequest
@@ -3763,15 +3808,15 @@ export interface components {
      */
     PatchControlBindingResponse: {
       /**
-       * Enabled
-       * @description Current enabled value.
-       */
-      enabled: boolean;
-      /**
        * Success
        * @description Whether the update succeeded.
        */
       success: boolean;
+      /**
+       * Enabled
+       * @description Current enabled value.
+       */
+      enabled: boolean;
     };
     /**
      * PatchControlRequest
@@ -3779,15 +3824,15 @@ export interface components {
      */
     PatchControlRequest: {
       /**
-       * Enabled
-       * @description Enable or disable the control
-       */
-      enabled?: boolean | null;
-      /**
        * Name
        * @description New control name (letters, numbers, hyphens, underscores)
        */
       name?: string | null;
+      /**
+       * Enabled
+       * @description Enable or disable the control
+       */
+      enabled?: boolean | null;
     };
     /**
      * PatchControlResponse
@@ -3795,20 +3840,20 @@ export interface components {
      */
     PatchControlResponse: {
       /**
-       * Enabled
-       * @description Current enabled status (if control has data configured)
+       * Success
+       * @description Whether the update succeeded
        */
-      enabled?: boolean | null;
+      success: boolean;
       /**
        * Name
        * @description Current control name (may have changed)
        */
       name: string;
       /**
-       * Success
-       * @description Whether the update succeeded
+       * Enabled
+       * @description Current enabled status (if control has data configured)
        */
-      success: boolean;
+      enabled?: boolean | null;
     };
     /**
      * PolicyRef
@@ -3827,25 +3872,15 @@ export interface components {
      */
     RegexTemplateParameter: {
       /**
-       * Default
-       * @description Optional default regex pattern
-       */
-      default?: string | null;
-      /**
-       * Description
-       * @description Optional description of what the parameter controls
-       */
-      description?: string | null;
-      /**
        * Label
        * @description Human-readable parameter label
        */
       label: string;
       /**
-       * Placeholder
-       * @description Optional placeholder regex
+       * Description
+       * @description Optional description of what the parameter controls
        */
-      placeholder?: string | null;
+      description?: string | null;
       /**
        * Required
        * @description Whether the caller must provide a value when no default exists
@@ -3853,15 +3888,25 @@ export interface components {
        */
       required: boolean;
       /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+      /**
        * @description discriminator enum property added by openapi-typescript
        * @enum {string}
        */
       type: 'regex_re2';
       /**
-       * Ui Hint
-       * @description Optional UI hint for rendering the parameter input
+       * Default
+       * @description Optional default regex pattern
        */
-      ui_hint?: string | null;
+      default?: string | null;
+      /**
+       * Placeholder
+       * @description Optional placeholder regex
+       */
+      placeholder?: string | null;
     };
     /**
      * RemoveAgentControlResponse
@@ -3869,20 +3914,20 @@ export interface components {
      */
     RemoveAgentControlResponse: {
       /**
-       * Control Still Active
-       * @description True if the control remains active via policy association(s)
+       * Success
+       * @description Whether the request succeeded
        */
-      control_still_active: boolean;
+      success: boolean;
       /**
        * Removed Direct Association
        * @description True if a direct agent-control link was removed
        */
       removed_direct_association: boolean;
       /**
-       * Success
-       * @description Whether the request succeeded
+       * Control Still Active
+       * @description True if the control remains active via policy association(s)
        */
-      success: boolean;
+      control_still_active: boolean;
     };
     /**
      * RenderControlTemplateRequest
@@ -3907,8 +3952,8 @@ export interface components {
       /** @description Rendered control definition including template metadata */
       control: components['schemas']['ControlDefinition-Output'];
     };
-    /** ReplaceAPIKeyGrantsRequest */
-    ReplaceAPIKeyGrantsRequest: {
+    /** ReplaceAccessUserGrantsRequest */
+    ReplaceAccessUserGrantsRequest: {
       /** Control Ids */
       control_ids?: number[];
     };
@@ -3918,15 +3963,15 @@ export interface components {
      */
     RuntimeTokenExchangeRequest: {
       /**
-       * Target Id
-       * @description Opaque target identifier.
-       */
-      target_id: string;
-      /**
        * Target Type
        * @description Opaque target kind (e.g., ``session``).
        */
       target_type: string;
+      /**
+       * Target Id
+       * @description Opaque target identifier.
+       */
+      target_id: string;
     };
     /**
      * RuntimeTokenExchangeResponse
@@ -3934,31 +3979,31 @@ export interface components {
      */
     RuntimeTokenExchangeResponse: {
       /**
+       * Token
+       * @description Short-lived runtime token (HS256 JWT).
+       */
+      token: string;
+      /**
        * Expires At
        * Format: date-time
        * @description UTC timestamp at which the token expires.
        */
       expires_at: string;
       /**
-       * Scopes
-       * @description Granted runtime scopes; always includes ``runtime.use``.
+       * Target Type
+       * @description Target the token is bound to.
        */
-      scopes: string[];
+      target_type: string;
       /**
        * Target Id
        * @description Target the token is bound to.
        */
       target_id: string;
       /**
-       * Target Type
-       * @description Target the token is bound to.
+       * Scopes
+       * @description Granted runtime scopes; always includes ``runtime.use``.
        */
-      target_type: string;
-      /**
-       * Token
-       * @description Short-lived runtime token (HS256 JWT).
-       */
-      token: string;
+      scopes: string[];
     };
     /**
      * SetControlDataRequest
@@ -3987,15 +4032,15 @@ export interface components {
      */
     SetPolicyResponse: {
       /**
-       * Old Policy Id
-       * @description Previously associated policy ID, if any
-       */
-      old_policy_id?: number | null;
-      /**
        * Success
        * @description Whether the request succeeded
        */
       success: boolean;
+      /**
+       * Old Policy Id
+       * @description Previously associated policy ID, if any
+       */
+      old_policy_id?: number | null;
     };
     /**
      * StatsResponse
@@ -4016,17 +4061,17 @@ export interface components {
        */
       agent_name: string;
       /**
-       * Controls
-       * @description Per-control breakdown
-       */
-      controls: components['schemas']['ControlStats'][];
-      /**
        * Time Range
        * @description Time range used
        */
       time_range: string;
       /** @description Agent-level aggregate statistics */
       totals: components['schemas']['StatsTotals'];
+      /**
+       * Controls
+       * @description Per-control breakdown
+       */
+      controls: components['schemas']['ControlStats'][];
     };
     /**
      * StatsTotals
@@ -4047,19 +4092,6 @@ export interface components {
      */
     StatsTotals: {
       /**
-       * Action Counts
-       * @description Action breakdown for matches: {deny, steer, observe}
-       */
-      action_counts?: {
-        [key: string]: number;
-      };
-      /**
-       * Error Count
-       * @description Total errors
-       * @default 0
-       */
-      error_count: number;
-      /**
        * Execution Count
        * @description Total executions
        */
@@ -4076,6 +4108,19 @@ export interface components {
        * @default 0
        */
       non_match_count: number;
+      /**
+       * Error Count
+       * @description Total errors
+       * @default 0
+       */
+      error_count: number;
+      /**
+       * Action Counts
+       * @description Action breakdown for matches: {deny, steer, observe}
+       */
+      action_counts?: {
+        [key: string]: number;
+      };
       /**
        * Timeseries
        * @description Time-series data points (only when include_timeseries=true)
@@ -4107,22 +4152,22 @@ export interface components {
      * @description Runtime payload for an agent step invocation.
      */
     Step: {
-      /** @description Optional context (conversation history, metadata, etc.) */
-      context?: components['schemas']['JSONObject'] | null;
-      /** @description Input content for this step */
-      input: components['schemas']['JSONValue-Input'];
-      /**
-       * Name
-       * @description Step name (tool name or model/chain id)
-       */
-      name: string;
-      /** @description Output content for this step (None for pre-checks) */
-      output?: components['schemas']['JSONValue-Input'] | null;
       /**
        * Type
        * @description Step type (e.g., 'tool', 'llm')
        */
       type: string;
+      /**
+       * Name
+       * @description Step name (tool name or model/chain id)
+       */
+      name: string;
+      /** @description Input content for this step */
+      input: components['schemas']['JSONValue-Input'];
+      /** @description Output content for this step (None for pre-checks) */
+      output?: components['schemas']['JSONValue-Input'] | null;
+      /** @description Optional context (conversation history, metadata, etc.) */
+      context?: components['schemas']['JSONObject'] | null;
     };
     /**
      * StepKey
@@ -4130,15 +4175,15 @@ export interface components {
      */
     StepKey: {
       /**
-       * Name
-       * @description Registered step name
-       */
-      name: string;
-      /**
        * Type
        * @description Step type
        */
       type: string;
+      /**
+       * Name
+       * @description Registered step name
+       */
+      name: string;
     };
     /**
      * StepSchema
@@ -4183,6 +4228,16 @@ export interface components {
      */
     StepSchema: {
       /**
+       * Type
+       * @description Step type for this schema (e.g., 'tool', 'llm')
+       */
+      type: string;
+      /**
+       * Name
+       * @description Unique name for the step
+       */
+      name: string;
+      /**
        * Description
        * @description Optional description of the step
        */
@@ -4195,18 +4250,6 @@ export interface components {
         [key: string]: unknown;
       } | null;
       /**
-       * Metadata
-       * @description Additional metadata for the step
-       */
-      metadata?: {
-        [key: string]: unknown;
-      } | null;
-      /**
-       * Name
-       * @description Unique name for the step
-       */
-      name: string;
-      /**
        * Output Schema
        * @description JSON schema describing step output
        */
@@ -4214,10 +4257,12 @@ export interface components {
         [key: string]: unknown;
       } | null;
       /**
-       * Type
-       * @description Step type for this schema (e.g., 'tool', 'llm')
+       * Metadata
+       * @description Additional metadata for the step
        */
-      type: string;
+      metadata?: {
+        [key: string]: unknown;
+      } | null;
     };
     /**
      * StringListTemplateParameter
@@ -4225,25 +4270,15 @@ export interface components {
      */
     StringListTemplateParameter: {
       /**
-       * Default
-       * @description Optional default value
-       */
-      default?: string[] | null;
-      /**
-       * Description
-       * @description Optional description of what the parameter controls
-       */
-      description?: string | null;
-      /**
        * Label
        * @description Human-readable parameter label
        */
       label: string;
       /**
-       * Placeholder
-       * @description Optional placeholder/example list
+       * Description
+       * @description Optional description of what the parameter controls
        */
-      placeholder?: string[] | null;
+      description?: string | null;
       /**
        * Required
        * @description Whether the caller must provide a value when no default exists
@@ -4251,15 +4286,25 @@ export interface components {
        */
       required: boolean;
       /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+      /**
        * @description discriminator enum property added by openapi-typescript
        * @enum {string}
        */
       type: 'string_list';
       /**
-       * Ui Hint
-       * @description Optional UI hint for rendering the parameter input
+       * Default
+       * @description Optional default value
        */
-      ui_hint?: string | null;
+      default?: string[] | null;
+      /**
+       * Placeholder
+       * @description Optional placeholder/example list
+       */
+      placeholder?: string[] | null;
     };
     /**
      * StringTemplateParameter
@@ -4267,25 +4312,15 @@ export interface components {
      */
     StringTemplateParameter: {
       /**
-       * Default
-       * @description Optional default value
-       */
-      default?: string | null;
-      /**
-       * Description
-       * @description Optional description of what the parameter controls
-       */
-      description?: string | null;
-      /**
        * Label
        * @description Human-readable parameter label
        */
       label: string;
       /**
-       * Placeholder
-       * @description Optional placeholder text
+       * Description
+       * @description Optional description of what the parameter controls
        */
-      placeholder?: string | null;
+      description?: string | null;
       /**
        * Required
        * @description Whether the caller must provide a value when no default exists
@@ -4293,15 +4328,25 @@ export interface components {
        */
       required: boolean;
       /**
+       * Ui Hint
+       * @description Optional UI hint for rendering the parameter input
+       */
+      ui_hint?: string | null;
+      /**
        * @description discriminator enum property added by openapi-typescript
        * @enum {string}
        */
       type: 'string';
       /**
-       * Ui Hint
-       * @description Optional UI hint for rendering the parameter input
+       * Default
+       * @description Optional default value
        */
-      ui_hint?: string | null;
+      default?: string | null;
+      /**
+       * Placeholder
+       * @description Optional placeholder text
+       */
+      placeholder?: string | null;
     };
     /**
      * TargetAttachmentRef
@@ -4314,20 +4359,20 @@ export interface components {
        */
       binding_id: number;
       /**
-       * Enabled
-       * @description Whether this target binding is enabled
+       * Target Type
+       * @description Opaque target kind
        */
-      enabled: boolean;
+      target_type: string;
       /**
        * Target Id
        * @description Opaque target identifier
        */
       target_id: string;
       /**
-       * Target Type
-       * @description Opaque target kind
+       * Enabled
+       * @description Whether this target binding is enabled
        */
-      target_type: string;
+      enabled: boolean;
     };
     /**
      * TemplateControlInput
@@ -4349,8 +4394,6 @@ export interface components {
      * @description Reusable template with typed parameters and a JSON definition template.
      */
     'TemplateDefinition-Input': {
-      /** @description Template payload containing $param binding objects */
-      definition_template: components['schemas']['JsonValue-Input'];
       /**
        * Description
        * @description Metadata describing the template itself
@@ -4363,14 +4406,14 @@ export interface components {
       parameters?: {
         [key: string]: components['schemas']['TemplateParameterDefinition'];
       };
+      /** @description Template payload containing $param binding objects */
+      definition_template: components['schemas']['JsonValue-Input'];
     };
     /**
      * TemplateDefinition
      * @description Reusable template with typed parameters and a JSON definition template.
      */
     'TemplateDefinition-Output': {
-      /** @description Template payload containing $param binding objects */
-      definition_template: components['schemas']['JsonValue-Output'];
       /**
        * Description
        * @description Metadata describing the template itself
@@ -4383,6 +4426,8 @@ export interface components {
       parameters?: {
         [key: string]: components['schemas']['TemplateParameterDefinition'];
       };
+      /** @description Template payload containing $param binding objects */
+      definition_template: components['schemas']['JsonValue-Output'];
     };
     TemplateParameterDefinition:
       | components['schemas']['StringTemplateParameter']
@@ -4409,27 +4454,11 @@ export interface components {
      */
     TimeseriesBucket: {
       /**
-       * Action Counts
-       * @description Action breakdown: {deny, steer, observe}
+       * Timestamp
+       * Format: date-time
+       * @description Start time of the bucket (UTC)
        */
-      action_counts?: {
-        [key: string]: number;
-      };
-      /**
-       * Avg Confidence
-       * @description Average confidence score
-       */
-      avg_confidence?: number | null;
-      /**
-       * Avg Duration Ms
-       * @description Average duration (ms)
-       */
-      avg_duration_ms?: number | null;
-      /**
-       * Error Count
-       * @description Errors in bucket
-       */
-      error_count: number;
+      timestamp: string;
       /**
        * Execution Count
        * @description Total executions in bucket
@@ -4446,11 +4475,27 @@ export interface components {
        */
       non_match_count: number;
       /**
-       * Timestamp
-       * Format: date-time
-       * @description Start time of the bucket (UTC)
+       * Error Count
+       * @description Errors in bucket
        */
-      timestamp: string;
+      error_count: number;
+      /**
+       * Action Counts
+       * @description Action breakdown: {deny, steer, observe}
+       */
+      action_counts?: {
+        [key: string]: number;
+      };
+      /**
+       * Avg Confidence
+       * @description Average confidence score
+       */
+      avg_confidence?: number | null;
+      /**
+       * Avg Duration Ms
+       * @description Average duration (ms)
+       */
+      avg_duration_ms?: number | null;
     };
     /**
      * UnrenderedTemplateControl
@@ -4461,13 +4506,6 @@ export interface components {
      *     It is always ``enabled=False`` and excluded from evaluation.
      */
     UnrenderedTemplateControl: {
-      /**
-       * Enabled
-       * @description Unrendered templates are always disabled
-       * @default false
-       * @constant
-       */
-      enabled: false;
       /** @description Template definition awaiting parameter values */
       template: components['schemas']['TemplateDefinition-Output'];
       /**
@@ -4477,15 +4515,22 @@ export interface components {
       template_values?: {
         [key: string]: components['schemas']['TemplateValue'];
       };
+      /**
+       * Enabled
+       * @description Unrendered templates are always disabled
+       * @default false
+       * @constant
+       */
+      enabled: false;
     };
     /** UpdateAccessUserRequest */
     UpdateAccessUserRequest: {
-      /** Enabled */
-      enabled?: boolean | null;
       /** Name */
       name?: string | null;
       /** Role */
       role?: ('admin' | 'member') | null;
+      /** Enabled */
+      enabled?: boolean | null;
     };
     /**
      * UpsertControlBindingRequest
@@ -4497,6 +4542,16 @@ export interface components {
      */
     UpsertControlBindingRequest: {
       /**
+       * Target Type
+       * @description Opaque attachment kind.
+       */
+      target_type: string;
+      /**
+       * Target Id
+       * @description Opaque external identifier within the target_type.
+       */
+      target_id: string;
+      /**
        * Control Id
        * @description ID of the control to attach.
        */
@@ -4507,16 +4562,6 @@ export interface components {
        * @default true
        */
       enabled: boolean;
-      /**
-       * Target Id
-       * @description Opaque external identifier within the target_type.
-       */
-      target_id: string;
-      /**
-       * Target Type
-       * @description Opaque attachment kind.
-       */
-      target_type: string;
     };
     /**
      * UpsertControlBindingResponse
@@ -4562,16 +4607,16 @@ export interface components {
     };
     /** ValidationError */
     ValidationError: {
-      /** Context */
-      ctx?: Record<string, never>;
-      /** Input */
-      input?: unknown;
       /** Location */
       loc: (string | number)[];
       /** Message */
       msg: string;
       /** Error Type */
       type: string;
+      /** Input */
+      input?: unknown;
+      /** Context */
+      ctx?: Record<string, never>;
     };
   };
   responses: never;
@@ -4582,326 +4627,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  get_config_api_config_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Configuration flags for UI behavior */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ConfigResponse'];
-        };
-      };
-    };
-  };
-  login_api_login_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['LoginRequest'];
-      };
-    };
-    responses: {
-      /** @description Authentication result; sets HttpOnly session cookie on success */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['LoginResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  logout_api_logout_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  revoke_api_key_api_v1_admin_access_api_keys__api_key_id__delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        api_key_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  get_api_key_grants_api_v1_admin_access_api_keys__api_key_id__control_grants_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        api_key_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['APIKeyGrantResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  replace_api_key_grants_api_v1_admin_access_api_keys__api_key_id__control_grants_put: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        api_key_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ReplaceAPIKeyGrantsRequest'];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['APIKeyGrantResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  list_access_users_api_v1_admin_access_users_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AccessUserListResponse'];
-        };
-      };
-    };
-  };
-  create_access_user_api_v1_admin_access_users_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateAccessUserRequest'];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AccessUserResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  update_access_user_api_v1_admin_access_users__user_id__patch: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        user_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateAccessUserRequest'];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AccessUserResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  list_api_keys_api_v1_admin_access_users__user_id__api_keys_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        user_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['APIKeyListResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  create_api_key_api_v1_admin_access_users__user_id__api_keys_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        user_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateAPIKeyRequest'];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['CreateAPIKeyResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
   list_agents_api_v1_agents_get: {
     parameters: {
       query?: {
@@ -5034,53 +4759,13 @@ export interface operations {
       };
     };
   };
-  list_agent_controls_api_v1_agents__agent_name__controls_get: {
-    parameters: {
-      query?: {
-        /** @description Rendered-state filter. Default 'all' returns both rendered controls and unrendered template drafts. */
-        rendered_state?: 'rendered' | 'unrendered' | 'all';
-        /** @description Enabled-state filter. Default 'all' returns both enabled and disabled associated controls. Unrendered template drafts are disabled, so combine with rendered_state='rendered' to exclude them. */
-        enabled_state?: 'enabled' | 'disabled' | 'all';
-        /** @description Optional opaque target kind. When supplied with target_id, the response includes controls bound to that target via enabled bindings, in addition to the agent's direct and policy-derived controls. */
-        target_type?: string | null;
-        /** @description Optional opaque target identifier. Required when target_type is supplied. */
-        target_id?: string | null;
-      };
-      header?: never;
-      path: {
-        agent_name: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description List of associated controls by default, including rendered, unrendered, enabled, and disabled controls */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AgentControlsResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  add_agent_control_api_v1_agents__agent_name__controls__control_id__post: {
+  add_agent_policy_api_v1_agents__agent_name__policies__policy_id__post: {
     parameters: {
       query?: never;
       header?: never;
       path: {
         agent_name: string;
-        control_id: number;
+        policy_id: number;
       };
       cookie?: never;
     };
@@ -5106,13 +4791,13 @@ export interface operations {
       };
     };
   };
-  remove_agent_control_api_v1_agents__agent_name__controls__control_id__delete: {
+  remove_agent_policy_api_v1_agents__agent_name__policies__policy_id__delete: {
     parameters: {
       query?: never;
       header?: never;
       path: {
         agent_name: string;
-        control_id: number;
+        policy_id: number;
       };
       cookie?: never;
     };
@@ -5124,7 +4809,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['RemoveAgentControlResponse'];
+          'application/json': components['schemas']['AssocResponse'];
         };
       };
       /** @description Validation Error */
@@ -5138,59 +4823,25 @@ export interface operations {
       };
     };
   };
-  list_agent_evaluators_api_v1_agents__agent_name__evaluators_get: {
-    parameters: {
-      query?: {
-        cursor?: string | null;
-        limit?: number;
-      };
-      header?: never;
-      path: {
-        agent_name: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Evaluator schemas registered with this agent */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ListEvaluatorsResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get: {
+  set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post: {
     parameters: {
       query?: never;
       header?: never;
       path: {
         agent_name: string;
-        evaluator_name: string;
+        policy_id: number;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Evaluator schema details */
+      /** @description Success status with previous policy ID */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['EvaluatorSchemaItem'];
+          'application/json': components['schemas']['SetPolicyResponse'];
         };
       };
       /** @description Validation Error */
@@ -5241,70 +4892,6 @@ export interface operations {
       header?: never;
       path: {
         agent_name: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AssocResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  add_agent_policy_api_v1_agents__agent_name__policies__policy_id__post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        agent_name: string;
-        policy_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AssocResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  remove_agent_policy_api_v1_agents__agent_name__policies__policy_id__delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        agent_name: string;
-        policy_id: number;
       };
       cookie?: never;
     };
@@ -5392,25 +4979,25 @@ export interface operations {
       };
     };
   };
-  set_agent_policy_api_v1_agents__agent_name__policy__policy_id__post: {
+  add_agent_control_api_v1_agents__agent_name__controls__control_id__post: {
     parameters: {
       query?: never;
       header?: never;
       path: {
         agent_name: string;
-        policy_id: number;
+        control_id: number;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Success status with previous policy ID */
+      /** @description Success confirmation */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['SetPolicyResponse'];
+          'application/json': components['schemas']['AssocResponse'];
         };
       };
       /** @description Validation Error */
@@ -5424,7 +5011,165 @@ export interface operations {
       };
     };
   };
-  runtime_token_exchange_api_v1_auth_runtime_token_exchange_post: {
+  remove_agent_control_api_v1_agents__agent_name__controls__control_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_name: string;
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RemoveAgentControlResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_agent_controls_api_v1_agents__agent_name__controls_get: {
+    parameters: {
+      query?: {
+        /** @description Rendered-state filter. Default 'all' returns both rendered controls and unrendered template drafts. */
+        rendered_state?: 'rendered' | 'unrendered' | 'all';
+        /** @description Enabled-state filter. Default 'all' returns both enabled and disabled associated controls. Unrendered template drafts are disabled, so combine with rendered_state='rendered' to exclude them. */
+        enabled_state?: 'enabled' | 'disabled' | 'all';
+        /** @description Optional opaque target kind. When supplied with target_id, the response includes controls bound to that target via enabled bindings, in addition to the agent's direct and policy-derived controls. */
+        target_type?: string | null;
+        /** @description Optional opaque target identifier. Required when target_type is supplied. */
+        target_id?: string | null;
+      };
+      header?: never;
+      path: {
+        agent_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of associated controls by default, including rendered, unrendered, enabled, and disabled controls */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AgentControlsResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_agent_evaluators_api_v1_agents__agent_name__evaluators_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        agent_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Evaluator schemas registered with this agent */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ListEvaluatorsResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_agent_evaluator_api_v1_agents__agent_name__evaluators__evaluator_name__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_name: string;
+        evaluator_name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Evaluator schema details */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['EvaluatorSchemaItem'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_access_users_api_v1_admin_access_users_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessUserListResponse'];
+        };
+      };
+    };
+  };
+  create_access_user_api_v1_admin_access_users_post: {
     parameters: {
       query?: never;
       header?: never;
@@ -5433,7 +5178,42 @@ export interface operations {
     };
     requestBody: {
       content: {
-        'application/json': components['schemas']['RuntimeTokenExchangeRequest'];
+        'application/json': components['schemas']['CreateAccessUserRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CreateAccessUserResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  update_access_user_api_v1_admin_access_users__user_id__patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateAccessUserRequest'];
       };
     };
     responses: {
@@ -5443,7 +5223,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['RuntimeTokenExchangeResponse'];
+          'application/json': components['schemas']['AccessUserResponse'];
         };
       };
       /** @description Validation Error */
@@ -5457,193 +5237,24 @@ export interface operations {
       };
     };
   };
-  list_control_bindings_api_v1_control_bindings_get: {
-    parameters: {
-      query?: {
-        /** @description Opaque cursor returned as ``next_cursor`` on the previous page. Pass it back unchanged to fetch the next page. */
-        cursor?: string | null;
-        /** @description Maximum bindings to return (default 20, max 100). */
-        limit?: number;
-        target_type?: string | null;
-        target_id?: string | null;
-        control_id?: number | null;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Bindings matching the supplied filters */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ListControlBindingsResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  create_control_binding_api_v1_control_bindings_put: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateControlBindingRequest'];
-      };
-    };
-    responses: {
-      /** @description Created binding ID */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['CreateControlBindingResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  upsert_control_binding_by_key_api_v1_control_bindings_by_key_put: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpsertControlBindingRequest'];
-      };
-    };
-    responses: {
-      /** @description Created or updated binding */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['UpsertControlBindingResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  patch_control_binding_by_key_api_v1_control_bindings_by_key_patch: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['PatchControlBindingByKeyRequest'];
-      };
-    };
-    responses: {
-      /** @description Updated enabled flag */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PatchControlBindingResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  delete_control_binding_by_key_api_v1_control_bindings_by_key_delete_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DeleteControlBindingByKeyRequest'];
-      };
-    };
-    responses: {
-      /** @description Whether a row was deleted */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DeleteControlBindingByKeyResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  get_control_binding_api_v1_control_bindings__binding_id__get: {
+  list_api_keys_api_v1_admin_access_users__user_id__api_keys_get: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        binding_id: number;
+        user_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description The requested binding */
+      /** @description Successful Response */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['GetControlBindingResponse'];
+          'application/json': components['schemas']['APIKeyListResponse'];
         };
       };
       /** @description Validation Error */
@@ -5657,59 +5268,28 @@ export interface operations {
       };
     };
   };
-  delete_control_binding_api_v1_control_bindings__binding_id__delete: {
+  issue_api_key_api_v1_admin_access_users__user_id__api_key_post: {
     parameters: {
       query?: never;
       header?: never;
       path: {
-        binding_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Deletion confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DeleteControlBindingResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  patch_control_binding_api_v1_control_bindings__binding_id__patch: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        binding_id: number;
+        user_id: string;
       };
       cookie?: never;
     };
     requestBody: {
       content: {
-        'application/json': components['schemas']['PatchControlBindingRequest'];
+        'application/json': components['schemas']['CredentialRequest'];
       };
     };
     responses: {
-      /** @description Updated enabled flag */
-      200: {
+      /** @description Successful Response */
+      201: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['PatchControlBindingResponse'];
+          'application/json': components['schemas']['CredentialSecretResponse'];
         };
       };
       /** @description Validation Error */
@@ -5723,7 +5303,137 @@ export interface operations {
       };
     };
   };
-  render_control_template_api_v1_control_templates_render_post: {
+  revoke_api_key_api_v1_admin_access_users__user_id__api_key_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  rotate_api_key_api_v1_admin_access_users__user_id__api_key_rotate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CredentialRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CredentialSecretResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_access_user_grants_api_v1_admin_access_users__user_id__control_grants_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessUserGrantResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  replace_access_user_grants_api_v1_admin_access_users__user_id__control_grants_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ReplaceAccessUserGrantsRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccessUserGrantResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_policy_api_v1_policies_put: {
     parameters: {
       query?: never;
       header?: never;
@@ -5732,17 +5442,112 @@ export interface operations {
     };
     requestBody: {
       content: {
-        'application/json': components['schemas']['RenderControlTemplateRequest'];
+        'application/json': components['schemas']['CreatePolicyRequest'];
       };
     };
     responses: {
-      /** @description Rendered control preview */
+      /** @description Created policy ID */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['RenderControlTemplateResponse'];
+          'application/json': components['schemas']['CreatePolicyResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        policy_id: number;
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssocResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        policy_id: number;
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AssocResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_policy_controls_api_v1_policies__policy_id__controls_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        policy_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of control IDs */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GetPolicyControlsResponse'];
         };
       };
       /** @description Validation Error */
@@ -5844,6 +5649,41 @@ export interface operations {
       };
     };
   };
+  clone_and_bind_control_api_v1_controls__control_id__clone_and_bind_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        control_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CloneAndBindControlRequest'];
+      };
+    };
+    responses: {
+      /** @description Created clone and binding identifiers */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CloneAndBindControlResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   get_control_schema_api_v1_controls_schema_get: {
     parameters: {
       query?: never;
@@ -5860,39 +5700,6 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['GetControlSchemaResponse'];
-        };
-      };
-    };
-  };
-  validate_control_data_api_v1_controls_validate_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ValidateControlDataRequest'];
-      };
-    };
-    responses: {
-      /** @description Validation result */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ValidateControlDataResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };
@@ -5984,41 +5791,6 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['PatchControlResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  clone_and_bind_control_api_v1_controls__control_id__clone_and_bind_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        control_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CloneAndBindControlRequest'];
-      };
-    };
-    responses: {
-      /** @description Created clone and binding identifiers */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['CloneAndBindControlResponse'];
         };
       };
       /** @description Validation Error */
@@ -6152,6 +5924,371 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['GetControlVersionResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  validate_control_data_api_v1_controls_validate_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ValidateControlDataRequest'];
+      };
+    };
+    responses: {
+      /** @description Validation result */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ValidateControlDataResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_control_bindings_api_v1_control_bindings_get: {
+    parameters: {
+      query?: {
+        /** @description Opaque cursor returned as ``next_cursor`` on the previous page. Pass it back unchanged to fetch the next page. */
+        cursor?: string | null;
+        /** @description Maximum bindings to return (default 20, max 100). */
+        limit?: number;
+        target_type?: string | null;
+        target_id?: string | null;
+        control_id?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Bindings matching the supplied filters */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ListControlBindingsResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  create_control_binding_api_v1_control_bindings_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateControlBindingRequest'];
+      };
+    };
+    responses: {
+      /** @description Created binding ID */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CreateControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_control_binding_api_v1_control_bindings__binding_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        binding_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The requested binding */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GetControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_control_binding_api_v1_control_bindings__binding_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        binding_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deletion confirmation */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeleteControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  patch_control_binding_api_v1_control_bindings__binding_id__patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        binding_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PatchControlBindingRequest'];
+      };
+    };
+    responses: {
+      /** @description Updated enabled flag */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PatchControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  upsert_control_binding_by_key_api_v1_control_bindings_by_key_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpsertControlBindingRequest'];
+      };
+    };
+    responses: {
+      /** @description Created or updated binding */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['UpsertControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  patch_control_binding_by_key_api_v1_control_bindings_by_key_patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PatchControlBindingByKeyRequest'];
+      };
+    };
+    responses: {
+      /** @description Updated enabled flag */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['PatchControlBindingResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  delete_control_binding_by_key_api_v1_control_bindings_by_key_delete_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DeleteControlBindingByKeyRequest'];
+      };
+    };
+    responses: {
+      /** @description Whether a row was deleted */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DeleteControlBindingByKeyResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  runtime_token_exchange_api_v1_auth_runtime_token_exchange_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RuntimeTokenExchangeRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RuntimeTokenExchangeResponse'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  render_control_template_api_v1_control_templates_render_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RenderControlTemplateRequest'];
+      };
+    };
+    responses: {
+      /** @description Rendered control preview */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['RenderControlTemplateResponse'];
         };
       };
       /** @description Validation Error */
@@ -6394,7 +6531,27 @@ export interface operations {
       };
     };
   };
-  create_policy_api_v1_policies_put: {
+  get_config_api_config_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Configuration flags for UI behavior */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ConfigResponse'];
+        };
+      };
+    };
+  };
+  login_api_login_post: {
     parameters: {
       query?: never;
       header?: never;
@@ -6403,17 +6560,17 @@ export interface operations {
     };
     requestBody: {
       content: {
-        'application/json': components['schemas']['CreatePolicyRequest'];
+        'application/json': components['schemas']['LoginRequest'];
       };
     };
     responses: {
-      /** @description Created policy ID */
+      /** @description Authentication result; sets HttpOnly session cookie on success */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          'application/json': components['schemas']['CreatePolicyResponse'];
+          'application/json': components['schemas']['LoginResponse'];
         };
       };
       /** @description Validation Error */
@@ -6427,98 +6584,21 @@ export interface operations {
       };
     };
   };
-  list_policy_controls_api_v1_policies__policy_id__controls_get: {
+  logout_api_logout_post: {
     parameters: {
       query?: never;
       header?: never;
-      path: {
-        policy_id: number;
-      };
+      path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description List of control IDs */
-      200: {
+      /** @description Successful Response */
+      204: {
         headers: {
           [name: string]: unknown;
         };
-        content: {
-          'application/json': components['schemas']['GetPolicyControlsResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  add_control_to_policy_api_v1_policies__policy_id__controls__control_id__post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        policy_id: number;
-        control_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AssocResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
-      };
-    };
-  };
-  remove_control_from_policy_api_v1_policies__policy_id__controls__control_id__delete: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        policy_id: number;
-        control_id: number;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Success confirmation */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AssocResponse'];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HTTPValidationError'];
-        };
+        content?: never;
       };
     };
   };

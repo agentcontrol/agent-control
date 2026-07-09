@@ -84,20 +84,22 @@ export AGENT_CONTROL_POSTGRES_PASSWORD="postgres-password"
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
 ```
 
-#### Create scoped user API keys
+#### Create scoped users
 
 `AGENT_CONTROL_ADMIN_API_KEYS` provides the initial administrator credential.
 `AGENT_CONTROL_API_KEYS` is not accepted. With authentication enabled,
 non-admin SDK and UI keys must be created through access management so each
-key is tied to an enabled user and explicit control grants.
+credential is tied to an enabled user and that user's explicit control grants.
 Authenticated deployments must set `AGENT_CONTROL_CORS_ORIGINS` to an
 explicit UI-origin allowlist; credentialed wildcard CORS is rejected.
 
 Sign in to the dashboard with that key, open **Access management**, and then:
 
-1. Create a named user.
-2. Create an API key for the user. The secret is shown only once.
-3. Assign the control buckets that key may use.
+1. Create a named user. Agent Control atomically issues the user's first API
+   key and shows the secret once.
+2. Assign the control buckets that user may use.
+3. Rotate or revoke the user's single active key when needed. Rotation keeps
+   the user's bucket assignments and Monitor history intact.
 
 The user supplies the same key to the Python SDK:
 
@@ -109,7 +111,7 @@ The key can also be entered in the dashboard login dialog. A non-admin session
 can inspect its assigned controls and their enforcement history, but cannot
 create, edit, enable, disable, attach, or delete controls. Server-side
 authorization scopes SDK policy refresh, observability ingestion, event
-queries, and statistics to the key's assigned buckets; hiding edit buttons in
+queries, and statistics to the user's assigned buckets; hiding edit buttons in
 the UI is not the security boundary.
 
 Disabling a user or revoking a key invalidates both SDK requests and existing

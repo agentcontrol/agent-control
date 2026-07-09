@@ -41,10 +41,12 @@ test.describe('API key login flow', () => {
     await page.getByPlaceholder('Enter your API key').fill('valid-key');
     await page.getByRole('button', { name: 'Sign in' }).click();
 
-    // After login, main app should be visible
-    await expect(
-      page.getByRole('heading', { name: 'Agents overview' })
-    ).toBeVisible({ timeout: 5000 });
+    // Authenticated users land on the DefenseClaw workspace, not the internal
+    // synchronization-agent inventory.
+    await expect(page.getByRole('heading', { name: 'Controls' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Monitor' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'My agents' })).toHaveCount(0);
+    await expect(page.getByText('defenseclaw-policy-sync')).toHaveCount(0);
   });
 
   test('shows error when API key is invalid', async ({ page }) => {

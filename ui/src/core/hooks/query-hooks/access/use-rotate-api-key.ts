@@ -1,22 +1,25 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { accessApi, type CreateApiKeyRequest } from '@/core/api/access';
+import { accessApi, type CredentialRequest } from '@/core/api/access';
 
 import { accessQueryKeys } from './query-keys';
 
-type CreateApiKeyVariables = {
+type RotateApiKeyVariables = {
   userId: string;
-  request: CreateApiKeyRequest;
+  request?: CredentialRequest;
 };
 
-export function useCreateApiKey() {
+export function useRotateApiKey() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ userId, request }: CreateApiKeyVariables) => {
-      const { data, error } = await accessApi.apiKeys.create(userId, request);
+    mutationFn: async ({ userId, request = {} }: RotateApiKeyVariables) => {
+      const { data, error } = await accessApi.credentials.rotate(
+        userId,
+        request
+      );
       if (error || !data) {
-        throw new Error('Failed to create API key');
+        throw new Error('Failed to rotate API key');
       }
       return data;
     },

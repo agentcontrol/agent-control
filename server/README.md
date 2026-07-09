@@ -63,10 +63,12 @@ Full guide: https://docs.agentcontrol.dev/components/server
 When API-key authentication is enabled, configure at least one bootstrap admin
 key with `AGENT_CONTROL_ADMIN_API_KEYS`. Administrators can then use
 `/api/v1/admin/access` or the dashboard's **Access management** page to create
-users, issue revocable API keys, and assign control buckets to each key.
+users with one active API key and assign control buckets to each user. Creating
+a user atomically issues the first key; rotation revokes and replaces that key
+without changing the user's grants or enforcement history.
 
-Generated secrets are returned only by the key-creation response. Agent
+Generated secrets are returned only by create, issue, and rotate responses. Agent
 Control stores a one-way digest, revalidates database-backed browser sessions
-on every request, and applies the key's grants to effective agent controls and
+on every request, and applies the user's grants to effective agent controls and
 all observability reads and writes. Non-admin keys never receive control
 mutation privileges.

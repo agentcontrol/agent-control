@@ -4,13 +4,12 @@ import { accessApi } from '@/core/api/access';
 
 import { accessQueryKeys } from './query-keys';
 
-export function useApiKeyControlGrants(apiKeyId: string, enabled = true) {
+export function useUserControlGrants(userId: string, enabled = true) {
   return useQuery({
-    queryKey: accessQueryKeys.controlGrants(apiKeyId),
+    queryKey: accessQueryKeys.controlGrants(userId),
     enabled,
     queryFn: async () => {
-      const { data, error } =
-        await accessApi.apiKeys.getControlGrants(apiKeyId);
+      const { data, error } = await accessApi.grants.get(userId);
       if (error || !data) {
         throw new Error('Failed to load control grants');
       }

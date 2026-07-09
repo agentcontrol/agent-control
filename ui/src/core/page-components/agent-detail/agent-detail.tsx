@@ -40,9 +40,14 @@ import { AgentsMonitor, TIME_RANGE_SEGMENTS } from './monitor';
 type AgentDetailPageProps = {
   agentId: string;
   defaultTab?: 'controls' | 'monitor';
+  standaloneTab?: 'controls' | 'monitor';
 };
 
-const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
+const AgentDetailPage = ({
+  agentId,
+  defaultTab,
+  standaloneTab,
+}: AgentDetailPageProps) => {
   const router = useRouter();
   const { auth } = useAuth();
   const canManageControls =
@@ -68,7 +73,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
     error: controlsError,
   } = useAgentControls(agentId);
 
-  const needsInitialTabCheck = !defaultTab;
+  const needsInitialTabCheck = !defaultTab && !standaloneTab;
   const { data: hasMonitorData, isLoading: checkingMonitorData } =
     useHasMonitorData(agentId, {
       enabled: needsInitialTabCheck,
@@ -95,6 +100,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
   });
 
   const [activeTab, setActiveTab] = useState<string | null>(() => {
+    if (standaloneTab) return standaloneTab;
     if (defaultTab === 'monitor') return 'monitor';
     if (defaultTab === 'controls') return 'controls';
     return 'controls';
@@ -102,7 +108,12 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
   const hasCheckedInitialTab = React.useRef(false);
   React.useEffect(() => {
-    if (!defaultTab && !hasCheckedInitialTab.current && !checkingMonitorData) {
+    if (
+      !defaultTab &&
+      !standaloneTab &&
+      !hasCheckedInitialTab.current &&
+      !checkingMonitorData
+    ) {
       hasCheckedInitialTab.current = true;
       if (hasMonitorData) {
         setActiveTab('monitor');
@@ -124,7 +135,16 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         );
       }
     }
-  }, [defaultTab, checkingMonitorData, hasMonitorData, agentId, router]);
+  }, [
+    defaultTab,
+    standaloneTab,
+    checkingMonitorData,
+    hasMonitorData,
+    agentId,
+    router,
+  ]);
+
+  const visibleTab = standaloneTab ?? activeTab;
 
   const controls = useMemo(() => {
     const allControls = controlsResponse?.controls || [];
@@ -272,9 +292,19 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
       <Stack gap="lg">
         <Stack gap={4}>
           <Title order={2} fw={600}>
-            {agent.agent.agent_name}
+            {standaloneTab === 'controls'
+              ? 'Controls'
+              : standaloneTab === 'monitor'
+                ? 'Monitor'
+                : agent.agent.agent_name}
           </Title>
-          {agent.agent.agent_description ? (
+          {standaloneTab ? (
+            <Text size="sm" c="dimmed">
+              {standaloneTab === 'controls'
+                ? 'Rule buckets assigned to your Agent Control access.'
+                : 'DefenseClaw enforcement history for your authorized scope.'}
+            </Text>
+          ) : agent.agent.agent_description ? (
             <Text size="sm" c="dimmed">
               {agent.agent.agent_description}
             </Text>
@@ -282,8 +312,9 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         </Stack>
 
         <Tabs
-          value={activeTab}
+          value={visibleTab}
           onChange={(value) => {
+            if (standaloneTab) return;
             setActiveTab(value);
             if (value === 'monitor') {
               router.push(
@@ -309,23 +340,32 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
         >
           <Box mb="md">
             <Group justify="space-between" pos="relative">
-              <Tabs.List>
-                <Tabs.Tab
-                  value="controls"
-                  leftSection={<IconShield size={16} />}
-                >
-                  Controls
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value="monitor"
-                  leftSection={<IconChartBar size={16} />}
-                >
-                  Monitor
-                </Tabs.Tab>
-              </Tabs.List>
+              {standaloneTab ? (
+                <Box />
+              ) : (
+                <Tabs.List>
+                  <Tabs.Tab
+                    value="controls"
+                    leftSection={<IconShield size={16} />}
+                  >
+                    Controls
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value="monitor"
+                    leftSection={<IconChartBar size={16} />}
+                  >
+                    Monitor
+                  </Tabs.Tab>
+                </Tabs.List>
+              )}
 
-              <Group gap="md" pos="absolute" right={0} top="-8px">
-                {activeTab === 'controls' ? (
+              <Group
+                gap="md"
+                pos={standaloneTab ? 'static' : 'absolute'}
+                right={standaloneTab ? undefined : 0}
+                top={standaloneTab ? undefined : '-8px'}
+              >
+                {visibleTab === 'controls' ? (
                   <>
                     <SearchInput
                       queryKey="q"
@@ -371,7 +411,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
           <Tabs.Panel value="monitor" pt="lg">
             <ErrorBoundary variant="page">
-              {agent?.agent.agent_name && activeTab === 'monitor' ? (
+              {agent?.agent.agent_name && visibleTab === 'monitor' ? (
                 <AgentsMonitor
                   agentUuid={agent.agent.agent_name}
                   timeRangeValue={timeRangeValue}
