@@ -6,11 +6,15 @@ from typing import Any
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
 
 from agent_control_server import __version__ as server_version
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.config import auth_settings
+from agent_control_server.models import AccessUser, APIKeyCredential
+from agent_control_server.services.access import hash_api_key
 
+from .conftest import TEST_ACCESS_USER_ID, TEST_API_KEY
 from .utils import VALID_CONTROL_PAYLOAD
 
 
@@ -298,14 +302,35 @@ class TestMultipleApiKeys:
     """Test support for multiple API keys (key rotation)."""
 
     @pytest.fixture(autouse=True)
-    def setup_multiple_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Configure multiple API keys for key rotation testing."""
+    def setup_multiple_keys(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        setup_auth: None,
+        db_engine,
+    ) -> None:
+        """Create multiple DB-managed member keys for rotation testing."""
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
-        monkeypatch.setattr(auth_settings, "api_keys", "key1,key2,key3")
+        monkeypatch.setattr(auth_settings, "api_keys", "")
         monkeypatch.setattr(auth_settings, "admin_api_keys", "admin1,admin2")
         # Clear cached properties so they get recomputed with new values
         for attr in ("_parsed_api_keys", "_parsed_admin_api_keys", "_all_valid_keys"):
             auth_settings.__dict__.pop(attr, None)
+        with db_engine.begin() as connection:
+            connection.execute(
+                APIKeyCredential.__table__.insert(),
+                [
+                    {
+                        "id": f"00000000-0000-0000-0000-00000000020{index}",
+                        "namespace_key": "default",
+                        "user_id": TEST_ACCESS_USER_ID,
+                        "name": f"rotation-key-{index}",
+                        "key_prefix": key[:12],
+                        "key_hash": hash_api_key(key),
+                        "enabled": True,
+                    }
+                    for index, key in enumerate(("key1", "key2", "key3"), start=1)
+                ],
+            )
 
     def test_first_key_works(self, app: object) -> None:
         """Given multiple API keys configured, when using first key, then request succeeds."""
@@ -351,12 +376,29 @@ class TestMultipleApiKeys:
         # Then:
         assert response.status_code == 401
 
+    def test_legacy_regular_environment_key_is_rejected(
+        self, app: object, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(auth_settings, "api_keys", "legacy-unscoped-key")
+        for attr in ("_parsed_api_keys", "_all_valid_keys"):
+            auth_settings.__dict__.pop(attr, None)
+
+        client = TestClient(app, headers={"X-API-Key": "legacy-unscoped-key"})
+        response = client.get("/api/v1/evaluators")
+
+        assert response.status_code == 401
+
 
 class TestAuthMisconfiguration:
     """Test behavior when auth is misconfigured."""
 
     @pytest.fixture(autouse=True)
-    def setup_no_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def setup_no_keys(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        setup_auth: None,
+        db_engine,
+    ) -> None:
         """Enable auth but configure no keys (misconfiguration)."""
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
         monkeypatch.setattr(auth_settings, "api_keys", "")
@@ -364,6 +406,9 @@ class TestAuthMisconfiguration:
         # Clear cached properties so they get recomputed with new values
         for attr in ("_parsed_api_keys", "_parsed_admin_api_keys", "_all_valid_keys"):
             auth_settings.__dict__.pop(attr, None)
+        with db_engine.begin() as connection:
+            connection.execute(delete(APIKeyCredential))
+            connection.execute(delete(AccessUser))
 
     def test_misconfigured_returns_500(self, unauthenticated_client: TestClient) -> None:
         """Given auth enabled but no keys configured, when requesting, then returns 500."""
@@ -416,7 +461,7 @@ class TestOptionalApiKey:
     ) -> None:
         # Given: auth enabled with configured keys
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
-        monkeypatch.setattr(auth_settings, "api_keys", "user-key")
+        monkeypatch.setattr(auth_settings, "api_keys", "")
         monkeypatch.setattr(auth_settings, "admin_api_keys", "admin-key")
         for attr in ("_parsed_api_keys", "_parsed_admin_api_keys", "_all_valid_keys"):
             auth_settings.__dict__.pop(attr, None)
@@ -434,7 +479,7 @@ class TestOptionalApiKey:
     ) -> None:
         # Given: auth enabled with configured keys
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
-        monkeypatch.setattr(auth_settings, "api_keys", "user-key")
+        monkeypatch.setattr(auth_settings, "api_keys", "")
         monkeypatch.setattr(auth_settings, "admin_api_keys", "admin-key")
         for attr in ("_parsed_api_keys", "_parsed_admin_api_keys", "_all_valid_keys"):
             auth_settings.__dict__.pop(attr, None)
@@ -452,7 +497,7 @@ class TestOptionalApiKey:
     ) -> None:
         # Given: auth enabled with admin key
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
-        monkeypatch.setattr(auth_settings, "api_keys", "user-key")
+        monkeypatch.setattr(auth_settings, "api_keys", "")
         monkeypatch.setattr(auth_settings, "admin_api_keys", "admin-key-123456789")
         for attr in ("_parsed_api_keys", "_parsed_admin_api_keys", "_all_valid_keys"):
             auth_settings.__dict__.pop(attr, None)
@@ -473,7 +518,7 @@ class TestOptionalApiKey:
     ) -> None:
         # Given: auth enabled with a non-admin key
         monkeypatch.setattr(auth_settings, "api_key_enabled", True)
-        monkeypatch.setattr(auth_settings, "api_keys", "user-key")
+        monkeypatch.setattr(auth_settings, "api_keys", "")
         monkeypatch.setattr(auth_settings, "admin_api_keys", "admin-key")
         for attr in ("_parsed_api_keys", "_parsed_admin_api_keys", "_all_valid_keys"):
             auth_settings.__dict__.pop(attr, None)
@@ -489,7 +534,7 @@ class TestOptionalApiKey:
         def admin_route() -> dict[str, bool]:
             return {"ok": True}
 
-        client = TestClient(local_app, headers={"X-API-Key": "user-key"})
+        client = TestClient(local_app, headers={"X-API-Key": TEST_API_KEY})
         response = client.get("/admin")
 
         # Then: forbidden is returned

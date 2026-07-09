@@ -165,6 +165,7 @@ async def _load_engine_controls(
             target_type=request.target_type,
             target_id=request.target_id,
             allow_invalid_step_name_regex=True,
+            allowed_control_ids=principal.allowed_control_ids,
         )
 
     return [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]

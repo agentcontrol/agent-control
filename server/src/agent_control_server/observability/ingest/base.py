@@ -45,12 +45,14 @@ class EventIngestor(Protocol):
         events: list[ControlExecutionEvent],
         *,
         namespace_key: str,
+        access_user_id: str | None = None,
     ) -> IngestResult:
         """Ingest events. Returns counts of received/processed/dropped.
 
         Args:
             events: List of control execution events to ingest
             namespace_key: Namespace that owns the events
+            access_user_id: Server-resolved owner for member data isolation
 
         Returns:
             IngestResult with counts of received, processed, and dropped events

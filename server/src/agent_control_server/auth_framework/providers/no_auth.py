@@ -24,6 +24,11 @@ class NoAuthProvider(RequestAuthorizer):
     ) -> Principal:
         del request, context
         scopes: tuple[str, ...] = (
-            (Operation.RUNTIME_USE.value,) if operation is Operation.RUNTIME_TOKEN_EXCHANGE else ()
+            (
+                Operation.RUNTIME_USE.value,
+                Operation.OBSERVABILITY_WRITE.value,
+            )
+            if operation is Operation.RUNTIME_TOKEN_EXCHANGE
+            else ()
         )
         return Principal(namespace_key=self._default_namespace_key, scopes=scopes)

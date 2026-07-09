@@ -84,6 +84,20 @@ template_router = APIRouter(prefix="/control-templates", tags=["controls"])
 
 _logger = get_logger(__name__)
 
+
+def _require_granted_control(principal: Principal, control_id: int) -> None:
+    """Hide controls outside a scoped credential's assignment set."""
+    if (
+        principal.allowed_control_ids is not None
+        and control_id not in principal.allowed_control_ids
+    ):
+        raise NotFoundError(
+            error_code=ErrorCode.CONTROL_NOT_FOUND,
+            detail="Control was not found.",
+            resource="Control",
+            resource_id=str(control_id),
+        )
+
 _CONTROL_NAME_UNIQUE_CONSTRAINTS = {
     "controls_name_key",
     "idx_controls_name_active",
@@ -904,6 +918,7 @@ async def get_control(
     Raises:
         HTTPException 404: Control not found
     """
+    _require_granted_control(principal, control_id)
     control = await ControlService(db).get_active_control_or_404(
         control_id, namespace_key=principal.namespace_key
     )
@@ -949,6 +964,7 @@ async def get_control_data(
         HTTPException 404: Control not found
         HTTPException 422: Control data is corrupted
     """
+    _require_granted_control(principal, control_id)
     control = await ControlService(db).get_active_control_or_404(
         control_id, namespace_key=principal.namespace_key
     )
@@ -976,6 +992,7 @@ async def list_control_versions(
     principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> ListControlVersionsResponse:
     """List control versions ordered newest-first using cursor-based pagination."""
+    _require_granted_control(principal, control_id)
     page = await ControlService(db).list_versions(
         control_id,
         namespace_key=principal.namespace_key,
@@ -1015,6 +1032,7 @@ async def get_control_version(
     principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
 ) -> GetControlVersionResponse:
     """Return a specific control version, including its raw persisted snapshot."""
+    _require_granted_control(principal, control_id)
     version = await ControlService(db).get_version_or_404(
         control_id, version_num, namespace_key=principal.namespace_key
     )
@@ -1251,6 +1269,7 @@ async def list_controls(
         tag=tag,
         attachment_target_type=attachment_target_type if filter_by_attachment else None,
         attachment_target_id=attachment_target_id if filter_by_attachment else None,
+        allowed_control_ids=principal.allowed_control_ids,
     )
     usage_by_control_id = await control_service.list_control_usage(
         [control.id for control in page.controls],

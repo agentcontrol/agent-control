@@ -20,6 +20,7 @@ from . import __version__ as server_version
 from .auth import get_api_key_from_header
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal, async_engine
+from .endpoints.admin_access import router as admin_access_router
 from .endpoints.agents import router as agent_router
 from .endpoints.auth import router as auth_router
 from .endpoints.control_bindings import router as control_binding_router
@@ -275,6 +276,11 @@ api_v1_prefix = f"{settings.api_prefix}/{settings.api_version}"
 # each endpoint's ``require_operation`` dependency owns authn + authz.
 app.include_router(
     agent_router,
+    prefix=api_v1_prefix,
+    dependencies=[Depends(get_api_key_from_header)],
+)
+app.include_router(
+    admin_access_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(get_api_key_from_header)],
 )

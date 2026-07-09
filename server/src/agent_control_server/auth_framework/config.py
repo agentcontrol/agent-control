@@ -21,6 +21,9 @@ The framework supports two flows:
   The ``runtime.token_exchange`` operation continues to flow through
   the default authorizer because the exchange itself is shaped like a
   management call (forward credential, get grant).
+  In JWT mode, observability writes accept either the runtime bearer
+  token or the default long-lived credential so SDK event delivery
+  preserves the DB access-user identity without breaking key-based clients.
 """
 
 from __future__ import annotations
@@ -28,10 +31,19 @@ from __future__ import annotations
 import os
 import ssl
 from dataclasses import dataclass
+from typing import Any
+
+from fastapi import Request
 
 from ..config import auth_settings
 from ..logging_utils import get_logger
-from .core import Operation, RequestAuthorizer, clear_authorizers, set_authorizer
+from .core import (
+    Operation,
+    Principal,
+    RequestAuthorizer,
+    clear_authorizers,
+    set_authorizer,
+)
 from .providers import (
     HeaderAuthProvider,
     HttpUpstreamAuthProvider,
@@ -90,6 +102,30 @@ _runtime_auth_config: RuntimeAuthConfig | None = None
 _active_providers: list[RequestAuthorizer] = []
 
 
+class _RuntimeBearerOrDefaultAuthorizer:
+    """Use a runtime JWT when presented; otherwise preserve default API-key auth."""
+
+    def __init__(
+        self,
+        *,
+        runtime: RequestAuthorizer,
+        default: RequestAuthorizer,
+    ) -> None:
+        self._runtime = runtime
+        self._default = default
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        authorization = request.headers.get("Authorization", "")
+        if authorization.lower().startswith("bearer "):
+            return await self._runtime.authorize(request, operation, context)
+        return await self._default.authorize(request, operation, context)
+
+
 def configure_auth_from_env() -> None:
     """Install the authorizers selected by environment variables.
 
@@ -140,6 +176,14 @@ def configure_auth_from_env() -> None:
     else:
         runtime_provider = _build_runtime_provider(runtime_mode, _runtime_auth_config)
         set_authorizer(runtime_provider, operation=Operation.RUNTIME_USE)
+        if runtime_mode == "jwt":
+            set_authorizer(
+                _RuntimeBearerOrDefaultAuthorizer(
+                    runtime=runtime_provider,
+                    default=default,
+                ),
+                operation=Operation.OBSERVABILITY_WRITE,
+            )
         _active_providers.append(runtime_provider)
         if runtime_mode == "jwt":
             _logger.info(
@@ -264,16 +308,17 @@ def _build_default_provider() -> RequestAuthorizer:
 
 
 def _validate_local_api_key_mode(mode_env: str = _MODE_ENV) -> None:
-    """Fail startup when local API-key mode has no local key validator."""
+    """Validate strict local auth: DB member keys plus optional env admin bootstrap."""
     if not auth_settings.api_key_enabled:
         raise RuntimeError(
             f"{mode_env}=api_key requires AGENT_CONTROL_API_KEY_ENABLED=true. "
             f"Use {mode_env}=none for deployments without credential enforcement."
         )
-    if not auth_settings.get_api_keys() and not auth_settings.get_admin_api_keys():
+    if auth_settings.get_api_keys():
         raise RuntimeError(
-            f"{_MODE_ENV}=api_key requires AGENT_CONTROL_API_KEYS or "
-            "AGENT_CONTROL_ADMIN_API_KEYS to be configured."
+            "AGENT_CONTROL_API_KEYS is no longer accepted. Create DB-managed "
+            "member keys through /api/v1/admin/access and use "
+            "AGENT_CONTROL_ADMIN_API_KEYS only for bootstrap administrators."
         )
 
 

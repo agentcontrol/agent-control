@@ -232,7 +232,6 @@ jobs:
           sleep 5
         env:
           AGENT_CONTROL_DB_URL: postgresql+psycopg://postgres:postgres@localhost/agent_control_test
-          AGENT_CONTROL_API_KEYS: test-api-key-ci
           AGENT_CONTROL_ADMIN_API_KEYS: test-api-key-ci
       
       - name: Run tests

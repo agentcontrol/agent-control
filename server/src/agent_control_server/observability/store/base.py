@@ -124,12 +124,14 @@ class EventStore(ABC):
         events: list[ControlExecutionEvent],
         *,
         namespace_key: str,
+        access_user_id: str | None = None,
     ) -> int:
         """Store raw events.
 
         Args:
             events: List of control execution events to store
             namespace_key: Namespace that owns the stored events
+            access_user_id: Server-resolved owner for member data isolation
 
         Returns:
             Number of events successfully stored
@@ -146,6 +148,8 @@ class EventStore(ABC):
         include_timeseries: bool = False,
         bucket_size: timedelta | None = None,
         namespace_key: str,
+        allowed_control_ids: frozenset[int] | None = None,
+        access_user_id: str | None = None,
     ) -> StatsResult:
         """Query stats (aggregated at query time from raw events).
 
@@ -156,6 +160,8 @@ class EventStore(ABC):
             include_timeseries: Whether to include time-series data
             bucket_size: Bucket size for time-series (required if include_timeseries=True)
             namespace_key: Namespace whose events should be queried
+            allowed_control_ids: Server-authorized control scope. ``None`` is unrestricted.
+            access_user_id: When set, return only events ingested by this access user.
 
         Returns:
             StatsResult with per-control and total statistics
@@ -168,12 +174,14 @@ class EventStore(ABC):
         query: EventQuery,
         *,
         namespace_key: str,
+        access_user_id: str | None = None,
     ) -> EventQueryResult:
         """Query raw events with filters and pagination.
 
         Args:
             query: Query parameters (filters, pagination)
             namespace_key: Namespace whose events should be queried
+            access_user_id: When set, return only events ingested by this access user.
 
         Returns:
             EventQueryResult with matching events and pagination info

@@ -65,6 +65,9 @@ class RuntimeTokenClaims:
     expires_at: datetime
     issued_at: datetime
     jti: str
+    allowed_control_ids: frozenset[int] | None = None
+    user_id: str | None = None
+    api_key_id: str | None = None
 
 
 def mint_runtime_token(
@@ -76,6 +79,9 @@ def mint_runtime_token(
     scopes: tuple[str, ...],
     secret: str,
     ttl_seconds: int,
+    allowed_control_ids: frozenset[int] | None = None,
+    user_id: str | None = None,
+    api_key_id: str | None = None,
     upstream_expires_at: datetime | None = None,
     now: datetime | None = None,
 ) -> tuple[str, RuntimeTokenClaims]:
@@ -100,6 +106,8 @@ def mint_runtime_token(
         raise RuntimeTokenError("target_id is required to mint a runtime token")
     if ttl_seconds <= 0:
         raise RuntimeTokenError("ttl_seconds must be positive")
+    if (user_id is None) != (api_key_id is None):
+        raise RuntimeTokenError("user_id and api_key_id must be supplied together")
     if upstream_expires_at is not None and (
         upstream_expires_at.tzinfo is None or upstream_expires_at.utcoffset() is None
     ):
@@ -138,10 +146,16 @@ def mint_runtime_token(
         "target_type": target_type,
         "target_id": target_id,
         "scopes": list(scopes),
+        "allowed_control_ids": (
+            None if allowed_control_ids is None else sorted(allowed_control_ids)
+        ),
         "iat": int(issued_at.timestamp()),
         "exp": int(expires_at.timestamp()),
         "jti": jti,
     }
+    if user_id is not None and api_key_id is not None:
+        payload["user_id"] = user_id
+        payload["api_key_id"] = api_key_id
     token = jwt.encode(payload, secret, algorithm=_ALGORITHM)
     claims = RuntimeTokenClaims(
         namespace_key=namespace_key,
@@ -152,6 +166,9 @@ def mint_runtime_token(
         expires_at=expires_at,
         issued_at=issued_at,
         jti=jti,
+        allowed_control_ids=allowed_control_ids,
+        user_id=user_id,
+        api_key_id=api_key_id,
     )
     return token, claims
 
@@ -201,9 +218,33 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
         raise RuntimeTokenError("Runtime token has malformed scopes.")
     scopes = tuple(raw_scopes)
 
+    raw_allowed_control_ids = payload.get("allowed_control_ids")
+    allowed_control_ids: frozenset[int] | None
+    if raw_allowed_control_ids is None:
+        allowed_control_ids = None
+    elif isinstance(raw_allowed_control_ids, list) and all(
+        isinstance(control_id, int) and not isinstance(control_id, bool)
+        for control_id in raw_allowed_control_ids
+    ):
+        allowed_control_ids = frozenset(raw_allowed_control_ids)
+    else:
+        raise RuntimeTokenError("Runtime token has malformed allowed_control_ids.")
+
     jti = payload.get("jti")
     if not isinstance(jti, str):
         jti = ""
+
+    user_id = payload.get("user_id")
+    api_key_id = payload.get("api_key_id")
+    if (user_id is None) != (api_key_id is None):
+        raise RuntimeTokenError("Runtime token has incomplete database identity claims.")
+    if user_id is not None and (
+        not isinstance(user_id, str)
+        or not user_id
+        or not isinstance(api_key_id, str)
+        or not api_key_id
+    ):
+        raise RuntimeTokenError("Runtime token has malformed database identity claims.")
 
     return RuntimeTokenClaims(
         namespace_key=namespace_key,
@@ -214,4 +255,7 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
         expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
         issued_at=datetime.fromtimestamp(payload["iat"], tz=UTC),
         jti=jti,
+        allowed_control_ids=allowed_control_ids,
+        user_id=user_id,
+        api_key_id=api_key_id,
     )

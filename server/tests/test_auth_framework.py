@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+
 from agent_control_server.auth_framework.core import (
     Operation,
     Principal,
@@ -102,7 +103,10 @@ async def test_no_auth_provider_grants_runtime_exchange_scope():
         Operation.RUNTIME_TOKEN_EXCHANGE,
     )
 
-    assert principal.scopes == (Operation.RUNTIME_USE.value,)
+    assert principal.scopes == (
+        Operation.RUNTIME_USE.value,
+        Operation.OBSERVABILITY_WRITE.value,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +148,14 @@ async def test_header_provider_public_returns_default_namespace():
 @pytest.mark.asyncio
 async def test_header_provider_authenticated_calls_local_validator():
     provider = HeaderAuthProvider()
-    expected_client = MagicMock(is_admin=False, key_id="abc12345")
+    expected_client = MagicMock(
+        is_admin=False,
+        key_id="abc12345",
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        user_id=None,
+        api_key_id=None,
+        allowed_control_ids=None,
+    )
 
     with patch(
         "agent_control_server.auth_framework.providers.header._validate_api_key",
@@ -167,7 +178,14 @@ async def test_header_provider_authenticated_calls_local_validator():
 @pytest.mark.asyncio
 async def test_header_provider_admin_op_requires_admin():
     provider = HeaderAuthProvider()
-    admin_client = MagicMock(is_admin=True, key_id="admin01")
+    admin_client = MagicMock(
+        is_admin=True,
+        key_id="admin01",
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        user_id=None,
+        api_key_id=None,
+        allowed_control_ids=None,
+    )
 
     with patch(
         "agent_control_server.auth_framework.providers.header._validate_api_key",
@@ -875,6 +893,7 @@ def test_runtime_token_rejects_empty_required_claims(kwargs, message):
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():
     """A token without ``domain=runtime`` must be rejected by runtime verify."""
     import jwt
+
     from agent_control_server.auth_framework.runtime_token import (
         RuntimeTokenError,
         verify_runtime_token,
@@ -1344,7 +1363,7 @@ def test_build_default_provider_rejects_explicit_api_key_without_validator(
         auth_config._build_default_provider()
 
 
-def test_build_default_provider_rejects_explicit_api_key_without_keys(
+def test_build_default_provider_allows_db_keys_without_env_bootstrap(
     monkeypatch,
 ):
     from agent_control_server.auth_framework import config as auth_config
@@ -1355,7 +1374,19 @@ def test_build_default_provider_rejects_explicit_api_key_without_keys(
     monkeypatch.setattr(auth_settings, "admin_api_keys", "")
     _clear_auth_settings_cache()
 
-    with pytest.raises(RuntimeError, match="AGENT_CONTROL_API_KEYS"):
+    assert isinstance(auth_config._build_default_provider(), HeaderAuthProvider)
+
+
+def test_build_default_provider_rejects_legacy_regular_env_keys(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "api_key")
+    monkeypatch.setattr(auth_settings, "api_key_enabled", True)
+    monkeypatch.setattr(auth_settings, "api_keys", "legacy-unscoped-key")
+    monkeypatch.setattr(auth_settings, "admin_api_keys", "bootstrap-admin")
+    _clear_auth_settings_cache()
+
+    with pytest.raises(RuntimeError, match="no longer accepted"):
         auth_config._build_default_provider()
 
 

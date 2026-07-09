@@ -53,6 +53,7 @@ DEFAULT_OPERATION_ACCESS: dict[Operation, AccessLevel] = {
     Operation.OBSERVABILITY_WRITE: AccessLevel.AUTHENTICATED,
     Operation.RUNTIME_TOKEN_EXCHANGE: AccessLevel.AUTHENTICATED,
     Operation.RUNTIME_USE: AccessLevel.AUTHENTICATED,
+    Operation.ACCESS_MANAGE: AccessLevel.ADMIN,
 }
 
 
@@ -102,13 +103,21 @@ class HeaderAuthProvider(RequestAuthorizer):
         # exchange endpoint can require ``runtime.use`` uniformly across
         # providers.
         scopes: tuple[str, ...] = (
-            (Operation.RUNTIME_USE.value,) if operation is Operation.RUNTIME_TOKEN_EXCHANGE else ()
+            (
+                Operation.RUNTIME_USE.value,
+                Operation.OBSERVABILITY_WRITE.value,
+            )
+            if operation is Operation.RUNTIME_TOKEN_EXCHANGE
+            else ()
         )
         return Principal(
-            namespace_key=namespace_key,
+            namespace_key=client.namespace_key,
             is_admin=client.is_admin,
             caller_id=client.key_id,
             scopes=scopes,
+            user_id=client.user_id,
+            api_key_id=client.api_key_id,
+            allowed_control_ids=client.allowed_control_ids,
         )
 
     def _resolve_namespace_key(self, request: Request) -> str:

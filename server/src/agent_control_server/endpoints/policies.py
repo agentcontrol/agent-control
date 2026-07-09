@@ -291,4 +291,10 @@ async def list_policy_controls(
         policy_id,
         namespace_key=namespace_key,
     )
+    if principal.allowed_control_ids is not None:
+        control_ids = [
+            control_id
+            for control_id in control_ids
+            if control_id in principal.allowed_control_ids
+        ]
     return GetPolicyControlsResponse(control_ids=control_ids)

@@ -1,14 +1,14 @@
 import pytest
+from agent_control_engine import discover_evaluators
 from fastapi.testclient import TestClient
 from sqlalchemy import MetaData, create_engine, inspect, text
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from agent_control_engine import discover_evaluators
 from agent_control_server.config import auth_settings, db_config
 from agent_control_server.db import Base
 from agent_control_server.main import app as fastapi_app
-
-import agent_control_server.models  # ensure models are imported so tables are registered
+from agent_control_server.models import AccessUser, APIKeyCredential
+from agent_control_server.services.access import hash_api_key
 
 # Discover evaluators at test session start
 discover_evaluators()
@@ -16,6 +16,8 @@ discover_evaluators()
 # Test API keys
 TEST_API_KEY = "test-api-key-12345"
 TEST_ADMIN_API_KEY = "test-admin-key-12345"
+TEST_ACCESS_USER_ID = "00000000-0000-0000-0000-000000000101"
+TEST_API_KEY_ID = "00000000-0000-0000-0000-000000000102"
 
 # Create sync engine for tests (schema creation/cleanup)
 engine = create_engine(db_config.get_url(), echo=False)
@@ -87,14 +89,43 @@ def db_schema() -> None:
 
 
 @pytest.fixture(autouse=True)
-def setup_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+def setup_auth(monkeypatch: pytest.MonkeyPatch, clean_db: None) -> None:
     """Enable auth with test keys for all tests by default."""
     monkeypatch.setattr(auth_settings, "api_key_enabled", True)
-    monkeypatch.setattr(auth_settings, "api_keys", TEST_API_KEY)
+    monkeypatch.setattr(auth_settings, "api_keys", "")
     monkeypatch.setattr(auth_settings, "admin_api_keys", TEST_ADMIN_API_KEY)
     # Clear cached properties so they recompute with monkeypatched values
-    for attr in ("_parsed_api_keys", "_parsed_admin_api_keys", "_all_valid_keys", "_all_admin_keys"):
+    for attr in (
+        "_parsed_api_keys",
+        "_parsed_admin_api_keys",
+        "_all_valid_keys",
+        "_all_admin_keys",
+    ):
         auth_settings.__dict__.pop(attr, None)
+
+    # Non-admin credentials follow the production DB-managed path and start
+    # with no control grants. Tests that read controls grant the relevant IDs.
+    with engine.begin() as connection:
+        connection.execute(
+            AccessUser.__table__.insert().values(
+                id=TEST_ACCESS_USER_ID,
+                namespace_key="default",
+                name="test-member",
+                role="member",
+                enabled=True,
+            )
+        )
+        connection.execute(
+            APIKeyCredential.__table__.insert().values(
+                id=TEST_API_KEY_ID,
+                namespace_key="default",
+                user_id=TEST_ACCESS_USER_ID,
+                name="test-member-key",
+                key_prefix=TEST_API_KEY[:12],
+                key_hash=hash_api_key(TEST_API_KEY),
+                enabled=True,
+            )
+        )
 
 
 @pytest.fixture()

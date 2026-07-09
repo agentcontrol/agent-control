@@ -20,8 +20,9 @@ import jwt
 from fastapi import APIRouter, Request, Response, status
 from pydantic import BaseModel
 
-from ..auth import AuthLevel, OptionalAPIKey
+from ..auth import AuthenticatedClient, AuthLevel, OptionalAPIKey, _validate_api_key
 from ..config import auth_settings, settings
+from ..errors import AuthenticationError
 from ..logging_utils import get_logger
 
 router = APIRouter(prefix="", tags=["system"])
@@ -51,6 +52,7 @@ class ConfigResponse(BaseModel):
     requires_api_key: bool
     auth_mode: AuthMode
     has_active_session: bool = False
+    is_admin: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -71,15 +73,22 @@ class LoginResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def create_session_jwt(*, is_admin: bool) -> str:
-    """Mint a signed session JWT. The raw API key is never stored in claims."""
+def create_session_jwt(*, client: AuthenticatedClient) -> str:
+    """Mint a signed session JWT. Raw API keys and grants never enter claims."""
     now = int(time.time())
     payload = {
         "sub": "ac-session",
-        "is_admin": is_admin,
+        "is_admin": client.is_admin,
+        "namespace_key": client.namespace_key,
+        "credential_source": client.credential_source,
         "iat": now,
         "exp": now + SESSION_MAX_AGE_SECONDS,
     }
+    if client.credential_source == "database":
+        payload["user_id"] = client.user_id
+        payload["api_key_id"] = client.api_key_id
+    else:
+        payload["credential_fingerprint"] = client.credential_fingerprint
     return jwt.encode(payload, auth_settings.get_session_secret(), algorithm=JWT_ALGORITHM)
 
 
@@ -90,7 +99,16 @@ def decode_session_jwt(token: str) -> dict | None:
             token,
             auth_settings.get_session_secret(),
             algorithms=[JWT_ALGORITHM],
-            options={"require": ["sub", "exp", "iat", "is_admin"]},
+            options={
+                "require": [
+                    "sub",
+                    "exp",
+                    "iat",
+                    "is_admin",
+                    "namespace_key",
+                    "credential_source",
+                ]
+            },
         )
     except (jwt.InvalidTokenError, jwt.ExpiredSignatureError, KeyError):
         return None
@@ -120,6 +138,7 @@ async def get_config(client: OptionalAPIKey) -> ConfigResponse:
         requires_api_key=requires,
         auth_mode=AuthMode.API_KEY if requires else AuthMode.NONE,
         has_active_session=has_session,
+        is_admin=bool(has_session and client is not None and client.is_admin),
     )
 
 
@@ -149,12 +168,17 @@ async def login(body: LoginRequest, request: Request, response: Response) -> Log
         return LoginResponse(authenticated=False, is_admin=False)
 
     api_key = body.api_key.strip()
-    if not api_key or not auth_settings.is_valid_api_key(api_key):
+    if not api_key:
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return LoginResponse(authenticated=False, is_admin=False)
 
-    is_admin = auth_settings.is_admin_api_key(api_key)
-    token = create_session_jwt(is_admin=is_admin)
+    try:
+        client = await _validate_api_key(api_key, request)
+    except AuthenticationError:
+        response.status_code = status.HTTP_401_UNAUTHORIZED
+        return LoginResponse(authenticated=False, is_admin=False)
+
+    token = create_session_jwt(client=client)
 
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -166,7 +190,7 @@ async def login(body: LoginRequest, request: Request, response: Response) -> Log
         max_age=SESSION_MAX_AGE_SECONDS,
     )
 
-    return LoginResponse(authenticated=True, is_admin=is_admin)
+    return LoginResponse(authenticated=True, is_admin=client.is_admin)
 
 
 @router.post(

@@ -377,6 +377,7 @@ class ControlService:
         allow_invalid_step_name_regex: bool = False,
         rendered_state: AgentControlRenderedState = "rendered",
         enabled_state: AgentControlEnabledState = "enabled",
+        allowed_control_ids: frozenset[int] | None = None,
     ) -> list[APIControl]:
         """Return API control models for controls effective for an agent.
 
@@ -405,6 +406,7 @@ class ControlService:
             namespace_key=namespace_key,
             target_type=target_type,
             target_id=target_id,
+            allowed_control_ids=allowed_control_ids,
         )
 
         parsed_controls = [
@@ -429,6 +431,7 @@ class ControlService:
         target_type: str | None = None,
         target_id: str | None = None,
         allow_invalid_step_name_regex: bool = False,
+        allowed_control_ids: frozenset[int] | None = None,
     ) -> list[RuntimeControl]:
         """Return runtime-parsed controls for evaluation hot paths.
 
@@ -441,6 +444,7 @@ class ControlService:
             namespace_key=namespace_key,
             target_type=target_type,
             target_id=target_id,
+            allowed_control_ids=allowed_control_ids,
         )
         return parse_runtime_controls(
             db_controls,
@@ -463,6 +467,7 @@ class ControlService:
         tag: str | None,
         attachment_target_type: str | None = None,
         attachment_target_id: str | None = None,
+        allowed_control_ids: frozenset[int] | None = None,
     ) -> ControlListPage:
         """Return paginated active controls for the browse endpoint."""
         query = (
@@ -470,6 +475,8 @@ class ControlService:
             .where(Control.namespace_key == namespace_key, Control.deleted_at.is_(None))
             .order_by(Control.id.desc())
         )
+        if allowed_control_ids is not None:
+            query = query.where(Control.id.in_(allowed_control_ids))
         query = self._apply_control_list_filters(
             query,
             name=name,
@@ -498,6 +505,8 @@ class ControlService:
             .select_from(Control)
             .where(Control.namespace_key == namespace_key, Control.deleted_at.is_(None))
         )
+        if allowed_control_ids is not None:
+            total_query = total_query.where(Control.id.in_(allowed_control_ids))
         total_query = self._apply_control_list_filters(
             total_query,
             name=name,
@@ -709,9 +718,12 @@ class ControlService:
         agent_names: Sequence[str],
         *,
         namespace_key: str,
+        allowed_control_ids: frozenset[int] | None = None,
     ) -> dict[str, int]:
         """Return active control counts keyed by agent name."""
-        if not agent_names:
+        if not agent_names or (
+            allowed_control_ids is not None and not allowed_control_ids
+        ):
             return {}
 
         policy_associations = (
@@ -741,7 +753,7 @@ class ControlService:
         )
         all_associations = union_all(policy_associations, direct_associations).subquery()
 
-        result = await self._db.execute(
+        query = (
             select(
                 all_associations.c.agent_name,
                 func.count(func.distinct(all_associations.c.control_id)).label("count"),
@@ -757,6 +769,9 @@ class ControlService:
             )
             .group_by(all_associations.c.agent_name)
         )
+        if allowed_control_ids is not None:
+            query = query.where(all_associations.c.control_id.in_(allowed_control_ids))
+        result = await self._db.execute(query)
         return {cast(str, row[0]): cast(int, row[1]) for row in result.all()}
 
     async def add_control_to_policy(
@@ -926,6 +941,7 @@ class ControlService:
         namespace_key: str,
         target_type: str | None = None,
         target_id: str | None = None,
+        allowed_control_ids: frozenset[int] | None = None,
     ) -> Sequence[Control]:
         """Return the de-duplicated set of effective DB control rows for an agent.
 
@@ -934,6 +950,9 @@ class ControlService:
         compromised or mis-routed caller cannot observe rows it did not
         ask for. Each joined table is filtered on the supplied namespace.
         """
+        if allowed_control_ids is not None and not allowed_control_ids:
+            return []
+
         policy_control_ids = (
             select(policy_controls.c.control_id.label("control_id"))
             .select_from(
@@ -978,6 +997,8 @@ class ControlService:
             )
             .order_by(Control.id.desc())
         )
+        if allowed_control_ids is not None:
+            stmt = stmt.where(Control.id.in_(allowed_control_ids))
 
         result = await self._db.execute(stmt)
         return result.scalars().unique().all()

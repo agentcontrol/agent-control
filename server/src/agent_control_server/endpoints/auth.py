@@ -156,6 +156,9 @@ async def runtime_token_exchange(
             scopes=scopes,
             secret=config.secret,
             ttl_seconds=config.ttl_seconds,
+            allowed_control_ids=principal.allowed_control_ids,
+            user_id=principal.user_id,
+            api_key_id=principal.api_key_id,
             upstream_expires_at=principal.grant_expires_at,
         )
     except UpstreamGrantExpiredError as exc:

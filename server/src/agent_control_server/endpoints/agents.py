@@ -497,6 +497,7 @@ async def list_agents(
         control_counts_map = await control_service.list_active_control_counts_by_agent(
             agent_names,
             namespace_key=namespace_key,
+            allowed_control_ids=principal.allowed_control_ids,
         )
 
     # Build summaries
@@ -679,6 +680,7 @@ async def init_agent(
             namespace_key=namespace_key,
             target_type=request.target_type,
             target_id=request.target_id,
+            allowed_control_ids=principal.allowed_control_ids,
         )
         return InitAgentResponse(created=created, controls=controls)
 
@@ -945,6 +947,7 @@ async def init_agent(
         namespace_key=namespace_key,
         target_type=request.target_type,
         target_id=request.target_id,
+        allowed_control_ids=principal.allowed_control_ids,
     )
 
     return InitAgentResponse(
@@ -1673,6 +1676,7 @@ async def list_agent_controls(
         target_id=target_id,
         rendered_state=rendered_state,
         enabled_state=enabled_state,
+        allowed_control_ids=principal.allowed_control_ids,
     )
     return AgentControlsResponse(controls=controls)
 

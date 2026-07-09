@@ -35,9 +35,17 @@ class EventStoreControlEventSink:
         events: Sequence[ControlExecutionEvent],
         *,
         namespace_key: str,
+        access_user_id: str | None = None,
     ) -> SinkResult:
         """Write events to the underlying store and report accepted/dropped counts."""
-        stored = await self.store.store(list(events), namespace_key=namespace_key)
+        if access_user_id is None:
+            stored = await self.store.store(list(events), namespace_key=namespace_key)
+        else:
+            stored = await self.store.store(
+                list(events),
+                namespace_key=namespace_key,
+                access_user_id=access_user_id,
+            )
         dropped = max(len(events) - stored, 0)
         return SinkResult(accepted=stored, dropped=dropped)
 

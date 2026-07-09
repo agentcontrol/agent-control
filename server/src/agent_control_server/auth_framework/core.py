@@ -59,6 +59,7 @@ class Operation(StrEnum):
     OBSERVABILITY_READ = "observability.read"
     OBSERVABILITY_WRITE = "observability.write"
     RUNTIME_USE = "runtime.use"
+    ACCESS_MANAGE = "access.manage"
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,11 @@ class Principal:
         grant_expires_at: When the upstream grant expires. Used by the
             runtime-token exchange endpoint to bound the local token's
             lifetime.
+        user_id: Stable database user identity, when local DB auth resolved it.
+        api_key_id: Stable database credential identity, when available.
+        allowed_control_ids: ``None`` means namespace-wide access. A concrete
+            set is the only set of controls a scoped credential may fetch,
+            evaluate, or observe; an empty set denies every control.
     """
 
     namespace_key: str
@@ -92,6 +98,9 @@ class Principal:
     target_id: str | None = None
     scopes: tuple[str, ...] = ()
     grant_expires_at: datetime | None = None
+    user_id: str | None = None
+    api_key_id: str | None = None
+    allowed_control_ids: frozenset[int] | None = None
 
 
 ContextBuilder = Callable[[Request], dict[str, Any] | Awaitable[dict[str, Any]]]

@@ -36,8 +36,8 @@ class AuthSettings(BaseSettings):
     # Enable in production: AGENT_CONTROL_API_KEY_ENABLED=true
     api_key_enabled: bool = False
 
-    # API keys (comma-separated list supports multiple keys for rotation)
-    # Env: AGENT_CONTROL_API_KEYS="key1,key2,key3"
+    # Deprecated and rejected in local API-key auth mode. Non-admin keys are
+    # database-managed so they always carry a user identity and control grants.
     api_keys: str = ""
 
     # Admin API keys (subset with elevated privileges)
@@ -64,11 +64,6 @@ class AuthSettings(BaseSettings):
             return set()
         return {k.strip() for k in self.admin_api_keys.split(",") if k.strip()}
 
-    @cached_property
-    def _all_valid_keys(self) -> set[str]:
-        """Cache the union of all valid keys for fast lookup."""
-        return self._parsed_api_keys | self._parsed_admin_api_keys
-
     def get_api_keys(self) -> set[str]:
         """Get parsed API keys (cached)."""
         return self._parsed_api_keys
@@ -78,8 +73,8 @@ class AuthSettings(BaseSettings):
         return self._parsed_admin_api_keys
 
     def is_valid_api_key(self, key: str) -> bool:
-        """Check if key is a valid API key (regular or admin). O(1) lookup."""
-        return key in self._all_valid_keys
+        """Check an environment key. Only bootstrap admin keys are accepted."""
+        return key in self._parsed_admin_api_keys
 
     def is_admin_api_key(self, key: str) -> bool:
         """Check if key is an admin API key. O(1) lookup."""

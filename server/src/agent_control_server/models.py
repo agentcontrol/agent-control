@@ -1,4 +1,5 @@
 import datetime as dt
+import uuid
 from typing import Any
 
 from agent_control_models.agent import StepSchema, normalize_agent_name
@@ -36,6 +37,133 @@ class AgentData(BaseModel):
     agent_metadata: dict[str, Any]
     steps: list[StepSchema] = Field(default_factory=list)
     evaluators: list[EvaluatorSchema] = Field(default_factory=list)
+
+
+# =============================================================================
+# Access Management Models
+# =============================================================================
+
+
+class AccessUser(Base):
+    """An operator-managed identity that owns one or more API keys."""
+
+    __tablename__ = "access_users"
+    __table_args__ = (
+        UniqueConstraint("namespace_key", "id", name="uq_access_users_namespace_id"),
+        UniqueConstraint("namespace_key", "name", name="uq_access_users_namespace_name"),
+        CheckConstraint("role IN ('admin', 'member')", name="ck_access_users_role"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    namespace_key: Mapped[str] = mapped_column(
+        String(255), nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'member'")
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
+        nullable=False,
+    )
+    api_keys: Mapped[list["APIKeyCredential"]] = relationship(
+        "APIKeyCredential", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class APIKeyCredential(Base):
+    """A hashed, revocable API key owned by an :class:`AccessUser`."""
+
+    __tablename__ = "api_key_credentials"
+    __table_args__ = (
+        UniqueConstraint(
+            "namespace_key", "id", name="uq_api_key_credentials_namespace_id"
+        ),
+        UniqueConstraint("key_hash", name="uq_api_key_credentials_key_hash"),
+        ForeignKeyConstraint(
+            ["namespace_key", "user_id"],
+            ["access_users.namespace_key", "access_users.id"],
+            name="api_key_credentials_user_fkey",
+            ondelete="CASCADE",
+        ),
+        Index("idx_api_key_credentials_user", "namespace_key", "user_id"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    namespace_key: Mapped[str] = mapped_column(
+        String(255), nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+    )
+    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(24), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("TRUE")
+    )
+    expires_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    user: Mapped[AccessUser] = relationship("AccessUser", back_populates="api_keys")
+    grants: Mapped[list["APIKeyControlGrant"]] = relationship(
+        "APIKeyControlGrant", back_populates="api_key", cascade="all, delete-orphan"
+    )
+
+
+class APIKeyControlGrant(Base):
+    """Allows one API key to use and observe one control (rule bucket)."""
+
+    __tablename__ = "api_key_control_grants"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "namespace_key",
+            "api_key_id",
+            "control_id",
+            name="api_key_control_grants_pkey",
+        ),
+        ForeignKeyConstraint(
+            ["namespace_key", "api_key_id"],
+            ["api_key_credentials.namespace_key", "api_key_credentials.id"],
+            name="api_key_control_grants_api_key_fkey",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["namespace_key", "control_id"],
+            ["controls.namespace_key", "controls.id"],
+            name="api_key_control_grants_control_fkey",
+            ondelete="CASCADE",
+        ),
+        Index("idx_api_key_control_grants_control", "namespace_key", "control_id"),
+    )
+
+    namespace_key: Mapped[str] = mapped_column(
+        String(255), nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
+    )
+    api_key_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    control_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
+    api_key: Mapped[APIKeyCredential] = relationship(
+        "APIKeyCredential", back_populates="grants"
+    )
 
 
 # Association table for Policy <> Control many-to-many relationship.
@@ -387,6 +515,7 @@ class ControlExecutionEventDB(Base):
         nullable=False,
     )
     agent_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    access_user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     # Full event data as JSONB
     data: Mapped[dict[str, Any]] = mapped_column(
@@ -400,6 +529,18 @@ class ControlExecutionEventDB(Base):
             "control_execution_id",
             name="control_execution_events_pkey",
         ),
+        ForeignKeyConstraint(
+            ["namespace_key", "access_user_id"],
+            ["access_users.namespace_key", "access_users.id"],
+            name="control_execution_events_access_user_fkey",
+        ),
         Index("ix_events_namespace_agent_time", "namespace_key", "agent_name", timestamp.desc()),
+        Index(
+            "ix_events_namespace_user_agent_time",
+            "namespace_key",
+            "access_user_id",
+            "agent_name",
+            timestamp.desc(),
+        ),
         Index("ix_events_data_control_id", text("(data ->> 'control_id'::text)")),
     )

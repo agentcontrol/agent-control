@@ -25,9 +25,11 @@ from agent_control_models import (
     StatsResponse,
     StatsTotals,
 )
+from agent_control_models.errors import ErrorCode
 from fastapi import APIRouter, Depends, Request
 
 from ..auth_framework import Operation, Principal, require_operation
+from ..errors import ForbiddenError, NotFoundError
 from ..observability.ingest.base import EventIngestor
 from ..observability.store.base import (
     EventStore,
@@ -66,6 +68,13 @@ def get_event_store(request: Request) -> EventStore:
     return cast(EventStore, store)
 
 
+def _member_event_owner(principal: Principal) -> str | None:
+    """Return the enforced event owner for DB members; admins read all owners."""
+    if principal.is_admin:
+        return None
+    return principal.user_id
+
+
 # =============================================================================
 # Event Ingestion
 # =============================================================================
@@ -95,10 +104,34 @@ async def ingest_events(
     """
     start_time = time.perf_counter()
 
-    result = await ingestor.ingest(
-        request.events,
-        namespace_key=principal.namespace_key,
-    )
+    if principal.allowed_control_ids is not None:
+        ungranted_control_ids = sorted(
+            {
+                event.control_id
+                for event in request.events
+                if event.control_id not in principal.allowed_control_ids
+            }
+        )
+        if ungranted_control_ids:
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail=(
+                    "The API key is not assigned to every control in this event batch."
+                ),
+                hint="Assign all event controls to this API key before retrying the batch.",
+            )
+
+    if principal.user_id is None:
+        result = await ingestor.ingest(
+            request.events,
+            namespace_key=principal.namespace_key,
+        )
+    else:
+        result = await ingestor.ingest(
+            request.events,
+            namespace_key=principal.namespace_key,
+            access_user_id=principal.user_id,
+        )
 
     duration_ms = (time.perf_counter() - start_time) * 1000
     logger.debug(
@@ -161,7 +194,32 @@ async def query_events(
     Returns:
         EventQueryResponse with matching events and pagination info
     """
-    return await store.query_events(request, namespace_key=principal.namespace_key)
+    scoped_request = request
+    if principal.allowed_control_ids is not None:
+        requested_ids = (
+            set(request.control_ids)
+            if request.control_ids is not None
+            else set(principal.allowed_control_ids)
+        )
+        effective_ids = requested_ids.intersection(principal.allowed_control_ids)
+        if not effective_ids:
+            return EventQueryResponse(
+                events=[], total=0, limit=request.limit, offset=request.offset
+            )
+        scoped_request = request.model_copy(
+            update={"control_ids": sorted(effective_ids)}
+        )
+
+    event_owner = _member_event_owner(principal)
+    if event_owner is None:
+        return await store.query_events(
+            scoped_request, namespace_key=principal.namespace_key
+        )
+    return await store.query_events(
+        scoped_request,
+        namespace_key=principal.namespace_key,
+        access_user_id=event_owner,
+    )
 
 
 # =============================================================================
@@ -199,14 +257,27 @@ async def get_stats(
     interval = parse_time_range(time_range)
     bucket_size = get_bucket_size(time_range) if include_timeseries else None
 
-    result = await store.query_stats(
-        agent_name,
-        interval,
-        control_id=None,
-        include_timeseries=include_timeseries,
-        bucket_size=bucket_size,
-        namespace_key=principal.namespace_key,
-    )
+    event_owner = _member_event_owner(principal)
+    if principal.allowed_control_ids is None and event_owner is None:
+        result = await store.query_stats(
+            agent_name,
+            interval,
+            control_id=None,
+            include_timeseries=include_timeseries,
+            bucket_size=bucket_size,
+            namespace_key=principal.namespace_key,
+        )
+    else:
+        result = await store.query_stats(
+            agent_name,
+            interval,
+            control_id=None,
+            include_timeseries=include_timeseries,
+            bucket_size=bucket_size,
+            namespace_key=principal.namespace_key,
+            allowed_control_ids=principal.allowed_control_ids,
+            access_user_id=event_owner,
+        )
 
     return StatsResponse(
         agent_name=agent_name,
@@ -254,14 +325,38 @@ async def get_control_stats(
     interval = parse_time_range(time_range)
     bucket_size = get_bucket_size(time_range) if include_timeseries else None
 
-    result = await store.query_stats(
-        agent_name,
-        interval,
-        control_id=control_id,
-        include_timeseries=include_timeseries,
-        bucket_size=bucket_size,
-        namespace_key=principal.namespace_key,
-    )
+    if (
+        principal.allowed_control_ids is not None
+        and control_id not in principal.allowed_control_ids
+    ):
+        raise NotFoundError(
+            error_code=ErrorCode.CONTROL_NOT_FOUND,
+            detail="Control was not found.",
+            resource="Control",
+            resource_id=str(control_id),
+        )
+
+    event_owner = _member_event_owner(principal)
+    if principal.allowed_control_ids is None and event_owner is None:
+        result = await store.query_stats(
+            agent_name,
+            interval,
+            control_id=control_id,
+            include_timeseries=include_timeseries,
+            bucket_size=bucket_size,
+            namespace_key=principal.namespace_key,
+        )
+    else:
+        result = await store.query_stats(
+            agent_name,
+            interval,
+            control_id=control_id,
+            include_timeseries=include_timeseries,
+            bucket_size=bucket_size,
+            namespace_key=principal.namespace_key,
+            allowed_control_ids=principal.allowed_control_ids,
+            access_user_id=event_owner,
+        )
 
     # Get control name from the stats (should be exactly one)
     control_name = result.stats[0].control_name if result.stats else f"control-{control_id}"

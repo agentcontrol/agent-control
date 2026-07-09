@@ -70,15 +70,14 @@ Note: This starts server without API keys configured which is dangerous for any 
 
 Set appropirate env vars to override defaults like:
  * Exposed ports
- * Agent and admin API keys
+ * Bootstrap admin API keys (member SDK/UI keys are created in Agent Control)
  * Postgres DB Password
 
 ```bash
 export AGENT_CONTROL_SERVER_HOST_PORT=18000
 export AGENT_CONTROL_DB_HOST_PORT=15432
 export AGENT_CONTROL_API_KEY_ENABLED=true
-export AGENT_CONTROL_API_KEYS="agent-api-key"
-export AGENT_CONTROL_ADMIN_API_KEYS="admin-api-key"
+export AGENT_CONTROL_ADMIN_API_KEYS="bootstrap-admin-key"
 export AGENT_CONTROL_POSTGRES_PASSWORD="postgres-password"
 
 curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/main/docker-compose.yml | docker compose -f - up -d
@@ -87,6 +86,10 @@ curl -L https://raw.githubusercontent.com/agentcontrol/agent-control/refs/heads/
 #### Create scoped user API keys
 
 `AGENT_CONTROL_ADMIN_API_KEYS` provides the initial administrator credential.
+`AGENT_CONTROL_API_KEYS` is not accepted. With authentication enabled,
+non-admin SDK and UI keys must be created through access management so each
+key is tied to an enabled user and explicit control grants.
+
 Sign in to the dashboard with that key, open **Access management**, and then:
 
 1. Create a named user.

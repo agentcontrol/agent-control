@@ -16,6 +16,7 @@ from agent_control_models.errors import ErrorCode
 from fastapi import Request
 
 from ...errors import AuthenticationError, ForbiddenError
+from ...services.access import resolve_database_credential
 from ..core import Operation, Principal, RequestAuthorizer
 from ..runtime_token import RuntimeTokenError, verify_runtime_token
 
@@ -54,28 +55,50 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
                 hint="Request a token with the required scope.",
             )
 
-        requested_target_type = context.get("target_type") if context is not None else None
-        requested_target_id = context.get("target_id") if context is not None else None
-        if requested_target_type != claims.target_type:
-            raise ForbiddenError(
-                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                detail="Runtime token target_type does not match the request.",
-                hint="Re-exchange a token bound to the request target.",
+        allowed_control_ids = claims.allowed_control_ids
+        is_admin = False
+        user_id = claims.user_id
+        api_key_id = claims.api_key_id
+        if api_key_id is not None:
+            identity = await resolve_database_credential(
+                api_key_id, expected_user_id=user_id
             )
-        if requested_target_id != claims.target_id:
-            raise ForbiddenError(
-                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                detail="Runtime token target_id does not match the request.",
-                hint="Re-exchange a token bound to the request target.",
-            )
+            if identity is None or identity.namespace_key != claims.namespace_key:
+                raise AuthenticationError(
+                    error_code=ErrorCode.AUTH_INVALID_KEY,
+                    detail="Runtime token credential is no longer active.",
+                    hint="Re-exchange a fresh runtime token with an active API key.",
+                )
+            allowed_control_ids = identity.allowed_control_ids
+            is_admin = identity.is_admin
+
+        if operation is not Operation.OBSERVABILITY_WRITE:
+            requested_target_type = context.get("target_type") if context is not None else None
+            requested_target_id = context.get("target_id") if context is not None else None
+            if requested_target_type != claims.target_type:
+                raise ForbiddenError(
+                    error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                    detail="Runtime token target_type does not match the request.",
+                    hint="Re-exchange a token bound to the request target.",
+                )
+            if requested_target_id != claims.target_id:
+                raise ForbiddenError(
+                    error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                    detail="Runtime token target_id does not match the request.",
+                    hint="Re-exchange a token bound to the request target.",
+                )
 
         return Principal(
             namespace_key=claims.namespace_key,
+            is_admin=is_admin,
             caller_id=claims.actor_id,
             target_type=claims.target_type,
             target_id=claims.target_id,
             scopes=claims.scopes,
             grant_expires_at=claims.expires_at,
+            allowed_control_ids=allowed_control_ids,
+            user_id=user_id,
+            api_key_id=api_key_id,
         )
 
     def _extract_bearer_token(self, request: Request) -> str:

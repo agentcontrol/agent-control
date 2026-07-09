@@ -229,12 +229,20 @@ class ControlBindingsService:
         result = await self._db.execute(stmt)
         return cast(ControlBinding | None, result.scalars().first())
 
-    async def get_binding_or_404(self, *, namespace_key: str, binding_id: int) -> ControlBinding:
+    async def get_binding_or_404(
+        self,
+        *,
+        namespace_key: str,
+        binding_id: int,
+        allowed_control_ids: frozenset[int] | None = None,
+    ) -> ControlBinding:
         """Load a binding row scoped to ``namespace_key`` or raise 404."""
         stmt = select(ControlBinding).where(
             ControlBinding.id == binding_id,
             ControlBinding.namespace_key == namespace_key,
         )
+        if allowed_control_ids is not None:
+            stmt = stmt.where(ControlBinding.control_id.in_(allowed_control_ids))
         result = await self._db.execute(stmt)
         binding = cast(ControlBinding | None, result.scalars().first())
         if binding is None:
@@ -256,6 +264,7 @@ class ControlBindingsService:
         target_type: str | None = None,
         target_id: str | None = None,
         control_id: int | None = None,
+        allowed_control_ids: frozenset[int] | None = None,
     ) -> ControlBindingListPage:
         """List bindings scoped to ``namespace_key`` with optional filters and
         cursor-based pagination.
@@ -273,6 +282,8 @@ class ControlBindingsService:
                 stmt = stmt.where(ControlBinding.target_id == target_id)
             if control_id is not None:
                 stmt = stmt.where(ControlBinding.control_id == control_id)
+            if allowed_control_ids is not None:
+                stmt = stmt.where(ControlBinding.control_id.in_(allowed_control_ids))
             return stmt
 
         page_stmt = _apply_filters(select(ControlBinding)).order_by(ControlBinding.id.desc())

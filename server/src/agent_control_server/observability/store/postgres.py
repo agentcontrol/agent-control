@@ -111,6 +111,7 @@ class PostgresEventStore(EventStore):
         events: list[ControlExecutionEvent],
         *,
         namespace_key: str,
+        access_user_id: str | None = None,
     ) -> int:
         """Store raw events in PostgreSQL.
 
@@ -125,6 +126,7 @@ class PostgresEventStore(EventStore):
         Args:
             events: List of control execution events to store
             namespace_key: Namespace that owns the events
+            access_user_id: Server-resolved owner for member data isolation
 
         Returns:
             Number of events successfully stored
@@ -140,6 +142,7 @@ class PostgresEventStore(EventStore):
 
             values.append({
                 "namespace_key": namespace_key,
+                "access_user_id": access_user_id,
                 "control_execution_id": event.control_execution_id,
                 "timestamp": event.timestamp,
                 "agent_name": event.agent_name,
@@ -151,10 +154,11 @@ class PostgresEventStore(EventStore):
             await session.execute(
                 text("""
                     INSERT INTO control_execution_events (
-                        namespace_key, control_execution_id, timestamp, agent_name, data
+                        namespace_key, access_user_id, control_execution_id,
+                        timestamp, agent_name, data
                     ) VALUES (
-                        :namespace_key, :control_execution_id, :timestamp, :agent_name,
-                        CAST(:data AS JSONB)
+                        :namespace_key, :access_user_id, :control_execution_id,
+                        :timestamp, :agent_name, CAST(:data AS JSONB)
                     )
                     ON CONFLICT (namespace_key, control_execution_id) DO NOTHING
                 """),
@@ -174,6 +178,8 @@ class PostgresEventStore(EventStore):
         include_timeseries: bool = False,
         bucket_size: timedelta | None = None,
         namespace_key: str,
+        allowed_control_ids: frozenset[int] | None = None,
+        access_user_id: str | None = None,
     ) -> StatsResult:
         """Query stats aggregated at query time from raw events.
 
@@ -190,6 +196,8 @@ class PostgresEventStore(EventStore):
             include_timeseries: Whether to include time-series data
             bucket_size: Bucket size for time-series (required if include_timeseries=True)
             namespace_key: Namespace whose events should be queried
+            allowed_control_ids: Server-authorized control scope. ``None`` is unrestricted.
+            access_user_id: When set, return only events ingested by this access user.
 
         Returns:
             StatsResult with per-control and total statistics
@@ -207,6 +215,15 @@ class PostgresEventStore(EventStore):
         if control_id is not None:
             control_filter = "AND (data->>'control_id')::int = :control_id"
             params["control_id"] = control_id
+        if allowed_control_ids is not None:
+            if allowed_control_ids:
+                control_filter += " AND (data->>'control_id')::int = ANY(:allowed_control_ids)"
+                params["allowed_control_ids"] = sorted(allowed_control_ids)
+            else:
+                control_filter += " AND FALSE"
+        if access_user_id is not None:
+            control_filter += " AND access_user_id = :access_user_id"
+            params["access_user_id"] = access_user_id
 
         # Build combined query with CTE
         if include_timeseries and bucket_size:
@@ -399,6 +416,7 @@ class PostgresEventStore(EventStore):
         query: EventQueryRequest,
         *,
         namespace_key: str,
+        access_user_id: str | None = None,
     ) -> EventQueryResponse:
         """Query raw events with filters and pagination.
 
@@ -417,6 +435,10 @@ class PostgresEventStore(EventStore):
         # Build WHERE clauses and params
         where_clauses = ["namespace_key = :namespace_key"]
         params: dict = {"namespace_key": namespace_key}
+
+        if access_user_id is not None:
+            where_clauses.append("access_user_id = :access_user_id")
+            params["access_user_id"] = access_user_id
 
         # Indexed columns (use direct comparison)
         if query.control_execution_id:

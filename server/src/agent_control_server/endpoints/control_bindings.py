@@ -176,6 +176,7 @@ async def list_control_bindings(
         target_type=target_type,
         target_id=target_id,
         control_id=control_id,
+        allowed_control_ids=principal.allowed_control_ids,
     )
     return ListControlBindingsResponse(
         bindings=[_to_response(b) for b in page.bindings],
@@ -210,7 +211,9 @@ async def get_control_binding(
     """
     service = ControlBindingsService(db)
     binding = await service.get_binding_or_404(
-        namespace_key=principal.namespace_key, binding_id=binding_id
+        namespace_key=principal.namespace_key,
+        binding_id=binding_id,
+        allowed_control_ids=principal.allowed_control_ids,
     )
     return _to_response(binding)
 

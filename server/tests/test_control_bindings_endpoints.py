@@ -5,9 +5,10 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from fastapi.testclient import TestClient
+
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.models import DEFAULT_NAMESPACE_KEY
-from fastapi.testclient import TestClient
 
 from .utils import VALID_CONTROL_PAYLOAD
 
@@ -254,8 +255,15 @@ def test_non_admin_cannot_write(non_admin_client: TestClient, client: TestClient
 
 
 def test_non_admin_can_read(non_admin_client: TestClient, client: TestClient) -> None:
+    from .conftest import TEST_API_KEY_ID
+
     control_id = _create_control(client)
     _create_binding(client, control_id=control_id)
+    grant = client.put(
+        f"/api/v1/admin/access/api-keys/{TEST_API_KEY_ID}/control-grants",
+        json={"control_ids": [control_id]},
+    )
+    assert grant.status_code == 200, grant.text
 
     resp = non_admin_client.get(_BINDINGS_URL)
     assert resp.status_code == 200, resp.text

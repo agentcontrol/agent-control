@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from agent_control_server.auth_framework import set_authorizer
-from agent_control_server.auth_framework.providers import NoAuthProvider
 from fastapi.testclient import TestClient
 
+from agent_control_server.auth_framework import set_authorizer
+from agent_control_server.auth_framework.providers import NoAuthProvider
+
+from .conftest import TEST_API_KEY_ID
 from .utils import VALID_CONTROL_PAYLOAD
 
 _CONTROLS_URL = "/api/v1/controls"
@@ -50,6 +52,14 @@ def _create_control(client: TestClient, name: str | None = None) -> int:
     resp = client.put(_CONTROLS_URL, json=payload)
     assert resp.status_code == 200, resp.text
     return int(resp.json()["control_id"])
+
+
+def _grant_test_key(client: TestClient, control_id: int) -> None:
+    response = client.put(
+        f"/api/v1/admin/access/api-keys/{TEST_API_KEY_ID}/control-grants",
+        json={"control_ids": [control_id]},
+    )
+    assert response.status_code == 200, response.text
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +117,8 @@ def test_non_admin_can_list_controls(
     non_admin_client: TestClient, client: TestClient
 ) -> None:
     # Given: an existing control
-    _create_control(client)
+    control_id = _create_control(client)
+    _grant_test_key(client, control_id)
 
     # When: a non-admin lists controls
     resp = non_admin_client.get(_CONTROLS_URL)
@@ -121,6 +132,7 @@ def test_non_admin_can_get_control(
 ) -> None:
     # Given: an existing control
     control_id = _create_control(client)
+    _grant_test_key(client, control_id)
 
     # When: a non-admin reads it
     resp = non_admin_client.get(f"{_CONTROLS_URL}/{control_id}")
@@ -134,6 +146,7 @@ def test_non_admin_can_get_control_data(
 ) -> None:
     # Given: an existing control
     control_id = _create_control(client)
+    _grant_test_key(client, control_id)
 
     # When: a non-admin reads its data
     resp = non_admin_client.get(f"{_CONTROLS_URL}/{control_id}/data")
@@ -147,6 +160,7 @@ def test_non_admin_can_list_versions(
 ) -> None:
     # Given: an existing control with at least one version (creation)
     control_id = _create_control(client)
+    _grant_test_key(client, control_id)
 
     # When: a non-admin lists versions
     resp = non_admin_client.get(f"{_CONTROLS_URL}/{control_id}/versions")
@@ -160,6 +174,7 @@ def test_non_admin_can_get_specific_version(
 ) -> None:
     # Given: an existing control (version 1 = "created")
     control_id = _create_control(client)
+    _grant_test_key(client, control_id)
 
     # When: a non-admin reads version 1
     resp = non_admin_client.get(f"{_CONTROLS_URL}/{control_id}/versions/1")
