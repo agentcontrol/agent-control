@@ -1394,6 +1394,7 @@ async def delete_control(
         HTTPException 409: Control is in use (and force=false)
         HTTPException 500: Database error during deletion
     """
+    _require_granted_control(principal, control_id)
     control_service = ControlService(db)
     bindings_service = ControlBindingsService(db)
     namespace_key = principal.namespace_key

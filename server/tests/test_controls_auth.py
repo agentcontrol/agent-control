@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
-from fastapi.testclient import TestClient
-
-from agent_control_server.auth_framework import set_authorizer
+from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.auth_framework.providers import NoAuthProvider
+from fastapi.testclient import TestClient
 
 from .conftest import TEST_ACCESS_USER_ID
 from .utils import VALID_CONTROL_PAYLOAD
@@ -245,6 +245,37 @@ def test_non_admin_cannot_delete_control(
 
     # Then: the request is forbidden
     assert resp.status_code == 403, resp.text
+
+
+def test_scoped_delete_authorizer_cannot_delete_an_ungranted_control(
+    client: TestClient,
+) -> None:
+    allowed_id = _create_control(client)
+    hidden_id = _create_control(client)
+
+    class ScopedDeleteAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            assert operation == Operation.CONTROLS_DELETE
+            return Principal(
+                namespace_key="default",
+                allowed_control_ids=frozenset({allowed_id}),
+            )
+
+    set_authorizer(
+        ScopedDeleteAuthorizer(), operation=Operation.CONTROLS_DELETE
+    )
+
+    hidden = client.delete(f"{_CONTROLS_URL}/{hidden_id}")
+    assert hidden.status_code == 404
+    assert client.get(f"{_CONTROLS_URL}/{hidden_id}").status_code == 200
+
+    allowed = client.delete(f"{_CONTROLS_URL}/{allowed_id}")
+    assert allowed.status_code == 200, allowed.text
 
 
 def test_non_admin_cannot_validate_control_data(
