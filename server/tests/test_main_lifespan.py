@@ -99,7 +99,14 @@ def test_lifespan_uses_custom_backend_store_for_custom_sink(monkeypatch) -> None
         async def query_stats(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             raise NotImplementedError
 
-        async def query_events(self, query, *, namespace_key: str):  # type: ignore[no-untyped-def]
+        async def query_events(  # type: ignore[no-untyped-def]
+            self,
+            query,
+            *,
+            namespace_key: str,
+            access_user_id=None,
+            include_owner=False,
+        ):
             raise NotImplementedError
 
         async def close(self) -> None:
@@ -169,7 +176,14 @@ def test_lifespan_flushes_shared_sink_store_backend(monkeypatch) -> None:
         async def query_stats(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             raise NotImplementedError
 
-        async def query_events(self, query, *, namespace_key: str):  # type: ignore[no-untyped-def]
+        async def query_events(  # type: ignore[no-untyped-def]
+            self,
+            query,
+            *,
+            namespace_key: str,
+            access_user_id=None,
+            include_owner=False,
+        ):
             raise NotImplementedError
 
         async def flush(self) -> None:

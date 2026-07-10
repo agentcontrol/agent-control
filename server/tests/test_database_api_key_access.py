@@ -165,6 +165,38 @@ def test_access_management_is_admin_only_and_secrets_are_one_time(
     assert db_client.get("/api/v1/evaluators").status_code == 200
 
 
+def test_access_user_names_are_unique_and_null_patch_fields_are_ignored(
+    admin_client: TestClient,
+) -> None:
+    first_user, _, _ = _create_user_and_key(
+        admin_client, user_name="DefenseClaw operator"
+    )
+
+    duplicate = admin_client.post(
+        "/api/v1/admin/access/users",
+        json={"name": first_user["name"], "role": "member"},
+    )
+    assert duplicate.status_code == 409
+    assert "already exists" in duplicate.text
+
+    second_user, _, _ = _create_user_and_key(admin_client)
+    duplicate_rename = admin_client.patch(
+        f"/api/v1/admin/access/users/{second_user['id']}",
+        json={"name": first_user["name"]},
+    )
+    assert duplicate_rename.status_code == 409
+    assert "already exists" in duplicate_rename.text
+
+    no_op = admin_client.patch(
+        f"/api/v1/admin/access/users/{second_user['id']}",
+        json={"name": None, "role": None, "enabled": None},
+    )
+    assert no_op.status_code == 200
+    assert no_op.json()["name"] == second_user["name"]
+    assert no_op.json()["role"] == second_user["role"]
+    assert no_op.json()["enabled"] == second_user["enabled"]
+
+
 def test_one_active_key_per_user_rotation_preserves_grants_history_and_event_owner(
     app: object,
     admin_client: TestClient,
@@ -237,6 +269,17 @@ def test_one_active_key_per_user_rotation_preserves_grants_history_and_event_own
         ).one()
     assert provenance.access_user_id == user["id"]
     assert provenance.api_key_id == old_key["id"]
+
+    revoked = admin_client.delete(
+        f"/api/v1/admin/access/users/{user['id']}/api-key"
+    )
+    assert revoked.status_code == 204
+    missing_rotation = admin_client.post(
+        f"/api/v1/admin/access/users/{user['id']}/api-key/rotate",
+        json={"name": None, "expires_at": None},
+    )
+    assert missing_rotation.status_code == 409
+    assert "Issue a key instead" in missing_rotation.text
 
 
 def test_database_admin_key_is_unrestricted_and_rejects_bucket_grants(
@@ -424,15 +467,19 @@ def test_observability_grants_filter_reads_and_reject_mixed_batch_atomically(
     _ = setup_observability
     allowed_id = _create_control(admin_client, "event-allowed")
     hidden_id = _create_control(admin_client, "event-hidden")
-    _, key, secret = _create_user_and_key(admin_client)
+    first_user, key, secret = _create_user_and_key(admin_client)
     _grant_controls(admin_client, key["user_id"], [allowed_id])
     scoped = _db_key_client(app, secret)
-    _, second_key, second_secret = _create_user_and_key(admin_client)
+    second_user, second_key, second_secret = _create_user_and_key(admin_client)
     _grant_controls(admin_client, second_key["user_id"], [allowed_id])
     second_scoped = _db_key_client(app, second_secret)
     agent_name = f"defenseclaw-events-{uuid.uuid4().hex[:8]}"
 
     allowed_event = _event(agent_name=agent_name, control_id=allowed_id, marker="a")
+    allowed_event.metadata["access_user"] = {
+        "id": "spoofed-user-id",
+        "name": "Spoofed owner",
+    }
     allowed_request = BatchEventsRequest(events=[allowed_event])
     accepted = scoped.post(
         "/api/v1/observability/events",
@@ -479,6 +526,7 @@ def test_observability_grants_filter_reads_and_reject_mixed_batch_atomically(
     assert scoped_query.json()["total"] == 1
     assert scoped_query.json()["events"][0]["control_id"] == allowed_id
     assert "access_user_id" not in scoped_query.json()["events"][0]
+    assert "access_user" not in scoped_query.json()["events"][0]["metadata"]
     assert (
         scoped_query.json()["events"][0]["metadata"]["blocked_input"]["prompt"] == "exact-a-prompt"
     )
@@ -488,6 +536,7 @@ def test_observability_grants_filter_reads_and_reject_mixed_batch_atomically(
     )
     assert second_query.status_code == 200
     assert second_query.json()["total"] == 1
+    assert "access_user" not in second_query.json()["events"][0]["metadata"]
     assert (
         second_query.json()["events"][0]["metadata"]["blocked_input"]["prompt"] == "exact-e-prompt"
     )
@@ -517,6 +566,22 @@ def test_observability_grants_filter_reads_and_reject_mixed_batch_atomically(
     assert admin_query.status_code == 200
     # The rejected mixed batch wrote neither its allowed nor hidden event.
     assert admin_query.json()["total"] == 3
+    events_by_prompt = {
+        event["metadata"]["blocked_input"]["prompt"]: event
+        for event in admin_query.json()["events"]
+    }
+    assert events_by_prompt["exact-a-prompt"]["metadata"]["access_user"] == {
+        "id": first_user["id"],
+        "name": first_user["name"],
+    }
+    assert events_by_prompt["exact-e-prompt"]["metadata"]["access_user"] == {
+        "id": second_user["id"],
+        "name": second_user["name"],
+    }
+    assert events_by_prompt["exact-d-prompt"]["metadata"]["access_user"] == {
+        "id": None,
+        "name": "Administrator / system",
+    }
 
 
 def test_soft_delete_revokes_member_grant_and_blocks_new_events(

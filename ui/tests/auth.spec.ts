@@ -136,6 +136,14 @@ test.describe('API key login flow', () => {
     await expect(
       page.getByText('member-a-exact-span', { exact: true })
     ).toBeVisible();
+    await expect(
+      page.getByText('User: DefenseClaw demo', { exact: true })
+    ).toHaveCount(0);
+    await expect(
+      page.getByText('86fd7799-880f-4a3c-a194-291f7ee137bf', {
+        exact: true,
+      })
+    ).toHaveCount(0);
 
     principal = 'second';
     await page.getByTitle('Sign out').click();

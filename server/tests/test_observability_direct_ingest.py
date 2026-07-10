@@ -32,7 +32,9 @@ class FailingStore(EventStore):
     ):  # pragma: no cover - not used
         raise NotImplementedError
 
-    async def query_events(self, query, *, namespace_key):  # pragma: no cover - not used
+    async def query_events(  # pragma: no cover - not used
+        self, query, *, namespace_key, access_user_id=None, include_owner=False
+    ):
         raise NotImplementedError
 
 
@@ -61,7 +63,9 @@ class CountingStore(EventStore):
     ):  # pragma: no cover - not used
         raise NotImplementedError
 
-    async def query_events(self, query, *, namespace_key):  # pragma: no cover - not used
+    async def query_events(  # pragma: no cover - not used
+        self, query, *, namespace_key, access_user_id=None, include_owner=False
+    ):
         raise NotImplementedError
 
 

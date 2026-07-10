@@ -160,6 +160,14 @@ test.describe('Agent Monitor Tab', () => {
     ).toBeVisible();
     await expect(mockedPage.getByText('Exact content').first()).toBeVisible();
     await expect(
+      mockedPage.getByText('User: DefenseClaw demo', { exact: true })
+    ).toBeVisible();
+    await expect(
+      mockedPage.getByText('86fd7799-880f-4a3c-a194-291f7ee137bf', {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(
       mockedPage.getByText('4bf92f3577b34da6a3ce929d0e0e4736', {
         exact: true,
       })

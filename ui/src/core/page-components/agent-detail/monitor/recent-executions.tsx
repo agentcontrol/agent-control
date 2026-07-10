@@ -128,6 +128,11 @@ export function RecentExecutions({
               )
             : [];
           const requestId = asString(metadata.request_id);
+          const accessUser = asRecord(metadata.access_user);
+          const accessUserId = asString(accessUser?.id);
+          const accessUserName = asString(accessUser?.name);
+          const ownerLabel = accessUserName ?? 'Administrator / system';
+          const showOwner = administrator && accessUser !== null;
           const key = executionKey(event);
           const contentUnredacted = metadata.content_unredacted === true;
           const hasBlockedContent = blockedInput !== null;
@@ -152,6 +157,11 @@ export function RecentExecutions({
                     </Text>
                   </Stack>
                   <Group gap="xs" wrap="nowrap">
+                    {showOwner ? (
+                      <Badge color="violet" variant="outline">
+                        User: {ownerLabel}
+                      </Badge>
+                    ) : null}
                     <Badge
                       color={contentUnredacted ? 'orange' : 'gray'}
                       variant="light"
@@ -173,6 +183,15 @@ export function RecentExecutions({
                       label="Request ID"
                       value={requestId ?? 'Unavailable'}
                     />
+                    {showOwner ? (
+                      <Detail label="User" value={ownerLabel} />
+                    ) : null}
+                    {showOwner ? (
+                      <Detail
+                        label="User ID"
+                        value={accessUserId ?? 'Administrator / system'}
+                      />
+                    ) : null}
                     <Detail
                       label="Matched rule IDs"
                       value={

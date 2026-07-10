@@ -754,6 +754,10 @@ const eventsResponse: EventQueryResponse = {
       evaluator_name: 'defenseclaw.rule_pack',
       selector_path: '*',
       metadata: {
+        access_user: {
+          id: '86fd7799-880f-4a3c-a194-291f7ee137bf',
+          name: 'DefenseClaw demo',
+        },
         request_id: 'request-1',
         rule_ids: ['LOCAL-INJECTION-014'],
         content_unredacted: true,

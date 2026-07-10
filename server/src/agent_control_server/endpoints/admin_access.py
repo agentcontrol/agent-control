@@ -311,7 +311,7 @@ async def update_access_user(
         user_id=user_id,
         for_update=True,
     )
-    updates = body.model_dump(exclude_unset=True)
+    updates = body.model_dump(exclude_unset=True, exclude_none=True)
     for field_name, value in updates.items():
         setattr(user, field_name, value.strip() if field_name == "name" else value)
     if updates.get("role") == "admin":

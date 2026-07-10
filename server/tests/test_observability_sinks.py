@@ -27,7 +27,14 @@ class DummyStore:
     async def query_stats(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         raise NotImplementedError
 
-    async def query_events(self, query, *, namespace_key: str):  # type: ignore[no-untyped-def]
+    async def query_events(  # type: ignore[no-untyped-def]
+        self,
+        query,
+        *,
+        namespace_key: str,
+        access_user_id=None,
+        include_owner=False,
+    ):
         raise NotImplementedError
 
     async def close(self) -> None:

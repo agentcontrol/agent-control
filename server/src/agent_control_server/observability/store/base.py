@@ -177,6 +177,7 @@ class EventStore(ABC):
         *,
         namespace_key: str,
         access_user_id: str | None = None,
+        include_owner: bool = False,
     ) -> EventQueryResult:
         """Query raw events with filters and pagination.
 
@@ -184,6 +185,8 @@ class EventStore(ABC):
             query: Query parameters (filters, pagination)
             namespace_key: Namespace whose events should be queried
             access_user_id: When set, return only events ingested by this access user.
+            include_owner: Include server-resolved event-owner metadata. This is intended
+                only for trusted administrator responses.
 
         Returns:
             EventQueryResult with matching events and pagination info

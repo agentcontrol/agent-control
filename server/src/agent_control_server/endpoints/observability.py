@@ -214,7 +214,9 @@ async def query_events(
     event_owner = _member_event_owner(principal)
     if event_owner is None:
         return await store.query_events(
-            scoped_request, namespace_key=principal.namespace_key
+            scoped_request,
+            namespace_key=principal.namespace_key,
+            include_owner=principal.is_admin,
         )
     return await store.query_events(
         scoped_request,

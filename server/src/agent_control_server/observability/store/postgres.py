@@ -420,6 +420,7 @@ class PostgresEventStore(EventStore):
         *,
         namespace_key: str,
         access_user_id: str | None = None,
+        include_owner: bool = False,
     ) -> EventQueryResponse:
         """Query raw events with filters and pagination.
 
@@ -508,10 +509,25 @@ class PostgresEventStore(EventStore):
             )
             total = count_result.scalar() or 0
 
-            # Get events
+            owner_columns = ""
+            if include_owner:
+                owner_columns = """,
+                    access_user_id,
+                    (
+                        SELECT access_users.name
+                        FROM access_users
+                        WHERE access_users.namespace_key =
+                            control_execution_events.namespace_key
+                          AND access_users.id =
+                            control_execution_events.access_user_id
+                    ) AS access_user_name
+                """
+
+            # Get events. Owner attribution is joined only for trusted administrator
+            # responses; SDK-supplied metadata cannot override these values.
             result = await session.execute(
                 text(f"""
-                    SELECT data
+                    SELECT data{owner_columns}
                     FROM control_execution_events
                     WHERE {where_sql}
                     ORDER BY timestamp DESC
@@ -528,6 +544,19 @@ class PostgresEventStore(EventStore):
             # If data is already a dict (JSONB auto-parsed), use it directly
             if isinstance(event_data, str):
                 event_data = json.loads(event_data)
+            event_data = dict(event_data)
+            metadata = dict(event_data.get("metadata") or {})
+            # Reserve this response-only field for server-resolved attribution.
+            metadata.pop("access_user", None)
+            if include_owner:
+                owner_id = row.access_user_id
+                owner_name = row.access_user_name
+                metadata["access_user"] = {
+                    "id": owner_id,
+                    "name": owner_name
+                    or ("Unknown user" if owner_id is not None else "Administrator / system"),
+                }
+            event_data["metadata"] = metadata
             events.append(ControlExecutionEvent(**event_data))
 
         return EventQueryResponse(
