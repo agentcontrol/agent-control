@@ -11,7 +11,7 @@ test.describe('DefenseClaw Rule Pack Evaluator', () => {
 
     await expect(
       mockedPage.getByRole('textbox', { name: 'Execution environment' })
-    ).toHaveValue('sdk');
+    ).toHaveValue('SDK');
     await expect(
       mockedPage.getByRole('textbox', { name: 'Execution environment' })
     ).toBeDisabled();
@@ -59,7 +59,7 @@ test.describe('DefenseClaw OPA Policy Evaluator', () => {
 
     await expect(
       mockedPage.getByRole('textbox', { name: 'Execution environment' })
-    ).toHaveValue('sdk');
+    ).toHaveValue('SDK');
     await expect(
       mockedPage.getByRole('textbox', { name: 'Execution environment' })
     ).toBeDisabled();
