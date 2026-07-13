@@ -9,10 +9,12 @@ test.describe('DefenseClaw Rule Pack Evaluator', () => {
   }) => {
     await openEvaluatorForm(mockedPage, 'DefenseClaw Rule Pack');
 
-    await expect(mockedPage.getByLabel('Execution environment')).toHaveValue(
-      'sdk'
-    );
-    await expect(mockedPage.getByLabel('Execution environment')).toBeDisabled();
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Execution environment' })
+    ).toHaveValue('sdk');
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Execution environment' })
+    ).toBeDisabled();
 
     await expect(mockedPage.getByLabel('Rule ID')).toBeVisible();
     await expect(mockedPage.getByLabel('Title')).toBeVisible();
@@ -55,10 +57,12 @@ test.describe('DefenseClaw OPA Policy Evaluator', () => {
   }) => {
     await openEvaluatorForm(mockedPage, 'DefenseClaw OPA Policy');
 
-    await expect(mockedPage.getByLabel('Execution environment')).toHaveValue(
-      'sdk'
-    );
-    await expect(mockedPage.getByLabel('Execution environment')).toBeDisabled();
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Execution environment' })
+    ).toHaveValue('sdk');
+    await expect(
+      mockedPage.getByRole('textbox', { name: 'Execution environment' })
+    ).toBeDisabled();
 
     await expect(
       mockedPage.getByRole('textbox', { name: 'Domain' })
