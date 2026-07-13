@@ -14,7 +14,6 @@ pip install "agent-control-evaluators[defenseclaw]"
 The configuration contracts and JSON Schemas are implemented and discoverable. Both evaluator
 classes intentionally execute as no-ops: they return `matched=False` without contacting or
 installing any DefenseClaw runtime or OSS package.
-
 The complementary DefenseClaw watcher can emit post-decision
 `ControlExecutionEvent` records through the Agent Control SDK. The agent Monitor
 shows aggregate enforcement counts and a **Recent executions** drill-down with

@@ -25,13 +25,24 @@ import type { ControlDefinitionFormProps } from './types';
 export type ControlDefinitionFormWithStepsProps = ControlDefinitionFormProps & {
   /** Available steps from the agent */
   steps?: StepSchema[];
+  /** Execution environments supported by the selected installed evaluator. */
+  supportedExecutions?: readonly ControlExecution[];
 };
 
 export const ControlDefinitionForm = ({
   form,
   steps,
   disableSelectorPath = false,
+  supportedExecutions,
 }: ControlDefinitionFormWithStepsProps) => {
+  const executionOptions = [
+    { value: 'server' as const, label: 'Server' },
+    { value: 'sdk' as const, label: 'SDK' },
+  ].filter(
+    (option) =>
+      !supportedExecutions || supportedExecutions.includes(option.value)
+  );
+
   return (
     <Stack gap="md">
       <Switch
@@ -137,10 +148,11 @@ export const ControlDefinitionForm = ({
           />
         }
         labelProps={labelPropsInline}
-        data={[
-          { value: 'server', label: 'Server' },
-          { value: 'sdk', label: 'SDK' },
-        ]}
+        data={executionOptions}
+        disabled={
+          executionOptions.length === 1 &&
+          executionOptions[0].value === form.values.execution
+        }
         size="sm"
         {...form.getInputProps('execution')}
         onChange={(value) =>

@@ -205,6 +205,10 @@ const RawEditControlContent = ({
       null,
     [availableEvaluators, evaluatorId]
   );
+  const installedEvaluatorSupportedExecutions =
+    activeEvaluatorOption?.source === 'global'
+      ? evaluator?.supportedExecutions
+      : undefined;
 
   const definitionForm = useForm<ControlDefinitionFormValues>({
     initialValues: {
@@ -223,6 +227,12 @@ const RawEditControlContent = ({
     },
     validate: {
       name: (value) => (!value?.trim() ? 'Control name is required' : null),
+      execution: (value) =>
+        installedEvaluatorSupportedExecutions?.includes(value)
+          ? null
+          : installedEvaluatorSupportedExecutions
+            ? `This evaluator only supports: ${installedEvaluatorSupportedExecutions.join(', ')}`
+            : null,
       selector_path: (value) => {
         if (editorMode === 'json' || !canEditLeafCondition) {
           return null;
@@ -944,6 +954,7 @@ const RawEditControlContent = ({
                 form={definitionForm}
                 steps={steps}
                 disableSelectorPath={!canEditLeafCondition}
+                supportedExecutions={installedEvaluatorSupportedExecutions}
               />
             </Grid.Col>
 
