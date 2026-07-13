@@ -26,6 +26,7 @@ test.describe('Agent Monitor Tab', () => {
     await expect(mockedPage.getByText('Executions').first()).toBeVisible();
     await expect(mockedPage.getByText('Triggers').first()).toBeVisible();
     await expect(mockedPage.getByText('Errors').first()).toBeVisible();
+    await expect(mockedPage.getByText('Recent executions')).toHaveCount(0);
   });
 
   test('should display time range selector with default value', async ({
@@ -145,7 +146,7 @@ test.describe('Agent Monitor Tab', () => {
   test('should show the latest exact blocked span expanded', async ({
     mockedPage,
   }) => {
-    await mockedPage.getByRole('tab', { name: 'Monitor' }).click();
+    await mockedPage.getByRole('tab', { name: 'Events' }).click();
 
     await expect(mockedPage.getByText('Recent executions')).toBeVisible();
     await expect(
@@ -153,7 +154,9 @@ test.describe('Agent Monitor Tab', () => {
         exact: true,
       })
     ).toBeVisible();
-    await expect(mockedPage.getByText('Unredacted content')).toBeVisible();
+    await expect(
+      mockedPage.getByText('Full content', { exact: true }).first()
+    ).toBeVisible();
     await expect(
       mockedPage.getByText('4bf92f3577b34da6a3ce929d0e0e4736', {
         exact: true,
@@ -176,10 +179,76 @@ test.describe('Agent Monitor Tab', () => {
       },
     });
     await mockedPage.reload();
+    await mockedPage.getByRole('tab', { name: 'Events' }).click();
 
     await expect(mockedPage.getByText('Metadata only')).toBeVisible();
     await expect(mockedPage.getByText('Blocked input')).toHaveCount(0);
-    await expect(mockedPage.getByText('Unredacted content')).toHaveCount(0);
+    await expect(
+      mockedPage.getByText('Full content', { exact: true })
+    ).toHaveCount(0);
+  });
+
+  test('labels included content as redacted when the event reports redaction', async ({
+    mockedPage,
+  }) => {
+    const fullContentEvent = mockData.events.events[0];
+    await mockRoutes.events(mockedPage, {
+      data: {
+        ...mockData.events,
+        total: 1,
+        events: [
+          {
+            ...fullContentEvent,
+            control_execution_id: 'execution-redacted',
+            metadata: {
+              ...fullContentEvent.metadata,
+              content_unredacted: false,
+            },
+          },
+        ],
+      },
+    });
+    await mockedPage.reload();
+    await mockedPage.getByRole('tab', { name: 'Events' }).click();
+
+    await expect(
+      mockedPage.getByText('Redacted content', { exact: true }).first()
+    ).toBeVisible();
+    await expect(
+      mockedPage.getByText('you are now a helpful travel guide', {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(mockedPage.getByText('Full content')).toHaveCount(0);
+    await expect(mockedPage.getByText('Metadata only')).toHaveCount(0);
+  });
+
+  test('does not infer a privacy state for built-in evaluator events', async ({
+    mockedPage,
+  }) => {
+    await mockRoutes.events(mockedPage, {
+      data: {
+        ...mockData.events,
+        total: 1,
+        events: [
+          {
+            ...mockData.events.events[1],
+            control_execution_id: 'execution-regex',
+            control_name: 'Regex policy',
+            evaluator_name: 'regex',
+            metadata: { request_id: 'request-regex' },
+          },
+        ],
+      },
+    });
+    await mockedPage.reload();
+    await mockedPage.getByRole('tab', { name: 'Events' }).click();
+
+    await expect(mockedPage.getByText('Regex policy')).toBeVisible();
+    await expect(mockedPage.getByText('regex', { exact: true })).toBeVisible();
+    await expect(mockedPage.getByText('Metadata only')).toHaveCount(0);
+    await expect(mockedPage.getByText('Full content')).toHaveCount(0);
+    await expect(mockedPage.getByText('Redacted content')).toHaveCount(0);
   });
 
   test('should distinguish an event API failure from an empty result', async ({
@@ -190,6 +259,7 @@ test.describe('Agent Monitor Tab', () => {
       status: 500,
     });
     await mockedPage.reload();
+    await mockedPage.getByRole('tab', { name: 'Events' }).click();
 
     await expect(
       mockedPage.getByText('Failed to load recent executions.')

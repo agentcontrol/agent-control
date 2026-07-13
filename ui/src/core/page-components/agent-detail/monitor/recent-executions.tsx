@@ -21,6 +21,10 @@ type RecentExecutionsProps = {
 };
 
 type EventMetadata = Record<string, unknown>;
+type ContentDisclosure = {
+  color: 'orange' | 'gray';
+  label: 'Full content' | 'Redacted content' | 'Metadata only';
+};
 
 function asRecord(value: unknown): EventMetadata | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -30,6 +34,21 @@ function asRecord(value: unknown): EventMetadata | null {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function getContentDisclosure(
+  metadata: EventMetadata,
+  hasContent: boolean
+): ContentDisclosure | null {
+  if (metadata.content_unredacted === true) {
+    return { color: 'orange', label: 'Full content' };
+  }
+  if (metadata.content_unredacted === false) {
+    return hasContent
+      ? { color: 'gray', label: 'Redacted content' }
+      : { color: 'gray', label: 'Metadata only' };
+  }
+  return null;
 }
 
 function executionKey(event: ControlExecutionEvent): string {
@@ -117,7 +136,10 @@ export function RecentExecutions({
             : [];
           const requestId = asString(metadata.request_id);
           const key = executionKey(event);
-          const contentUnredacted = metadata.content_unredacted === true;
+          const contentDisclosure = getContentDisclosure(
+            metadata,
+            prompt !== null || rawRequestBody !== null
+          );
 
           return (
             <Accordion.Item key={key} value={key}>
@@ -134,14 +156,9 @@ export function RecentExecutions({
                     </Text>
                   </Stack>
                   <Group gap="xs" wrap="nowrap">
-                    {contentUnredacted ? (
-                      <Badge color="orange" variant="light">
-                        Unredacted
-                      </Badge>
-                    ) : null}
-                    {!contentUnredacted ? (
-                      <Badge color="gray" variant="light">
-                        Metadata only
+                    {contentDisclosure ? (
+                      <Badge color={contentDisclosure.color} variant="light">
+                        {contentDisclosure.label}
                       </Badge>
                     ) : null}
                     <Badge color={event.action === 'deny' ? 'red' : 'blue'}>
@@ -153,6 +170,14 @@ export function RecentExecutions({
               <Accordion.Panel>
                 <Stack gap="md">
                   <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+                    <Detail
+                      label="Evaluator"
+                      value={event.evaluator_name ?? 'Unavailable'}
+                    />
+                    <Detail
+                      label="Result"
+                      value={event.matched ? 'Matched' : 'Not matched'}
+                    />
                     <Detail label="Trace ID" value={event.trace_id} />
                     <Detail label="Span ID" value={event.span_id} />
                     <Detail
@@ -182,14 +207,15 @@ export function RecentExecutions({
                         <Text size="sm" fw={600}>
                           Blocked input
                         </Text>
-                        <Badge
-                          color={contentUnredacted ? 'orange' : 'gray'}
-                          variant="light"
-                        >
-                          {contentUnredacted
-                            ? 'Unredacted content'
-                            : 'Redacted content'}
-                        </Badge>
+                        {contentDisclosure?.label !== 'Metadata only' &&
+                        contentDisclosure ? (
+                          <Badge
+                            color={contentDisclosure.color}
+                            variant="light"
+                          >
+                            {contentDisclosure.label}
+                          </Badge>
+                        ) : null}
                       </Group>
                       <Code
                         block

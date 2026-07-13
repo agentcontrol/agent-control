@@ -17,12 +17,10 @@ export const TIME_RANGE_SEGMENTS: TimeRangeOption[] = [
   { label: '1Y', value: 'lastYear' },
 ];
 
-import { useAgentEvents } from '@/core/hooks/query-hooks/use-agent-events';
 import type { StatsResponse } from '@/core/hooks/query-hooks/use-agent-monitor';
 import { useAgentMonitor } from '@/core/hooks/query-hooks/use-agent-monitor';
 
 import { ControlStatsTable } from './control-stats-table';
-import { RecentExecutions } from './recent-executions';
 import { SummaryCard } from './summary-card';
 import type { SummaryMetrics } from './types';
 import { mapTimeRangeTypeToTimeRange } from './utils';
@@ -51,18 +49,6 @@ function calculateSummary(
   };
 }
 
-const TIME_RANGE_MILLISECONDS: Record<string, number> = {
-  '1m': 60_000,
-  '5m': 5 * 60_000,
-  '15m': 15 * 60_000,
-  '1h': 60 * 60_000,
-  '24h': 24 * 60 * 60_000,
-  '7d': 7 * 24 * 60 * 60_000,
-  '30d': 30 * 24 * 60 * 60_000,
-  '180d': 180 * 24 * 60 * 60_000,
-  '365d': 365 * 24 * 60 * 60_000,
-};
-
 export function AgentsMonitor({
   agentUuid,
   timeRangeValue,
@@ -84,13 +70,6 @@ export function AgentsMonitor({
 
   // Calculate summary metrics
   const summary = useMemo(() => calculateSummary(stats), [stats]);
-  const eventWindowMs =
-    TIME_RANGE_MILLISECONDS[apiTimeRange] ?? TIME_RANGE_MILLISECONDS['1h'];
-  const { data: recentEvents, error: recentEventsError } = useAgentEvents(
-    agentUuid,
-    eventWindowMs,
-    { refetchInterval: 2000 }
-  );
 
   if (isLoading && !stats) {
     return (
@@ -147,11 +126,6 @@ export function AgentsMonitor({
           </Text>
         </Box>
       )}
-
-      <RecentExecutions
-        events={recentEvents?.events ?? []}
-        hasError={recentEventsError !== null}
-      />
     </Stack>
   );
 }

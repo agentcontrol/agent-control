@@ -16,10 +16,12 @@ classes intentionally execute as no-ops: they return `matched=False` without con
 installing any DefenseClaw runtime or OSS package.
 The complementary DefenseClaw watcher can emit post-decision
 `ControlExecutionEvent` records through the Agent Control SDK. The agent Monitor
-shows aggregate enforcement counts and a **Recent executions** drill-down with
-trace/span/request correlation, control and rule identity, action, and duration.
+shows aggregate enforcement counts, while the **Events** tab provides a
+**Recent executions** drill-down with trace/span/request correlation, control
+and rule identity, action, and duration.
 When the DefenseClaw integration is enabled, it includes exact blocked input,
-raw request body, and enforcement reason by default. Monitor labels those spans
-`UNREDACTED` and renders the content in the execution drill-down. DefenseClaw
-operators can explicitly select metadata-only delivery. Treat access to these
-events as access to sensitive workload data.
+raw request body, and enforcement reason by default. Monitor labels event
+payloads as **Full content**, **Redacted content**, or **Metadata only** when
+DefenseClaw explicitly reports their disclosure state. Events from other
+evaluators receive no privacy label unless they report that state. Treat access
+to full-content events as access to sensitive workload data.
