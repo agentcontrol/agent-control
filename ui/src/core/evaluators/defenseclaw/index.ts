@@ -69,6 +69,8 @@ export const defenseClawRulePackEvaluator: EvaluatorDefinition<DefenseClawRulePa
   {
     id: 'defenseclaw.rule_pack',
     displayName: 'DefenseClaw Rule Pack',
+    defaultExecution: 'sdk',
+    supportedExecutions: ['sdk'],
     initialValues: { rules: [createBlankDefenseClawRule()] },
     validate: { rules: validateRules },
     toConfig: (values) => ({
@@ -95,6 +97,8 @@ export const defenseClawOpaPolicyEvaluator: EvaluatorDefinition<DefenseClawOpaPo
   {
     id: 'defenseclaw.opa_policy',
     displayName: 'DefenseClaw OPA Policy',
+    defaultExecution: 'sdk',
+    supportedExecutions: ['sdk'],
     initialValues: {
       domain: 'guardrail',
       block_at: 'HIGH',
