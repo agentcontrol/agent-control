@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from starlette.datastructures import Headers
+
 from agent_control_server.auth_framework.core import (
     Operation,
     Principal,
@@ -43,9 +45,14 @@ def _build_request(
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
 ):
-    """Build a minimal Starlette-compatible request mock."""
+    """Build a minimal Starlette-compatible request mock.
+
+    Uses the real :class:`starlette.datastructures.Headers` so header
+    lookups are case-insensitive exactly as they are at runtime; a plain
+    dict would be case-sensitive and mask casing bugs.
+    """
     request = MagicMock()
-    request.headers = headers or {}
+    request.headers = Headers(headers=headers or {})
     request.cookies = cookies or {}
     return request
 
@@ -875,6 +882,7 @@ def test_runtime_token_rejects_empty_required_claims(kwargs, message):
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():
     """A token without ``domain=runtime`` must be rejected by runtime verify."""
     import jwt
+
     from agent_control_server.auth_framework.runtime_token import (
         RuntimeTokenError,
         verify_runtime_token,
@@ -973,6 +981,158 @@ async def test_local_jwt_provider_rejects_non_bearer_authorization():
     request = _build_request(headers={"Authorization": "Basic abc"})
     with pytest.raises(AuthenticationError):
         await provider.authorize(request, Operation.RUNTIME_USE)
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_reads_configured_custom_header():
+    """A dedicated runtime-token header carries the raw token (no Bearer)."""
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="actor-7",
+        target_type="log_stream",
+        target_id="ls-42",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(
+        secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+    )
+    request = _build_request(headers={"X-Agent-Control-Runtime-Token": token})
+
+    principal = await provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-42"},
+    )
+
+    assert principal.target_id == "ls-42"
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_custom_header_accepts_bearer_prefix():
+    """Custom header still accepts an explicit Bearer prefix."""
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="a",
+        target_type="log_stream",
+        target_id="ls",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(
+        secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+    )
+    request = _build_request(
+        headers={"X-Agent-Control-Runtime-Token": f"Bearer {token}"}
+    )
+
+    principal = await provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls"},
+    )
+    assert principal.caller_id == "a"
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_custom_header_does_not_fall_back_to_authorization():
+    """A valid token on Authorization must NOT satisfy a custom-header verifier.
+
+    Uses a genuinely valid runtime token on ``Authorization`` so the test
+    can only pass if the verifier reads the configured custom header
+    exclusively; a wrongful fallback to ``Authorization`` would let the
+    valid token through. The error must name the custom header.
+    """
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+    from agent_control_server.errors import AuthenticationError
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="a",
+        target_type="log_stream",
+        target_id="ls",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(
+        secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+    )
+    request = _build_request(headers={"Authorization": f"Bearer {token}"})
+    with pytest.raises(AuthenticationError) as exc_info:
+        await provider.authorize(request, Operation.RUNTIME_USE)
+    assert "X-Agent-Control-Runtime-Token" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_custom_header_whitespace_only_raises_401():
+    """A whitespace-only custom header is treated as an empty token."""
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.errors import AuthenticationError
+
+    provider = LocalJwtVerifyProvider(
+        secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+    )
+    request = _build_request(headers={"X-Agent-Control-Runtime-Token": "   "})
+    with pytest.raises(AuthenticationError):
+        await provider.authorize(request, Operation.RUNTIME_USE)
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_provider_reads_custom_header_case_insensitively():
+    """The verifier finds the token even when the client sends lower-case.
+
+    HTTP header names are case-insensitive (HTTP/2 mandates lower-case),
+    so a verifier configured with ``X-Agent-Control-Runtime-Token`` must
+    still read a request that arrives as ``x-agent-control-runtime-token``.
+    """
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+    from agent_control_server.auth_framework.runtime_token import (
+        mint_runtime_token,
+    )
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="a",
+        target_type="log_stream",
+        target_id="ls",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    provider = LocalJwtVerifyProvider(
+        secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+    )
+    request = _build_request(headers={"x-agent-control-runtime-token": token})
+
+    principal = await provider.authorize(
+        request,
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls"},
+    )
+    assert principal.caller_id == "a"
+
+
+def test_local_jwt_provider_rejects_blank_header_name():
+    from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+
+    with pytest.raises(ValueError, match="header_name"):
+        LocalJwtVerifyProvider(secret=_TEST_SECRET, header_name="  ")
 
 
 @pytest.mark.asyncio
@@ -1720,6 +1880,61 @@ def test_configure_runtime_jwt_requires_secret(monkeypatch):
 
     with pytest.raises(RuntimeError, match="requires AGENT_CONTROL_RUNTIME_TOKEN_SECRET"):
         auth_config.configure_auth_from_env()
+
+
+def test_configure_runtime_jwt_defaults_to_authorization_header(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+    from agent_control_server.auth_framework.providers import (
+        LocalJwtVerifyProvider,
+    )
+
+    clear_authorizers()
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", raising=False)
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+    auth_config.configure_auth_from_env()
+
+    provider = get_authorizer(Operation.RUNTIME_USE)
+    assert isinstance(provider, LocalJwtVerifyProvider)
+    assert provider._header_name == "Authorization"
+
+
+def test_configure_runtime_jwt_honors_custom_token_header(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+    from agent_control_server.auth_framework.providers import (
+        LocalJwtVerifyProvider,
+    )
+
+    clear_authorizers()
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+    monkeypatch.setenv(
+        "AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "X-Agent-Control-Runtime-Token"
+    )
+    auth_config.configure_auth_from_env()
+
+    provider = get_authorizer(Operation.RUNTIME_USE)
+    assert isinstance(provider, LocalJwtVerifyProvider)
+    assert provider._header_name == "X-Agent-Control-Runtime-Token"
+    assert provider._require_bearer is False
+
+
+def test_configure_runtime_jwt_whitespace_only_header_env_defaults_to_authorization(
+    monkeypatch,
+):
+    """A whitespace-only header env var falls back to the default header."""
+    from agent_control_server.auth_framework import config as auth_config
+    from agent_control_server.auth_framework.providers import (
+        LocalJwtVerifyProvider,
+    )
+
+    clear_authorizers()
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_SECRET", _TEST_SECRET)
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "   ")
+    auth_config.configure_auth_from_env()
+
+    provider = get_authorizer(Operation.RUNTIME_USE)
+    assert isinstance(provider, LocalJwtVerifyProvider)
+    assert provider._header_name == "Authorization"
+    assert provider._require_bearer is True
 
 
 def test_configure_then_reconfigure_clears_runtime_override(monkeypatch):
