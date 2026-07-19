@@ -25,6 +25,7 @@ targeting the category's default field per
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import signal
@@ -316,7 +317,13 @@ class ATREvaluator(Evaluator[ATRConfig]):
             return EvaluatorResult(matched=False, confidence=1.0, message="Empty event")
 
         try:
-            return self._match_rules(event)
+            # Rule matching is CPU-bound synchronous regex work. Running it
+            # inline would hold the event loop for its whole duration, which is
+            # longer than the evaluator timeout on large inputs -- and because
+            # nothing awaits in between, the engine's asyncio.wait_for could not
+            # fire until the scan had already finished. Handing it to a thread
+            # keeps the loop responsive so that timeout is real.
+            return await asyncio.to_thread(self._match_rules, event)
         except Exception as exc:  # noqa: BLE001
             return self._error_result(f"ATR evaluation error: {exc}")
 
@@ -349,7 +356,11 @@ class ATREvaluator(Evaluator[ATRConfig]):
                 message="ATR: No threats detected",
             )
 
-        primary = findings[0]
+        # Highest severity wins, not rules-file order. Ordering the findings by
+        # rank would reorder ``findings`` itself, so pick the primary instead and
+        # leave the list in match order. ``max`` keeps the first of equal ranks,
+        # so ties stay deterministic.
+        primary = max(findings, key=lambda f: severity_rank(f["severity"]))
         return EvaluatorResult(
             matched=bool(self.config.block_on_match),
             confidence=max_confidence,
@@ -357,6 +368,9 @@ class ATREvaluator(Evaluator[ATRConfig]):
             metadata={
                 "findings": findings,
                 "count": len(findings),
+                # The legacy single-match mirrors below describe this same
+                # finding, so a caller reading only those sees the worst thing
+                # detected rather than whichever rule happened to sort first.
                 "max_severity": primary["severity"],
                 # Backwards-compatible single-finding mirrors. NB:
                 # ``matched_text`` from v0.1 is intentionally REMOVED and
