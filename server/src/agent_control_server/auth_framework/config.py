@@ -21,6 +21,10 @@ The framework supports two flows:
   The ``runtime.token_exchange`` operation continues to flow through
   the default authorizer because the exchange itself is shaped like a
   management call (forward credential, get grant).
+  ``AGENT_CONTROL_RUNTIME_TOKEN_HEADER`` (default ``Authorization``)
+  selects which request header the ``jwt`` verifier reads the runtime
+  token from, so the server can run behind a gateway that reserves
+  ``Authorization`` for its own downstream identity JWT.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ from .providers import (
     NoAuthProvider,
 )
 from .providers.http_upstream import HttpUpstreamConfig
+from .providers.local_jwt import DEFAULT_RUNTIME_TOKEN_HEADER
 
 _logger = get_logger(__name__)
 
@@ -60,6 +65,7 @@ _UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV = (
 _RUNTIME_MODE_ENV = "AGENT_CONTROL_RUNTIME_AUTH_MODE"
 _RUNTIME_TOKEN_SECRET_ENV = "AGENT_CONTROL_RUNTIME_TOKEN_SECRET"
 _RUNTIME_TOKEN_TTL_ENV = "AGENT_CONTROL_RUNTIME_TOKEN_TTL_SECONDS"
+_RUNTIME_TOKEN_HEADER_ENV = "AGENT_CONTROL_RUNTIME_TOKEN_HEADER"
 _DEFAULT_RUNTIME_TOKEN_TTL_SECONDS = 300
 # HS256 needs at least 256 bits (32 bytes) of secret material to be safe
 # against brute force; reject anything shorter so production deployments
@@ -378,10 +384,29 @@ def _build_runtime_provider(
     if mode == "jwt":
         if config is None:
             raise RuntimeError(f"{_RUNTIME_MODE_ENV}=jwt but runtime auth config is missing.")
-        return LocalJwtVerifyProvider(secret=config.secret)
+        return LocalJwtVerifyProvider(
+            secret=config.secret,
+            header_name=_resolve_runtime_token_header(),
+        )
     raise RuntimeError(
         f"Unknown runtime auth mode {mode!r}; expected 'none', 'api_key', or 'jwt'."
     )
+
+
+def _resolve_runtime_token_header() -> str:
+    """Return the header the runtime JWT verifier reads the token from.
+
+    Defaults to ``Authorization``. Deployments behind a gateway that
+    overwrites ``Authorization`` with its own downstream identity JWT can
+    point the verifier at a dedicated header (e.g.
+    ``X-Agent-Control-Runtime-Token``) so the two tokens no longer collide
+    on the hot evaluation path. A blank/whitespace value falls back to the
+    default.
+    """
+    raw = os.environ.get(_RUNTIME_TOKEN_HEADER_ENV)
+    if raw is None or not raw.strip():
+        return DEFAULT_RUNTIME_TOKEN_HEADER
+    return raw.strip()
 
 
 def _load_runtime_auth_config(*, require_secret: bool = False) -> RuntimeAuthConfig | None:

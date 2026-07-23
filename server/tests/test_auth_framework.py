@@ -1764,3 +1764,134 @@ async def test_teardown_auth_clears_registry():
     assert not _operation_authorizers
     with pytest.raises(RuntimeError, match="No RequestAuthorizer"):
         get_authorizer(Operation.CONTROL_BINDINGS_WRITE)
+
+
+# ---------------------------------------------------------------------------
+# HYBIM-741: configurable runtime-token header (gateway Authorization collision)
+# ---------------------------------------------------------------------------
+
+
+def _mint_runtime_use_token():
+    from agent_control_server.auth_framework.runtime_token import mint_runtime_token
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="actor-1",
+        target_type="log_stream",
+        target_id="ls-1",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    return token
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_default_reads_authorization_bearer():
+    """Default behavior unchanged: token read as Bearer from Authorization."""
+    provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
+    token = _mint_runtime_use_token()
+    principal = await provider.authorize(
+        _build_request(headers={"Authorization": f"Bearer {token}"}),
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-1"},
+    )
+    assert principal.target_type == "log_stream"
+    assert principal.target_id == "ls-1"
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_default_rejects_raw_token_on_authorization():
+    """On Authorization the Bearer scheme stays mandatory (back-compat)."""
+    provider = LocalJwtVerifyProvider(secret=_TEST_SECRET)
+    token = _mint_runtime_use_token()
+    with pytest.raises(AuthenticationError):
+        await provider.authorize(
+            _build_request(headers={"Authorization": token}),
+            Operation.RUNTIME_USE,
+            context={"target_type": "log_stream", "target_id": "ls-1"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_custom_header_reads_raw_token():
+    """On a dedicated header the raw token is accepted and Authorization is
+    left free for the gateway's own identity JWT (no collision)."""
+    provider = LocalJwtVerifyProvider(
+        secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+    )
+    token = _mint_runtime_use_token()
+    principal = await provider.authorize(
+        _build_request(
+            headers={
+                "X-Agent-Control-Runtime-Token": token,
+                "Authorization": "Bearer gateway-identity-jwt",
+            }
+        ),
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-1"},
+    )
+    assert principal.target_id == "ls-1"
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_custom_header_also_accepts_bearer_prefix():
+    provider = LocalJwtVerifyProvider(
+        secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+    )
+    token = _mint_runtime_use_token()
+    principal = await provider.authorize(
+        _build_request(headers={"X-Agent-Control-Runtime-Token": f"Bearer {token}"}),
+        Operation.RUNTIME_USE,
+        context={"target_type": "log_stream", "target_id": "ls-1"},
+    )
+    assert principal.target_id == "ls-1"
+
+
+@pytest.mark.asyncio
+async def test_local_jwt_custom_header_missing_reports_that_header():
+    provider = LocalJwtVerifyProvider(
+        secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+    )
+    with pytest.raises(AuthenticationError, match="X-Agent-Control-Runtime-Token"):
+        await provider.authorize(
+            _build_request(headers={"Authorization": "Bearer gateway-jwt"}),
+            Operation.RUNTIME_USE,
+            context={"target_type": "log_stream", "target_id": "ls-1"},
+        )
+
+
+def test_local_jwt_rejects_blank_header_name():
+    with pytest.raises(ValueError, match="header_name"):
+        LocalJwtVerifyProvider(secret=_TEST_SECRET, header_name="  ")
+
+
+# ---------------------------------------------------------------------------
+# HYBIM-741: AGENT_CONTROL_RUNTIME_TOKEN_HEADER env resolution (config wiring)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_runtime_token_header_defaults_to_authorization(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.delenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", raising=False)
+    assert auth_config._resolve_runtime_token_header() == "Authorization"
+
+
+def test_resolve_runtime_token_header_reads_env(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv(
+        "AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "  X-Agent-Control-Runtime-Token  "
+    )
+    # Value is honored and trimmed.
+    assert (
+        auth_config._resolve_runtime_token_header() == "X-Agent-Control-Runtime-Token"
+    )
+
+
+def test_resolve_runtime_token_header_blank_env_falls_back(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "   ")
+    assert auth_config._resolve_runtime_token_header() == "Authorization"
