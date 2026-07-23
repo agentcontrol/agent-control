@@ -8,10 +8,8 @@ bound target. When a ``context_builder`` on the dependency must surface
 matching ``target_type`` / ``target_id`` values for target-bound tokens.
 
 The header is configurable so the server can sit behind a gateway that
-reserves ``Authorization`` for its own downstream identity JWT: point
-the verifier at a dedicated header (e.g. ``X-Agent-Control-Runtime-Token``)
-so the two tokens no longer collide. ``Bearer`` stays mandatory on
-``Authorization``; on a dedicated header the raw token is accepted.
+reserves ``Authorization`` for its own identity JWT (point the verifier at
+a dedicated header to avoid the collision).
 """
 
 from __future__ import annotations
@@ -44,9 +42,9 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
             raise ValueError("LocalJwtVerifyProvider requires a non-empty header_name.")
         self._secret = secret
         self._header_name = header_name.strip()
-        # ``Bearer`` stays mandatory on ``Authorization`` (existing contract);
-        # a dedicated runtime-token header carries the raw token, so it never
-        # collides with a gateway's own ``Authorization`` identity JWT.
+        # Bearer only on Authorization; a dedicated header carries the raw token
+        # so it can't collide with the gateway's Authorization JWT. Must stay in
+        # sync with AgentControlClient._runtime_token_use_bearer in the SDK.
         self._require_bearer = self._header_name.lower() == "authorization"
 
     async def authorize(

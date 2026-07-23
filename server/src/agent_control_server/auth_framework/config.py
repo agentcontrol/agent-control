@@ -394,14 +394,11 @@ def _build_runtime_provider(
 
 
 def _resolve_runtime_token_header() -> str:
-    """Return the header the runtime JWT verifier reads the token from.
+    """Header the runtime JWT verifier reads the token from (default ``Authorization``).
 
-    Defaults to ``Authorization``. Deployments behind a gateway that
-    overwrites ``Authorization`` with its own downstream identity JWT can
-    point the verifier at a dedicated header (e.g.
-    ``X-Agent-Control-Runtime-Token``) so the two tokens no longer collide
-    on the hot evaluation path. A blank/whitespace value falls back to the
-    default.
+    Behind a gateway that overwrites ``Authorization`` with its own identity
+    JWT, set a dedicated header so the two tokens don't collide. Blank falls
+    back to the default.
     """
     raw = os.environ.get(_RUNTIME_TOKEN_HEADER_ENV)
     if raw is None or not raw.strip():
