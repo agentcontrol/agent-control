@@ -71,6 +71,11 @@ def should_configure_logging() -> bool:
     return LoggingSettings().configure_logging
 
 
+def access_log_enabled() -> bool:
+    """Return whether uvicorn's per-request access log should be emitted."""
+    return LoggingSettings().access_log
+
+
 def configure_logging(
     *,
     level: str | int | None = None,

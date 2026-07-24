@@ -287,3 +287,17 @@ def test_logging_settings_supports_host_owned_logging(monkeypatch) -> None:
     config = LoggingSettings()
 
     assert config.configure_logging is False
+
+
+def test_logging_settings_access_log_defaults_to_true() -> None:
+    config = LoggingSettings()
+
+    assert config.access_log is True
+
+
+def test_logging_settings_access_log_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_ACCESS_LOG", "false")
+
+    config = LoggingSettings()
+
+    assert config.access_log is False

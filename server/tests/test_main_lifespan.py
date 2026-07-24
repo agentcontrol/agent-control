@@ -273,10 +273,11 @@ def test_run_uses_settings(monkeypatch) -> None:
     # Given: patched settings and uvicorn.run
     called = {}
 
-    def fake_run(app, host, port, log_level):
+    def fake_run(app, host, port, log_level, access_log):
         called["host"] = host
         called["port"] = port
         called["log_level"] = log_level
+        called["access_log"] = access_log
 
     monkeypatch.setattr(main_module.uvicorn, "run", fake_run)
     monkeypatch.setattr(settings, "host", "127.0.0.1")
@@ -290,6 +291,7 @@ def test_run_uses_settings(monkeypatch) -> None:
     assert called["host"] == "127.0.0.1"
     assert called["port"] == 9999
     assert called["log_level"] == "debug"
+    assert called["access_log"] is True
 
 
 def test_run_disables_uvicorn_log_config_when_host_owns_logging(monkeypatch) -> None:
@@ -307,3 +309,20 @@ def test_run_disables_uvicorn_log_config_when_host_owns_logging(monkeypatch) -> 
     main_module.run()
 
     assert called["log_config"] is None
+
+
+def test_run_disables_uvicorn_access_log_when_requested(monkeypatch) -> None:
+    called = {}
+
+    def fake_run(app, **kwargs):  # type: ignore[no-untyped-def]
+        called.update(kwargs)
+
+    monkeypatch.setenv("AGENT_CONTROL_ACCESS_LOG", "false")
+    monkeypatch.setattr(main_module.uvicorn, "run", fake_run)
+    monkeypatch.setattr(settings, "host", "127.0.0.1")
+    monkeypatch.setattr(settings, "port", 9999)
+    monkeypatch.setattr(settings, "debug", False)
+
+    main_module.run()
+
+    assert called["access_log"] is False
