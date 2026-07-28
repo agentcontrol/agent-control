@@ -280,6 +280,7 @@ async def _evaluate(
         base_url=server_url,
         api_key=state.api_key,
         api_key_header=state.api_key_header,
+        runtime_token_header=state.runtime_token_header,
         runtime_token_cache=state.runtime_token_cache,
     ) as client:
         # If we have controls, use local evaluation which handles both SDK and server controls

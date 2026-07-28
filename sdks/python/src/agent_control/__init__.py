@@ -448,6 +448,7 @@ def init(
     server_url: str | None = None,
     api_key: str | None = None,
     api_key_header: str | None = None,
+    runtime_token_header: str | None = None,
     controls_file: str | None = None,
     steps: list[StepSchemaDict] | None = None,
     conflict_mode: Literal["strict", "overwrite"] = "overwrite",
@@ -488,6 +489,12 @@ def init(
         api_key: Optional API key for authentication (defaults to AGENT_CONTROL_API_KEY env var)
         api_key_header: Optional HTTP header name for API key authentication
             (defaults to AGENT_CONTROL_API_KEY_HEADER env var or X-API-Key)
+        runtime_token_header: Optional HTTP header the runtime token is sent on
+            for evaluation requests (defaults to AGENT_CONTROL_RUNTIME_TOKEN_HEADER
+            env var or Authorization). Point this at a dedicated header (e.g.
+            X-Agent-Control-Runtime-Token) when the server runs behind a gateway
+            that reserves Authorization for its own identity JWT. The server must
+            be configured to read the same header.
         controls_file: Optional explicit path to controls.yaml (auto-discovered if not provided)
         steps: Optional list of step schemas for registration:
                [{"type": "tool", "name": "search", "input_schema": {...}, "output_schema": {...}}]
@@ -588,6 +595,9 @@ def init(
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
         state.api_key_header = resolved_api_key_header
+        # Stored raw (may be None); AgentControlClient resolves the env-var
+        # fallback and blank-handling so the rule stays in one place.
+        state.runtime_token_header = runtime_token_header
         state.runtime_token_cache.clear()
         state.target_type = target_type
         state.target_id = target_id
@@ -746,6 +756,7 @@ def _reset_state() -> None:
         state.server_url = None
         state.api_key = None
         state.api_key_header = None
+        state.runtime_token_header = None
         state.runtime_token_cache.clear()
         state.target_type = None
         state.target_id = None

@@ -23,7 +23,6 @@ from ...errors import AuthenticationError, ForbiddenError
 from ..core import Operation, Principal, RequestAuthorizer
 from ..runtime_token import RuntimeTokenError, verify_runtime_token
 
-
 DEFAULT_RUNTIME_TOKEN_HEADER = "Authorization"
 
 

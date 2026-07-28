@@ -1133,7 +1133,8 @@ def test_runtime_token_header_whitespace_env_falls_back(
 @pytest.mark.asyncio
 async def test_runtime_evaluation_sends_raw_token_on_custom_header() -> None:
     """Custom header carries the raw token; Authorization stays free for the
-    gateway JWT and the API key does not ride along."""
+    gateway JWT; the API key is preserved on its own header as the outer
+    credential (it rides X-API-Key, so there is no collision)."""
     seen: dict[str, str | None] = {}
     expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
 
@@ -1172,7 +1173,11 @@ async def test_runtime_evaluation_sends_raw_token_on_custom_header() -> None:
     assert response.status_code == 200
     assert seen["runtime"] == "runtime-token"
     assert seen["authorization"] is None
-    assert seen["api_key"] is None
+    # The API key is retained on its own header: with the runtime token on a
+    # dedicated header, X-API-Key can still serve as the outer gateway
+    # credential without colliding with either the runtime token or the
+    # gateway's Authorization JWT.
+    assert seen["api_key"] == "test-key"
 
 
 @pytest.mark.asyncio

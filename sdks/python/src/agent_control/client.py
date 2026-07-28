@@ -37,36 +37,31 @@ def _runtime_cache_identity(api_key: str | None, api_key_header: str) -> str:
 
 
 class _AgentControlAuth(httpx.Auth):
-    """Attach local API-key credentials unless the request already carries a token.
+    """Attach local API-key credentials unless the request already carries them.
 
-    The API key is suppressed when the request already presents a bearer
-    credential on ``Authorization`` or a runtime token on its dedicated
-    header, so a runtime-authenticated evaluation carries a single
-    credential regardless of which header the runtime token rides.
+    The API key is suppressed only when the request already presents a bearer
+    credential on ``Authorization`` or already carries the API key on its own
+    header. When the runtime token rides a dedicated header, the API key is
+    left in place: it may be the outer credential the request needs to
+    authenticate at a gateway before Agent Control verifies the runtime token,
+    and it rides a different header so there is no collision.
     """
 
     def __init__(
         self,
         api_key: str | None,
         header_name: str = "X-API-Key",
-        runtime_token_header: str | None = None,
     ) -> None:
         self._api_key = api_key
         self._header_name = header_name
-        self._runtime_token_header = runtime_token_header
 
     def auth_flow(
         self,
         request: httpx.Request,
     ) -> Generator[httpx.Request, httpx.Response, None]:
-        runtime_token_on_dedicated_header = (
-            self._runtime_token_header is not None
-            and self._runtime_token_header in request.headers
-        )
         if (
             self._api_key
             and "Authorization" not in request.headers
-            and not runtime_token_on_dedicated_header
             and self._header_name not in request.headers
         ):
             request.headers[self._header_name] = self._api_key
@@ -121,10 +116,10 @@ class AgentControlClient:
         api_key: str | None = None,
         api_key_header: str | None = None,
         runtime_auth_mode: RuntimeAuthMode | str | None = None,
-        runtime_token_header: str | None = None,
         runtime_token_cache: RuntimeTokenCache | None = None,
         runtime_token_refresh_margin_seconds: int = (_DEFAULT_RUNTIME_TOKEN_REFRESH_MARGIN_SECONDS),
         transport: httpx.AsyncBaseTransport | None = None,
+        runtime_token_header: str | None = None,
     ):
         """
         Initialize the client.
@@ -144,6 +139,10 @@ class AgentControlClient:
                 request auth when the exchange endpoint is unavailable. ``jwt``
                 requires a successful exchange. ``api_key`` and ``none`` keep
                 evaluation requests on the normal request-auth path.
+            runtime_token_cache: Optional cache shared across client instances.
+            runtime_token_refresh_margin_seconds: Refresh cached runtime tokens
+                before this many seconds of validity remain.
+            transport: Optional httpx transport, primarily for tests.
             runtime_token_header: HTTP header the runtime token is sent on.
                 Defaults to ``Authorization``; the
                 AGENT_CONTROL_RUNTIME_TOKEN_HEADER environment variable
@@ -151,10 +150,6 @@ class AgentControlClient:
                 ``X-Agent-Control-Runtime-Token``) when the server runs behind
                 a gateway that reserves ``Authorization`` for its own identity
                 JWT. The server must be configured to read the same header.
-            runtime_token_cache: Optional cache shared across client instances.
-            runtime_token_refresh_margin_seconds: Refresh cached runtime tokens
-                before this many seconds of validity remain.
-            transport: Optional httpx transport, primarily for tests.
         """
         resolved_base_url = base_url or os.environ.get(
             self.BASE_URL_ENV_VAR, "http://localhost:8000"
@@ -249,9 +244,6 @@ class AgentControlClient:
             auth=_AgentControlAuth(
                 self._api_key,
                 self._api_key_header,
-                runtime_token_header=(
-                    None if self._runtime_token_use_bearer else self._runtime_token_header
-                ),
             ),
             transport=self._transport,
             event_hooks={"response": [self._check_server_version]},
