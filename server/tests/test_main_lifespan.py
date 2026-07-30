@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
@@ -231,6 +232,33 @@ def test_lifespan_fails_open_when_out_of_box_bootstrap_fails(monkeypatch, caplog
             pass
 
     assert "Out-of-box control bootstrap failed; continuing startup" in caplog.text
+
+
+def test_lifespan_times_out_blocked_out_of_box_bootstrap(monkeypatch, caplog) -> None:
+    cancelled = False
+
+    async def block_seed_out_of_box_controls(**kwargs: object) -> None:
+        nonlocal cancelled
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled = True
+
+    monkeypatch.setattr(observability_settings, "enabled", False)
+    monkeypatch.setattr(settings, "out_of_box_bootstrap_timeout_seconds", 0.01)
+    monkeypatch.setattr(main_module, "seed_out_of_box_controls", block_seed_out_of_box_controls)
+
+    app = FastAPI(lifespan=lifespan)
+
+    with caplog.at_level("WARNING"):
+        with TestClient(app):
+            pass
+
+    assert cancelled is True
+    assert (
+        "Out-of-box control bootstrap timed out after 0.01 seconds; continuing startup"
+        in caplog.text
+    )
 
 
 def test_custom_openapi_replaces_jsonvalue_variants(monkeypatch) -> None:

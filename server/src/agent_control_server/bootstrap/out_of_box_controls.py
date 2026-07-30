@@ -33,6 +33,7 @@ _CONTROL_NAME_UNIQUE_CONSTRAINTS = frozenset(
         "idx_controls_namespace_name_active",
     }
 )
+_CONTROL_SEED_UNIQUE_CONSTRAINT = "idx_controls_namespace_seed_source"
 _INITIAL_VERSION_NOTE = "Out-of-box control seed"
 _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
 
@@ -41,11 +42,13 @@ _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
 class OutOfBoxControlTemplate:
     """Validated control definition plus the evaluator names it needs."""
 
+    source_id: str
     name: str
     control: ControlDefinition
     required_evaluators: frozenset[str] = field(default_factory=frozenset)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "source_id", _SLUG_NAME_ADAPTER.validate_python(self.source_id))
         object.__setattr__(self, "name", _SLUG_NAME_ADAPTER.validate_python(self.name))
         if not self.required_evaluators:
             required_evaluators = {
@@ -60,12 +63,14 @@ class OutOfBoxControlTemplate:
     def from_payload(
         cls,
         *,
+        source_id: str,
         name: str,
         data: Mapping[str, object],
         required_evaluators: Collection[str] = frozenset(),
     ) -> Self:
         """Build a template from raw JSON-like data and validate it immediately."""
         return cls(
+            source_id=source_id,
             name=name,
             control=ControlDefinition.model_validate(data),
             required_evaluators=frozenset(required_evaluators),
@@ -130,9 +135,10 @@ async def seed_out_of_box_controls(
 ) -> OutOfBoxSeedResult:
     """Create missing out-of-box controls in a namespace.
 
-    Existing active controls are left untouched so customer edits survive
-    restarts and upgrades. Duplicate-name integrity errors are treated as
-    benign races with another pod and are reported as ``skipped_conflict``.
+    Existing seeded controls are found by immutable source ID, so customer
+    renames and explicit deletion opt-outs survive restarts and upgrades.
+    Duplicate-name and duplicate-source integrity errors are treated as benign
+    races with another pod and are reported as ``skipped_conflict``.
     """
     if not templates:
         return OutOfBoxSeedResult()
@@ -185,6 +191,11 @@ async def _seed_one_control(
     template: OutOfBoxControlTemplate,
 ) -> str:
     control_service = ControlService(session)
+    if await control_service.seed_source_exists(
+        template.source_id,
+        namespace_key=namespace_key,
+    ):
+        return "existing"
     if await control_service.active_control_name_exists(template.name, namespace_key=namespace_key):
         return "existing"
 
@@ -192,6 +203,7 @@ async def _seed_one_control(
         namespace_key=namespace_key,
         name=template.name,
         data=_serialize_control_data(template.control),
+        seed_source_id=template.source_id,
     )
     try:
         await control_service.create_version(
@@ -202,7 +214,7 @@ async def _seed_one_control(
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
-        if _is_control_name_conflict(exc):
+        if _is_control_seed_conflict(exc):
             return "conflict"
         raise
     return "created"
@@ -233,3 +245,16 @@ def _is_control_name_conflict(error: IntegrityError) -> bool:
         part for part in (str(error.orig), str(error)) if part and part != "None"
     )
     return any(name in error_text for name in _CONTROL_NAME_UNIQUE_CONSTRAINTS)
+
+
+def _is_control_seed_conflict(error: IntegrityError) -> bool:
+    diag = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    if diag == _CONTROL_SEED_UNIQUE_CONSTRAINT:
+        return True
+    if _is_control_name_conflict(error):
+        return True
+
+    error_text = " ".join(
+        part for part in (str(error.orig), str(error)) if part and part != "None"
+    )
+    return _CONTROL_SEED_UNIQUE_CONSTRAINT in error_text

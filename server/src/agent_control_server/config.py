@@ -183,6 +183,13 @@ class Settings(BaseSettings):
     # API settings
     api_version: str = _env_alias_field("v1", "AGENT_CONTROL_API_VERSION", "API_VERSION")
     api_prefix: str = _env_alias_field("/api", "AGENT_CONTROL_API_PREFIX", "API_PREFIX")
+    out_of_box_bootstrap_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        validation_alias=AliasChoices(
+            "AGENT_CONTROL_OUT_OF_BOX_BOOTSTRAP_TIMEOUT_SECONDS",
+        ),
+    )
 
     # Prometheus metrics settings
     prometheus_metrics_prefix: str = _env_alias_field(

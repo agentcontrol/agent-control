@@ -1,5 +1,6 @@
 """Main server application entry point."""
 
+import asyncio
 import inspect
 import logging
 from collections.abc import AsyncGenerator
@@ -152,11 +153,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Evaluator discovery complete. Available evaluators: {available}")
 
     try:
-        seed_result = await seed_out_of_box_controls(
-            session_factory=AsyncSessionLocal,
-            namespace_key=default_out_of_box_namespace_key(),
-            available_evaluators=set(available),
-        )
+        async with asyncio.timeout(settings.out_of_box_bootstrap_timeout_seconds):
+            seed_result = await seed_out_of_box_controls(
+                session_factory=AsyncSessionLocal,
+                namespace_key=default_out_of_box_namespace_key(),
+                available_evaluators=set(available),
+            )
         if seed_result.created_count or seed_result.skipped_count:
             logger.info(
                 "Out-of-box control bootstrap complete: created=%s "
@@ -166,6 +168,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 len(seed_result.skipped_missing_evaluator),
                 len(seed_result.skipped_conflict),
             )
+    except TimeoutError:
+        logger.warning(
+            "Out-of-box control bootstrap timed out after %s seconds; continuing startup",
+            settings.out_of_box_bootstrap_timeout_seconds,
+        )
     except Exception:
         logger.warning("Out-of-box control bootstrap failed; continuing startup", exc_info=True)
 

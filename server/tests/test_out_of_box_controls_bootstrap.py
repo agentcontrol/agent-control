@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 from copy import deepcopy
 from typing import cast
@@ -48,10 +49,13 @@ def _control_payload(*, evaluator_name: str = "regex") -> dict[str, object]:
 def _template(
     *,
     name: str | None = None,
+    source_id: str | None = None,
     evaluator_name: str = "regex",
 ) -> OutOfBoxControlTemplate:
+    template_name = name or f"oob-test-{uuid.uuid4().hex}"
     return OutOfBoxControlTemplate.from_payload(
-        name=name or f"oob-test-{uuid.uuid4().hex}",
+        source_id=source_id or template_name,
+        name=template_name,
         data=_control_payload(evaluator_name=evaluator_name),
     )
 
@@ -92,7 +96,11 @@ def test_template_from_payload_validates_control_definition() -> None:
     }
 
     with pytest.raises(ValidationError):
-        OutOfBoxControlTemplate.from_payload(name="invalid-oob-control", data=payload)
+        OutOfBoxControlTemplate.from_payload(
+            source_id="invalid-oob-control",
+            name="invalid-oob-control",
+            data=payload,
+        )
 
 
 @pytest.mark.asyncio
@@ -132,6 +140,8 @@ async def test_seed_creates_control_version_in_namespace_without_bindings() -> N
     control = controls[0]
     assert control.namespace_key == "galileo-org-123"
     assert control.name == "oob-create-control"
+    assert control.seed_source_id == "oob-create-control"
+    assert control.seed_opted_out_at is None
     assert control.data["enabled"] is True
     assert control.data["condition"]["evaluator"]["name"] == "regex"
 
@@ -173,6 +183,62 @@ async def test_seed_is_idempotent_for_existing_active_control_names() -> None:
 
 
 @pytest.mark.asyncio
+async def test_seed_does_not_duplicate_a_renamed_seeded_control() -> None:
+    template = _template(name="oob-original-name", source_id="stable-seed-id")
+    await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"regex"},
+        templates=(template,),
+    )
+    with Session(engine) as session:
+        control = session.scalar(select(Control))
+        assert control is not None
+        control.name = "customer-renamed-control"
+        session.commit()
+
+    result = await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"regex"},
+        templates=(template,),
+    )
+
+    assert result.skipped_existing == ("oob-original-name",)
+    assert [control.name for control in _fetch_controls()] == ["customer-renamed-control"]
+
+
+@pytest.mark.asyncio
+async def test_seed_respects_deleted_control_opt_out_tombstone() -> None:
+    template = _template(name="oob-deleted-control", source_id="stable-seed-id")
+    await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"regex"},
+        templates=(template,),
+    )
+    deleted_at = dt.datetime.now(dt.UTC)
+    with Session(engine) as session:
+        control = session.scalar(select(Control))
+        assert control is not None
+        ControlService.mark_control_deleted(control, deleted_at=deleted_at)
+        session.commit()
+
+    result = await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"regex"},
+        templates=(template,),
+    )
+
+    assert result.skipped_existing == ("oob-deleted-control",)
+    controls = _fetch_controls()
+    assert len(controls) == 1
+    assert controls[0].deleted_at == deleted_at
+    assert controls[0].seed_opted_out_at == deleted_at
+
+
+@pytest.mark.asyncio
 async def test_seed_treats_duplicate_insert_integrity_error_as_skip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -193,7 +259,16 @@ async def test_seed_treats_duplicate_insert_integrity_error_as_skip(
     ) -> bool:
         return False
 
+    async def seed_source_exists(
+        self: ControlService,
+        seed_source_id: str,
+        *,
+        namespace_key: str,
+    ) -> bool:
+        return False
+
     monkeypatch.setattr(ControlService, "active_control_name_exists", active_control_name_exists)
+    monkeypatch.setattr(ControlService, "seed_source_exists", seed_source_exists)
 
     result = await seed_out_of_box_controls(
         session_factory=AsyncSessionTest,
@@ -207,4 +282,3 @@ async def test_seed_treats_duplicate_insert_integrity_error_as_skip(
     assert result.skipped_conflict == ("oob-race-control",)
     assert len(_fetch_controls()) == 1
     assert len(_fetch_versions()) == 1
-
