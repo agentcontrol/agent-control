@@ -1,5 +1,7 @@
 import type { UseFormReturnType } from '@mantine/form';
 
+import type { ControlExecution } from '@/core/api/types';
+
 /**
  * Base interface for evaluator definitions.
  *
@@ -19,6 +21,12 @@ export type EvaluatorDefinition<TFormValues = any> = {
 
   /** Initial form values when creating a new control */
   initialValues: TFormValues;
+
+  /** Execution environment selected when creating a control for this evaluator. */
+  defaultExecution?: ControlExecution;
+
+  /** Execution environments supported by this evaluator. */
+  supportedExecutions?: readonly ControlExecution[];
 
   /**
    * Validation rules for the form.

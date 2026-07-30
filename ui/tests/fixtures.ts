@@ -1,4 +1,4 @@
-import { expect, type Page, test as base } from '@playwright/test';
+import { type Page, test as base } from '@playwright/test';
 
 import type {
   AgentControlsResponse,
@@ -448,6 +448,76 @@ const evaluatorsResponse: EvaluatorsResponse = {
         payload_field: { type: 'string', enum: ['input', 'output'] },
         timeout_ms: { type: 'integer', minimum: 1000, maximum: 60000 },
         config: { type: 'object' },
+      },
+    },
+  },
+  'defenseclaw.rule_pack': {
+    name: 'DefenseClaw Rule Pack',
+    version: '1.0.0',
+    description: 'DefenseClaw rule-pack evaluation',
+    requires_api_key: false,
+    timeout_ms: 10000,
+    config_schema: {
+      type: 'object',
+      properties: {
+        schema_version: { type: 'integer', const: 1, default: 1 },
+        rule_pack: {
+          type: 'object',
+          properties: {
+            version: { type: 'integer', const: 1, default: 1 },
+            category: {
+              type: 'string',
+              const: 'agent-control',
+              default: 'agent-control',
+            },
+            rules: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', minLength: 1 },
+                  pattern: { type: 'string', minLength: 1 },
+                  title: { type: 'string', minLength: 1 },
+                  severity: {
+                    type: 'string',
+                    enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+                  },
+                  confidence: { type: 'number', minimum: 0, maximum: 1 },
+                  tags: { type: 'array', items: { type: 'string' } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  'defenseclaw.opa_policy': {
+    name: 'DefenseClaw OPA Policy',
+    version: '1.0.0',
+    description: 'DefenseClaw OPA-policy evaluation',
+    requires_api_key: false,
+    timeout_ms: 10000,
+    config_schema: {
+      type: 'object',
+      properties: {
+        schema_version: { type: 'integer', const: 1, default: 1 },
+        policy: {
+          type: 'object',
+          properties: {
+            domain: { type: 'string', const: 'guardrail' },
+            block_at: {
+              type: 'string',
+              enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+            },
+            alert_at: {
+              type: 'string',
+              enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+            },
+            cisco_trust_level: { type: 'string', const: 'full' },
+          },
+        },
       },
     },
   },

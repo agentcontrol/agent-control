@@ -19,6 +19,7 @@ import { useMemo, useState } from 'react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import type { EvaluatorInfo } from '@/core/api/types';
 import { MODAL_NAMES, SUBMODAL_NAMES } from '@/core/constants/modal-routes';
+import { getEvaluator } from '@/core/evaluators';
 import { useEvaluators } from '@/core/hooks/query-hooks/use-evaluators';
 import { useModalRoute } from '@/core/hooks/use-modal-route';
 
@@ -51,6 +52,32 @@ const DEFAULT_EVALUATOR_CONFIGS: Record<string, Record<string, unknown>> = {
     payload_field: 'input',
     timeout_ms: 10000,
     config: null,
+  },
+  'defenseclaw.rule_pack': {
+    schema_version: 1,
+    rule_pack: {
+      version: 1,
+      category: 'agent-control',
+      rules: [
+        {
+          id: '',
+          pattern: '',
+          title: '',
+          severity: 'HIGH',
+          confidence: 0.99,
+          tags: [],
+        },
+      ],
+    },
+  },
+  'defenseclaw.opa_policy': {
+    schema_version: 1,
+    policy: {
+      domain: 'guardrail',
+      block_at: 'HIGH',
+      alert_at: 'MEDIUM',
+      cisco_trust_level: 'full',
+    },
   },
 };
 
@@ -151,6 +178,7 @@ export function AddNewControlModal({
 
   const draftControl = useMemo(() => {
     if (selectedEvaluator) {
+      const evaluatorDefinition = getEvaluator(selectedEvaluator.id);
       const name = `new-${sanitizeControlNamePart(selectedEvaluator.name)}-control`;
       return {
         id: 0,
@@ -158,7 +186,7 @@ export function AddNewControlModal({
         control: {
           description: selectedEvaluator.description,
           enabled: true,
-          execution: 'server' as const,
+          execution: evaluatorDefinition?.defaultExecution ?? 'server',
           scope: {
             step_types: ['llm'],
             stages: ['post'] as ('post' | 'pre')[],

@@ -5,6 +5,7 @@ import logging
 from agent_control_server.logging_utils import (
     _parse_json,
     _parse_level,
+    access_log_enabled,
     configure_logging,
     get_log_level_name,
     get_uvicorn_log_level_name,
@@ -145,6 +146,16 @@ def test_should_configure_logging_can_be_disabled(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "false")
 
     assert should_configure_logging() is False
+
+
+def test_access_log_enabled_defaults_to_true() -> None:
+    assert access_log_enabled() is True
+
+
+def test_access_log_enabled_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_ACCESS_LOG", "false")
+
+    assert access_log_enabled() is False
 
 
 def test_configure_logging_noops_when_host_owns_logging(monkeypatch) -> None:
