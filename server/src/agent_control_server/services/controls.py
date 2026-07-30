@@ -126,6 +126,7 @@ class ControlService:
         name: str,
         data: dict[str, Any],
         cloned_from_control_id: int | None = None,
+        seed_source_id: str | None = None,
     ) -> Control:
         """Create a new pending control row."""
         control = Control(
@@ -133,6 +134,7 @@ class ControlService:
             name=name,
             data=data,
             cloned_from_control_id=cloned_from_control_id,
+            seed_source_id=seed_source_id,
         )
         self._db.add(control)
         return control
@@ -158,6 +160,22 @@ class ControlService:
     def mark_control_deleted(control: Control, *, deleted_at: dt.datetime) -> None:
         """Mark a control as soft-deleted."""
         control.deleted_at = deleted_at
+        if control.seed_source_id is not None:
+            control.seed_opted_out_at = deleted_at
+
+    async def seed_source_exists(
+        self,
+        seed_source_id: str,
+        *,
+        namespace_key: str,
+    ) -> bool:
+        """Return whether a control has claimed an immutable seed identity."""
+        stmt = select(Control.id).where(
+            Control.namespace_key == namespace_key,
+            Control.seed_source_id == seed_source_id,
+        )
+        result = await self._db.execute(stmt)
+        return result.first() is not None
 
     async def get_control_or_404(
         self,
