@@ -73,6 +73,9 @@ server/.generated/
 tmp/
 temp/
 *.tmp
+.codex-doc-qa/
+.codex-doc-work/
+.pnpm-store/
 
 # OS
 .DS_Store

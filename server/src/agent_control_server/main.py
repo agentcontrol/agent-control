@@ -41,7 +41,12 @@ from .errors import (
     http_exception_handler,
     validation_exception_handler,
 )
-from .logging_utils import configure_logging, get_uvicorn_log_level_name, should_configure_logging
+from .logging_utils import (
+    access_log_enabled,
+    configure_logging,
+    get_uvicorn_log_level_name,
+    should_configure_logging,
+)
 from .observability.ingest import DirectEventIngestor
 from .observability.sinks import (
     EventStoreControlEventSink,
@@ -439,6 +444,7 @@ def run() -> None:
         "host": settings.host,
         "port": settings.port,
         "log_level": get_uvicorn_log_level_name(_default_log_level()).lower(),
+        "access_log": access_log_enabled(),
     }
     if not should_configure_logging():
         uvicorn_kwargs["log_config"] = None

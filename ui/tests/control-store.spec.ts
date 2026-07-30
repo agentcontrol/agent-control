@@ -238,6 +238,24 @@ test.describe('Add New Control Modal', () => {
     }
   });
 
+  test('does not show DefenseClaw when its evaluator package is unavailable', async ({
+    mockedPage,
+  }) => {
+    const evaluatorsWithoutDefenseClaw = Object.fromEntries(
+      Object.entries(mockData.evaluators).filter(
+        ([id]) => !id.startsWith('defenseclaw.')
+      )
+    );
+    await mockRoutes.evaluators(mockedPage, {
+      data: evaluatorsWithoutDefenseClaw,
+    });
+
+    const modal = await openAddNewControlModal(mockedPage);
+
+    await expect(modal.getByText('DefenseClaw Rule Pack')).toHaveCount(0);
+    await expect(modal.getByText('DefenseClaw OPA Policy')).toHaveCount(0);
+  });
+
   test('can search for evaluators', async ({ mockedPage }) => {
     const modal = await openAddNewControlModal(mockedPage);
     const searchInput = modal.getByPlaceholder('Search evaluators...');
