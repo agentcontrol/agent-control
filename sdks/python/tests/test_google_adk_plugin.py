@@ -10,7 +10,6 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from agent_control import ControlSteerError, ControlViolationError
 from agent_control._state import state
 
@@ -369,6 +368,7 @@ async def test_tool_callbacks_scope_step_name_by_agent(plugin_module):
         )
 
     assert mock_eval.await_args.args[1] == "writer.get_weather"
+    assert mock_eval.await_args.kwargs["canonical_step_name"] == "get_weather"
 
 
 @pytest.mark.asyncio

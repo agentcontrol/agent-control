@@ -57,9 +57,9 @@ async def test_check_evaluation_returns_result_model():
         json={
             "agent_name": "agent-example_01",
             "step": {
-                "type": "llm",
-                "name": "chat",
-                "input": "hello",
+                    "type": "llm",
+                    "name": "chat",
+                    "input": "hello",
                 "output": None,
                 "context": None,
             },

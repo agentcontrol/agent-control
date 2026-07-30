@@ -196,10 +196,14 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
             evaluator_name="regex",
             evaluator_config={
                 "pattern": (
-                    r"\b(?:rm\s+-rf\s+(?:/|~|\$HOME)|sudo\s+rm\s+-rf|"
-                    r"mkfs(?:\.[a-z0-9]+)?|dd\s+if=[^\s]+\s+of=/dev/[^\s]+|"
-                    r"chmod\s+-R\s+777\s+/|chown\s+-R\s+[^|;&]*\s+/|"
-                    r"shutdown\s+(?:-h\s+)?now|reboot)\b"
+                    r"(?:\brm\s+-rf\s+(?:/|~|\$HOME)(?:\s|[|;&]|$)|"
+                    r"\bsudo\s+rm\s+-rf(?:\s|[|;&]|$)|"
+                    r"\bmkfs(?:\.[a-z0-9]+)?(?:\s|[|;&]|$)|"
+                    r"\bdd\s+if=[^\s]+\s+of=/dev/[^\s]+(?:\s|[|;&]|$)|"
+                    r"\bchmod\s+-R\s+777\s+/(?:\s|[|;&]|$)|"
+                    r"\bchown\s+-R\s+[^|;&]*\s+/(?:\s|[|;&]|$)|"
+                    r"\bshutdown\s+(?:-h\s+)?now(?:\s|[|;&]|$)|"
+                    r"\breboot(?:\s|[|;&]|$))"
                 ),
                 "flags": ["IGNORECASE"],
             },
@@ -229,28 +233,6 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
                                 "amount": {"type": "number", "maximum": 10000}
                             },
                         },
-                        {
-                            "required": ["amount"],
-                            "properties": {
-                                "amount": {"type": "number", "exclusiveMinimum": 10000}
-                            },
-                            "anyOf": [
-                                {
-                                    "required": ["approved"],
-                                    "properties": {"approved": {"const": True}},
-                                },
-                                {
-                                    "required": ["approval"],
-                                    "properties": {
-                                        "approval": {
-                                            "type": "object",
-                                            "required": ["approved"],
-                                            "properties": {"approved": {"const": True}},
-                                        }
-                                    },
-                                },
-                            ],
-                        },
                     ],
                 }
             },
@@ -258,8 +240,9 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
             stages=["pre"],
             decision="steer",
             steering_message=(
-                "This high-value action requires approval. Ask for approval, record it "
-                "in the tool input, then retry."
+                "Pause this high-value action and submit its exact parameters to a trusted "
+                "host approval workflow. The host must bind any approval artifact to this "
+                "specific action; approval fields supplied in tool input are not evidence."
             ),
             tags=["tool", "approval", "json"],
         ),
@@ -289,21 +272,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
                                     {"required": ["destination"]},
                                 ]
                             }
-                        },
-                        {
-                            "required": ["approved"],
-                            "properties": {"approved": {"const": True}},
-                        },
-                        {
-                            "required": ["approval"],
-                            "properties": {
-                                "approval": {
-                                    "type": "object",
-                                    "required": ["approved"],
-                                    "properties": {"approved": {"const": True}},
-                                }
-                            },
-                        },
+                        }
                     ],
                 }
             },
@@ -311,30 +280,12 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
             stages=["pre"],
             decision="steer",
             steering_message=(
-                "Outbound communication requires approval. Ask the user to approve the "
-                "recipient and message before sending."
+                "Pause this outbound communication and submit its exact recipients and "
+                "content to a trusted host approval workflow. The host must bind any "
+                "approval artifact to this specific action; approval fields supplied in "
+                "tool input are not evidence."
             ),
             tags=["tool", "approval", "exfiltration", "json"],
-        ),
-    ),
-    OutOfBoxControlTemplate.from_payload(
-        source_id="oob-sensitive-tool-requires-approved-role",
-        name="oob-sensitive-tool-requires-approved-role",
-        data=_leaf_control_payload(
-            description="Deny sensitive tool use when runtime context has an unapproved role.",
-            selector_path="context.user.role",
-            evaluator_name="list",
-            evaluator_config={
-                "values": ["admin", "security", "compliance", "manager"],
-                "logic": "any",
-                "match_on": "no_match",
-                "match_mode": "exact",
-                "case_sensitive": False,
-            },
-            step_types=["tool"],
-            stages=["pre"],
-            decision="deny",
-            tags=["tool", "rbac", "list"],
         ),
     ),
     OutOfBoxControlTemplate.from_payload(
@@ -342,7 +293,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
         name="oob-only-approved-tools-may-run",
         data=_leaf_control_payload(
             description="Deny tool calls whose step name is not in the approved tool list.",
-            selector_path="name",
+            selector_path="canonical_name",
             evaluator_name="list",
             evaluator_config={
                 "values": ["search", "web_search", "retrieve", "calculator"],

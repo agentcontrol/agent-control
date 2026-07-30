@@ -517,6 +517,7 @@ async def check_evaluation_with_local(
 async def evaluate_controls(
     step_name: str,
     *,
+    canonical_step_name: str | None = None,
     input: Any | None = None,
     output: Any | None = None,
     context: dict[str, Any] | None = None,
@@ -547,6 +548,7 @@ async def evaluate_controls(
     step_dict: dict[str, Any] = {
         "type": step_type,
         "name": step_name,
+        "canonical_name": canonical_step_name,
         "input": input if input is not None else default_value,
         "output": output if output is not None else default_value,
     }

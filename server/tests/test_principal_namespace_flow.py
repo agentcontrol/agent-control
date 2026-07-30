@@ -6,15 +6,19 @@ import uuid
 from copy import deepcopy
 from typing import Any
 
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
 from agent_control_server.auth_framework import (
     Operation,
     Principal,
     set_authorizer,
 )
 from agent_control_server.bootstrap.out_of_box_controls import OUT_OF_BOX_CONTROL_TEMPLATES
-from fastapi import FastAPI, Request
-from fastapi.testclient import TestClient
+from agent_control_server.models import Control
 
+from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
 
 
@@ -38,6 +42,24 @@ class HeaderNamespaceAuthorizer:
             is_admin=True,
             scopes=scopes,
         )
+
+
+class ControlsReadOnlyAuthorizer(HeaderNamespaceAuthorizer):
+    """Allow the controls list read and record every authorization operation."""
+
+    def __init__(self) -> None:
+        self.operations: list[Operation] = []
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        self.operations.append(operation)
+        if operation is not Operation.CONTROLS_READ:
+            raise AssertionError(f"Unexpected authorization operation: {operation}")
+        return await super().authorize(request, operation, context)
 
 
 def _client(app: FastAPI, namespace_key: str) -> TestClient:
@@ -77,19 +99,95 @@ def _evaluation_payload(agent_name: str) -> dict[str, Any]:
 def test_controls_list_seeds_out_of_box_controls_for_principal_namespace(
     app: FastAPI,
 ) -> None:
-    set_authorizer(HeaderNamespaceAuthorizer())
+    authorizer = ControlsReadOnlyAuthorizer()
+    set_authorizer(authorizer)
 
     namespace_client = _client(app, "org-oob-controls")
     filtered = namespace_client.get("/api/v1/controls", params={"name": "oob"})
     assert filtered.status_code == 200, filtered.text
     assert filtered.json()["controls"] == []
 
-    resp = namespace_client.get("/api/v1/controls", params={"limit": 10, "cloned": "false"})
+    resp = namespace_client.get("/api/v1/controls", params={"limit": 10})
     assert resp.status_code == 200, resp.text
 
     expected_names = {template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES}
     returned_names = {control["name"] for control in resp.json()["controls"]}
     assert expected_names.issubset(returned_names)
+    assert authorizer.operations == [
+        Operation.CONTROLS_READ,
+        Operation.CONTROLS_READ,
+    ]
+
+
+def test_controls_list_seeds_out_of_box_controls_alongside_custom_control(
+    app: FastAPI,
+) -> None:
+    set_authorizer(HeaderNamespaceAuthorizer())
+    namespace_client = _client(app, "org-with-custom-control")
+    custom_name = f"custom-{uuid.uuid4().hex[:12]}"
+
+    created = namespace_client.put(
+        "/api/v1/controls",
+        json={"name": custom_name, "data": VALID_CONTROL_PAYLOAD},
+    )
+    assert created.status_code == 200, created.text
+
+    response = namespace_client.get(
+        "/api/v1/controls",
+        params={"limit": 20, "cloned": "false"},
+    )
+    assert response.status_code == 200, response.text
+
+    returned_names = {control["name"] for control in response.json()["controls"]}
+    expected_names = {template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES}
+    assert returned_names == {*expected_names, custom_name}
+
+
+def test_controls_list_completes_partially_seeded_namespace(app: FastAPI) -> None:
+    set_authorizer(HeaderNamespaceAuthorizer())
+    namespace_key = "org-partially-seeded"
+    first_template = OUT_OF_BOX_CONTROL_TEMPLATES[0]
+    with Session(engine) as session:
+        session.add(
+            Control(
+                namespace_key=namespace_key,
+                name=first_template.name,
+                data=first_template.control.model_dump(
+                    mode="json",
+                    by_alias=True,
+                    exclude_none=True,
+                    exclude_unset=True,
+                ),
+                seed_source_id=first_template.source_id,
+            )
+        )
+        session.commit()
+
+    response = _client(app, namespace_key).get(
+        "/api/v1/controls",
+        params={"limit": 20, "cloned": "false"},
+    )
+    assert response.status_code == 200, response.text
+
+    returned_names = {control["name"] for control in response.json()["controls"]}
+    expected_names = {template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES}
+    assert returned_names == expected_names
+
+
+def test_controls_list_retries_out_of_box_seeding_for_default_namespace(
+    app: FastAPI,
+) -> None:
+    set_authorizer(HeaderNamespaceAuthorizer())
+
+    response = _client(app, "default").get(
+        "/api/v1/controls",
+        params={"limit": 20, "cloned": "false"},
+    )
+    assert response.status_code == 200, response.text
+
+    returned_names = {control["name"] for control in response.json()["controls"]}
+    expected_names = {template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES}
+    assert returned_names == expected_names
 
 
 def test_principal_namespace_scopes_management_and_runtime(app: FastAPI) -> None:

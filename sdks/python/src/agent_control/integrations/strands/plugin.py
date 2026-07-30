@@ -115,6 +115,7 @@ class AgentControlPlugin(Plugin):
     ) -> None:
         result = await agent_control.evaluate_controls(
             step_name=step_name,
+            canonical_step_name=step_name if step_type == "tool" else None,
             input=input,
             output=output,
             context=context,

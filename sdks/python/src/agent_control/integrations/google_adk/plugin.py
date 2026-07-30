@@ -268,6 +268,7 @@ class AgentControlPlugin(BasePlugin):
             return None
 
         step_name = self._resolve_tool_step_name(tool, tool_context=tool_context)
+        canonical_step_name = resolve_tool_name(tool)
         self._ensure_step_known(self._build_tool_step_schema(tool, step_name))
         context = self._safe_context(
             step_type="tool",
@@ -281,6 +282,7 @@ class AgentControlPlugin(BasePlugin):
             await _evaluate_and_enforce(
                 self.agent_name,
                 step_name,
+                canonical_step_name=canonical_step_name,
                 input=tool_args,
                 context=context,
                 step_type="tool",
@@ -311,6 +313,7 @@ class AgentControlPlugin(BasePlugin):
             return None
 
         step_name = self._resolve_tool_step_name(tool, tool_context=tool_context)
+        canonical_step_name = resolve_tool_name(tool)
         self._ensure_step_known(self._build_tool_step_schema(tool, step_name))
         context = self._safe_context(
             step_type="tool",
@@ -325,6 +328,7 @@ class AgentControlPlugin(BasePlugin):
             await _evaluate_and_enforce(
                 self.agent_name,
                 step_name,
+                canonical_step_name=canonical_step_name,
                 input=tool_args,
                 output=result,
                 context=context,

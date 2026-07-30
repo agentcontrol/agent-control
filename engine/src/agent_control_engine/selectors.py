@@ -17,6 +17,8 @@ def select_data(step: Step, path: str) -> Any:
     """
     if not path or path == "*":
         return step.model_dump(mode="json")
+    if path == "canonical_name":
+        return step.canonical_name or step.name
 
     parts = path.split(".")
     current: Any = step

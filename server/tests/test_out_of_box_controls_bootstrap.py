@@ -42,7 +42,6 @@ _EXPECTED_OOB_CONTROL_NAMES = (
     "oob-dangerous-shell-command-match",
     "oob-high-value-action-requires-approval",
     "oob-outbound-communication-requires-approval",
-    "oob-sensitive-tool-requires-approved-role",
     "oob-only-approved-tools-may-run",
 )
 _AVAILABLE_PHASE_2_EVALUATORS = {"regex", "json", "list"}
@@ -118,6 +117,14 @@ def test_out_of_box_catalog_contains_phase_2_templates() -> None:
         for template in OUT_OF_BOX_CONTROL_TEMPLATES
         for evaluator in template.required_evaluators
     } == _AVAILABLE_PHASE_2_EVALUATORS
+    approved_tools = next(
+        template
+        for template in OUT_OF_BOX_CONTROL_TEMPLATES
+        if template.name == "oob-only-approved-tools-may-run"
+    )
+    approved_tools_leaf = approved_tools.control.primary_leaf()
+    assert approved_tools_leaf is not None
+    assert approved_tools_leaf.selector.path == "canonical_name"
 
 
 def test_missing_required_evaluators_returns_sorted_names() -> None:
@@ -376,12 +383,19 @@ async def test_regex_out_of_box_controls_match_representative_payloads() -> None
 
     shell_spec = _oob_evaluator_spec("oob-dangerous-shell-command-match")
     shell_evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(shell_spec.config))
-    shell_result = await shell_evaluator.evaluate("sudo rm -rf /")
-    assert shell_result.matched is True
+    for command in (
+        "sudo rm -rf /",
+        "rm -rf /",
+        "rm -rf ~",
+        "chmod -R 777 /",
+        "chown -R root /",
+    ):
+        shell_result = await shell_evaluator.evaluate(command)
+        assert shell_result.matched is True, command
 
 
 @pytest.mark.asyncio
-async def test_json_out_of_box_controls_match_missing_approval_only() -> None:
+async def test_json_out_of_box_controls_ignore_caller_controlled_approval_flags() -> None:
     high_value_spec = _oob_evaluator_spec("oob-high-value-action-requires-approval")
     high_value_evaluator = JSONEvaluator(
         JSONEvaluatorConfig.model_validate(high_value_spec.config)
@@ -389,13 +403,16 @@ async def test_json_out_of_box_controls_match_missing_approval_only() -> None:
 
     high_value_result = await high_value_evaluator.evaluate({"amount": 25000})
     low_value_result = await high_value_evaluator.evaluate({"amount": 250})
-    approved_result = await high_value_evaluator.evaluate(
-        {"amount": 25000, "approval": {"approved": True}}
-    )
+    caller_approved_results = [
+        await high_value_evaluator.evaluate({"amount": 25000, "approved": True}),
+        await high_value_evaluator.evaluate(
+            {"amount": 25000, "approval": {"approved": True}}
+        ),
+    ]
 
     assert high_value_result.matched is True
     assert low_value_result.matched is False
-    assert approved_result.matched is False
+    assert all(result.matched is True for result in caller_approved_results)
 
     outbound_spec = _oob_evaluator_spec("oob-outbound-communication-requires-approval")
     outbound_evaluator = JSONEvaluator(JSONEvaluatorConfig.model_validate(outbound_spec.config))
@@ -404,26 +421,26 @@ async def test_json_out_of_box_controls_match_missing_approval_only() -> None:
         {"to": "customer@example.com", "message": "Hello"}
     )
     internal_result = await outbound_evaluator.evaluate({"query": "customer history"})
-    approved_outbound_result = await outbound_evaluator.evaluate(
-        {"to": "customer@example.com", "message": "Hello", "approved": True}
-    )
+    caller_approved_outbound_results = [
+        await outbound_evaluator.evaluate(
+            {"to": "customer@example.com", "message": "Hello", "approved": True}
+        ),
+        await outbound_evaluator.evaluate(
+            {
+                "to": "customer@example.com",
+                "message": "Hello",
+                "approval": {"approved": True},
+            }
+        ),
+    ]
 
     assert outbound_result.matched is True
     assert internal_result.matched is False
-    assert approved_outbound_result.matched is False
+    assert all(result.matched is True for result in caller_approved_outbound_results)
 
 
 @pytest.mark.asyncio
-async def test_list_out_of_box_controls_match_unapproved_values() -> None:
-    role_spec = _oob_evaluator_spec("oob-sensitive-tool-requires-approved-role")
-    role_evaluator = ListEvaluator(ListEvaluatorConfig.model_validate(role_spec.config))
-
-    viewer_result = await role_evaluator.evaluate("viewer")
-    admin_result = await role_evaluator.evaluate("admin")
-
-    assert viewer_result.matched is True
-    assert admin_result.matched is False
-
+async def test_list_out_of_box_control_matches_unapproved_tools() -> None:
     tool_spec = _oob_evaluator_spec("oob-only-approved-tools-may-run")
     tool_evaluator = ListEvaluator(ListEvaluatorConfig.model_validate(tool_spec.config))
 
