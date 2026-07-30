@@ -18,7 +18,7 @@ import { SDKValidationError } from "./errors/sdk-validation-error.js";
  */
 export type ControlSelector = {
   /**
-   * Path to data using dot notation. Examples: 'input', 'output', 'context.user_id', 'name', 'type', '*'
+   * Path to data using dot notation. Examples: 'input', 'output', 'context.user_id', 'name', 'canonical_name', 'type', '*'
    */
   path?: string | null | undefined;
 };

@@ -3,11 +3,16 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../lib/primitives.js";
 
 /**
  * Runtime payload for an agent step invocation.
  */
 export type Step = {
+  /**
+   * Optional integration-independent identity for a qualified step name (for example, 'web_search' for 'writer.web_search').
+   */
+  canonicalName?: string | null | undefined;
   /**
    * Optional context (conversation history, metadata, etc.)
    */
@@ -32,6 +37,7 @@ export type Step = {
 
 /** @internal */
 export type Step$Outbound = {
+  canonical_name?: string | null | undefined;
   context?: { [k: string]: any } | null | undefined;
   input: any;
   name: string;
@@ -40,14 +46,20 @@ export type Step$Outbound = {
 };
 
 /** @internal */
-export const Step$outboundSchema: z.ZodMiniType<Step$Outbound, Step> = z.object(
-  {
+export const Step$outboundSchema: z.ZodMiniType<Step$Outbound, Step> = z.pipe(
+  z.object({
+    canonicalName: z.optional(z.nullable(z.string())),
     context: z.optional(z.nullable(z.record(z.string(), z.any()))),
     input: z.any(),
     name: z.string(),
     output: z.optional(z.nullable(z.any())),
     type: z.string(),
-  },
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      canonicalName: "canonical_name",
+    });
+  }),
 );
 
 export function stepToJSON(step: Step): string {
