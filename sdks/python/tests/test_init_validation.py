@@ -100,3 +100,40 @@ def test_init_defaults_runtime_token_header_to_none() -> None:
         assert state.runtime_token_header is None
     finally:
         agent_control._reset_state()
+
+
+def test_init_preserves_positional_argument_order() -> None:
+    """runtime_token_header is appended after the existing parameters, so a
+    positional call binds each value to its original slot. In particular the
+    5th/6th positionals stay api_key / api_key_header and are not shifted into
+    the new header, which remains unset."""
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+    try:
+        with patch(
+            "agent_control.__init__.AgentControlClient.health_check",
+            new=health_check_mock,
+        ), patch(
+            "agent_control.__init__.agents.register_agent",
+            new=register_agent_mock,
+        ):
+            # Positional call matching the pre-change signature order:
+            # agent_name, agent_description, agent_version, server_url,
+            # api_key, api_key_header
+            agent_control.init(
+                f"agent-{uuid4().hex[:12]}",
+                "desc",
+                "1.0.0",
+                "http://localhost:8000",
+                "key",
+                "X-API-Key",
+                policy_refresh_interval_seconds=0,
+            )
+
+        # Positionals bound to their original slots, not shifted by the new arg.
+        assert state.server_url == "http://localhost:8000"
+        assert state.api_key == "key"
+        assert state.api_key_header == "X-API-Key"
+        assert state.runtime_token_header is None
+    finally:
+        agent_control._reset_state()
