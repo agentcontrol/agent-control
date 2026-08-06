@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator
@@ -540,6 +541,69 @@ async def test_seed_out_of_box_controls_failure_is_best_effort(
     )
 
     seed.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_seed_out_of_box_controls_deduplicates_concurrent_namespace_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: one namespace reconciliation that remains in flight
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def seed(**_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(controls_module, "seed_out_of_box_controls", seed)
+
+    # When: two list requests reconcile the same namespace concurrently
+    first = asyncio.create_task(
+        controls_module._seed_out_of_box_controls_for_namespace(
+            namespace_key="shared-reconciliation-namespace"
+        )
+    )
+    await started.wait()
+    second = asyncio.create_task(
+        controls_module._seed_out_of_box_controls_for_namespace(
+            namespace_key="shared-reconciliation-namespace"
+        )
+    )
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.gather(first, second)
+
+    # Then: both requests joined one reconciliation
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_seed_out_of_box_controls_bounds_reconciliation_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: a reconciliation that cannot complete within the read-path deadline
+    cancelled = asyncio.Event()
+
+    async def seed(**_kwargs: object) -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(controls_module, "seed_out_of_box_controls", seed)
+    monkeypatch.setattr(controls_module, "_OUT_OF_BOX_RECONCILIATION_TIMEOUT_SECONDS", 0.01)
+
+    # When: a list request starts reconciliation
+    await controls_module._seed_out_of_box_controls_for_namespace(
+        namespace_key="bounded-reconciliation-namespace"
+    )
+
+    # Then: the deadline cancels the database work and returns control to the request
+    assert cancelled.is_set()
 
 
 @pytest.mark.asyncio

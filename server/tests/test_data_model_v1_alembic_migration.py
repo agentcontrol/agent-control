@@ -2,22 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 
 import pytest
+from agent_control_server.config import db_config
+from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
-
-from agent_control_server.config import db_config
-from alembic import command
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 PRE_MIGRATION_REVISION = "c1e9f9c4a1d2"
 MIGRATION_REVISION = "a7f3b1e0d9c5"
 OBSERVABILITY_NAMESPACE_REVISION = "b6f4c2d8e9a1"
 CLONE_LINEAGE_REVISION = "e2b7f4a9c6d1"
+SEED_IDENTITY_REVISION = "f3a1c8d7e2b4"
 _BASE_DB_URL = make_url(db_config.get_url())
 
 pytestmark = pytest.mark.skipif(
@@ -394,6 +395,100 @@ def test_control_clone_lineage_migration_adds_composite_fk_and_partial_index(
     indexes = _index_names(temp_engine, "control_execution_events")
     assert "ix_events_namespace_agent_time" in indexes
     assert "ix_events_agent_time" not in indexes
+
+
+def test_seed_identity_downgrade_retires_canonical_name_control(
+    alembic_config: Config,
+    temp_engine: Engine,
+) -> None:
+    # Given: the seeded control and its initial version use the new selector
+    command.upgrade(alembic_config, SEED_IDENTITY_REVISION)
+    control_data = {
+        "condition": {
+            "selector": {"path": "canonical_name"},
+            "evaluator": {"name": "list", "config": {"values": ["web_search"]}},
+        },
+        "action": {"decision": "deny"},
+    }
+    with temp_engine.begin() as conn:
+        control_id = conn.execute(
+            text(
+                """
+                INSERT INTO controls (namespace_key, name, data, seed_source_id)
+                VALUES (
+                    'default',
+                    'oob-only-approved-tools-may-run',
+                    CAST(:data AS jsonb),
+                    'oob-only-approved-tools-may-run'
+                )
+                RETURNING id
+                """
+            ),
+            {"data": json.dumps(control_data)},
+        ).scalar_one()
+        conn.execute(
+            text(
+                """
+                INSERT INTO control_versions (
+                    control_id, version_num, event_type, snapshot, note
+                )
+                VALUES (
+                    :control_id,
+                    1,
+                    'created',
+                    CAST(:snapshot AS jsonb),
+                    'Out-of-box control seed'
+                )
+                """
+            ),
+            {
+                "control_id": control_id,
+                "snapshot": json.dumps(
+                    {
+                        "name": "oob-only-approved-tools-may-run",
+                        "data": control_data,
+                    }
+                ),
+            },
+        )
+
+    # When: rolling back to the last revision that rejects canonical_name
+    command.downgrade(alembic_config, CLONE_LINEAGE_REVISION)
+
+    # Then: the seed is inactive and all persisted definitions use a supported selector
+    with temp_engine.begin() as conn:
+        control = conn.execute(
+            text(
+                """
+                SELECT
+                    deleted_at,
+                    data #>> '{condition,selector,path}' AS selector_path
+                FROM controls
+                WHERE id = :control_id
+                """
+            ),
+            {"control_id": control_id},
+        ).mappings().one()
+        snapshot_selector_path = conn.execute(
+            text(
+                """
+                SELECT snapshot #>> '{data,condition,selector,path}'
+                FROM control_versions
+                WHERE control_id = :control_id
+                """
+            ),
+            {"control_id": control_id},
+        ).scalar_one()
+
+    assert control["deleted_at"] is not None
+    assert control["selector_path"] == "name"
+    assert snapshot_selector_path == "name"
+    assert "seed_source_id" not in _column_names(temp_engine, "controls")
+    assert "seed_opted_out_at" not in _column_names(temp_engine, "controls")
+    assert "idx_controls_namespace_seed_source" not in _index_names(
+        temp_engine,
+        "controls",
+    )
 
 
 def test_downgrade_rejects_cross_namespace_agents_duplicates(

@@ -31,10 +31,10 @@ from agent_control_server.models import (
 )
 from agent_control_server.services.controls import ControlService
 from pydantic import ValidationError
-from sqlalchemy import Table, func, select
+from sqlalchemy import Table, event, func, select
 from sqlalchemy.orm import Session
 
-from .conftest import AsyncSessionTest, engine
+from .conftest import AsyncSessionTest, async_engine, engine
 
 _EXPECTED_OOB_CONTROL_NAMES = (
     "oob-ssn-match",
@@ -288,6 +288,43 @@ async def test_seed_default_catalog_is_idempotent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_seed_existing_catalog_uses_one_bulk_lookup() -> None:
+    # Given: a namespace whose complete catalog is already seeded
+    await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators=_AVAILABLE_PHASE_2_EVALUATORS,
+    )
+    statements: list[str] = []
+
+    def record_statement(
+        _conn: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(async_engine.sync_engine, "before_cursor_execute", record_statement)
+    try:
+        # When: reconciling the already-seeded namespace
+        result = await seed_out_of_box_controls(
+            session_factory=AsyncSessionTest,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
+            available_evaluators=_AVAILABLE_PHASE_2_EVALUATORS,
+        )
+    finally:
+        event.remove(async_engine.sync_engine, "before_cursor_execute", record_statement)
+
+    # Then: all seed identities are resolved by one database statement
+    assert result.skipped_existing == _EXPECTED_OOB_CONTROL_NAMES
+    assert len(statements) == 1
+    assert statements[0].lstrip().startswith("SELECT")
+
+
+@pytest.mark.asyncio
 async def test_seed_is_idempotent_for_existing_active_control_names() -> None:
     template = _template(name="oob-idempotent-control")
 
@@ -379,25 +416,16 @@ async def test_seed_treats_duplicate_insert_integrity_error_as_skip(
         templates=(template,),
     )
 
-    async def active_control_name_exists(
+    async def find_existing_seed_controls(
         self: ControlService,
-        name: str,
         *,
         namespace_key: str,
-        exclude_control_id: int | None = None,
-    ) -> bool:
-        return False
+        source_ids: object,
+        names: object,
+    ) -> tuple[frozenset[str], frozenset[str]]:
+        return frozenset(), frozenset()
 
-    async def seed_source_exists(
-        self: ControlService,
-        seed_source_id: str,
-        *,
-        namespace_key: str,
-    ) -> bool:
-        return False
-
-    monkeypatch.setattr(ControlService, "active_control_name_exists", active_control_name_exists)
-    monkeypatch.setattr(ControlService, "seed_source_exists", seed_source_exists)
+    monkeypatch.setattr(ControlService, "find_existing_seed_controls", find_existing_seed_controls)
 
     result = await seed_out_of_box_controls(
         session_factory=AsyncSessionTest,
@@ -431,6 +459,30 @@ async def test_regex_out_of_box_controls_match_representative_payloads() -> None
     ):
         shell_result = await shell_evaluator.evaluate(command)
         assert shell_result.matched is True, command
+
+
+@pytest.mark.asyncio
+async def test_dangerous_shell_control_matches_equivalent_recursive_rm_forms() -> None:
+    # Given: the destructive shell command control
+    shell_spec = _oob_evaluator_spec("oob-dangerous-shell-command-match")
+    shell_evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(shell_spec.config))
+
+    # When: evaluating equivalent recursive deletion spellings and a scoped deletion
+    destructive_results = [
+        await shell_evaluator.evaluate(command)
+        for command in (
+            'rm -rf "$HOME"',
+            "rm -rf ~/",
+            "rm -fr /",
+            "rm -r -f /",
+            "rm -f -r '$HOME/'",
+        )
+    ]
+    scoped_result = await shell_evaluator.evaluate("rm -rf /tmp/build-output")
+
+    # Then: equivalent root/home deletions are blocked without blocking scoped deletion
+    assert all(result.matched is True for result in destructive_results)
+    assert scoped_result.matched is False
 
 
 @pytest.mark.asyncio

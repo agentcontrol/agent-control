@@ -205,8 +205,10 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
             evaluator_name="regex",
             evaluator_config={
                 "pattern": (
-                    r"(?:\brm\s+-rf\s+(?:/|~|\$HOME)(?:\s|[|;&]|$)|"
-                    r"\bsudo\s+rm\s+-rf(?:\s|[|;&]|$)|"
+                    r"(?:\brm\s+(?:-(?:rf|fr)|-r\s+-f|-f\s+-r)\s+"
+                    r"(?:\"(?:/|~/?|\$HOME/?)\"|'(?:/|~/?|\$HOME/?)'|"
+                    r"(?:/|~/?|\$HOME/?))(?:\s|[|;&]|$)|"
+                    r"\bsudo\s+rm\s+(?:-(?:rf|fr)|-r\s+-f|-f\s+-r)(?:\s|[|;&]|$)|"
                     r"\bmkfs(?:\.[a-z0-9]+)?(?:\s|[|;&]|$)|"
                     r"\bdd\s+if=[^\s]+\s+of=/dev/[^\s]+(?:\s|[|;&]|$)|"
                     r"\bchmod\s+-R\s+777\s+/(?:\s|[|;&]|$)|"
@@ -442,6 +444,7 @@ async def seed_out_of_box_controls(
 
     available_evaluator_names = set(available_evaluators)
     async with session_factory() as session:
+        eligible_templates: list[OutOfBoxControlTemplate] = []
         for template in templates:
             missing = missing_required_evaluators(
                 template.required_evaluators,
@@ -454,6 +457,19 @@ async def seed_out_of_box_controls(
                         missing_evaluators=missing,
                     )
                 )
+                continue
+
+            eligible_templates.append(template)
+
+        control_service = ControlService(session)
+        existing_source_ids, active_names = await control_service.find_existing_seed_controls(
+            namespace_key=namespace_key,
+            source_ids={template.source_id for template in eligible_templates},
+            names={template.name for template in eligible_templates},
+        )
+        for template in eligible_templates:
+            if template.source_id in existing_source_ids or template.name in active_names:
+                skipped_existing.append(template.name)
                 continue
 
             outcome = await _seed_one_control(
@@ -483,14 +499,6 @@ async def _seed_one_control(
     template: OutOfBoxControlTemplate,
 ) -> str:
     control_service = ControlService(session)
-    if await control_service.seed_source_exists(
-        template.source_id,
-        namespace_key=namespace_key,
-    ):
-        return "existing"
-    if await control_service.active_control_name_exists(template.name, namespace_key=namespace_key):
-        return "existing"
-
     control = control_service.create_control(
         namespace_key=namespace_key,
         name=template.name,

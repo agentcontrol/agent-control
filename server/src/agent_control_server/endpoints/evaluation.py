@@ -117,6 +117,21 @@ def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationRes
     )
 
 
+def _normalize_legacy_qualified_step_name(request: EvaluationRequest) -> EvaluationRequest:
+    """Derive a canonical tool name for clients that predate ``canonical_name``."""
+    step = request.step
+    if step.type != "tool" or step.canonical_name is not None:
+        return request
+
+    _, separator, canonical_name = step.name.rpartition(".")
+    if not separator or not canonical_name:
+        return request
+
+    return request.model_copy(
+        update={"step": step.model_copy(update={"canonical_name": canonical_name})}
+    )
+
+
 async def _evaluation_context(request: Request) -> dict[str, object]:
     """Surface target identifiers to the runtime authorizer."""
     try:
@@ -196,6 +211,7 @@ async def evaluate(
     on the server; SDKs reconstruct and emit those events separately through
     the observability ingestion endpoint.
     """
+    request = _normalize_legacy_qualified_step_name(request)
     engine_controls = await _load_engine_controls(request, principal)
     engine = ControlEngine(engine_controls)
     try:
