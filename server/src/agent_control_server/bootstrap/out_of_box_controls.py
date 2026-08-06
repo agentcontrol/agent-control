@@ -51,14 +51,14 @@ class OutOfBoxControlTemplate:
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_id", _SLUG_NAME_ADAPTER.validate_python(self.source_id))
         object.__setattr__(self, "name", _SLUG_NAME_ADAPTER.validate_python(self.name))
-        if not self.required_evaluators:
-            required_evaluators = {
-                evaluator.name for _, evaluator in self.control.iter_condition_leaf_parts()
-            }
-            object.__setattr__(self, "required_evaluators", frozenset(required_evaluators))
-            return
-
-        object.__setattr__(self, "required_evaluators", frozenset(self.required_evaluators))
+        condition_evaluators = {
+            evaluator.name for _, evaluator in self.control.iter_condition_leaf_parts()
+        }
+        object.__setattr__(
+            self,
+            "required_evaluators",
+            frozenset(self.required_evaluators).union(condition_evaluators),
+        )
 
     @classmethod
     def from_payload(

@@ -184,6 +184,33 @@ async def test_seed_skips_template_when_required_evaluator_is_missing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_seed_unions_explicit_requirements_with_condition_evaluators() -> None:
+    # Given: a regex control with an additional explicit Luna requirement
+    template = OutOfBoxControlTemplate.from_payload(
+        source_id="oob-mixed-requirements",
+        name="oob-mixed-requirements",
+        data=_control_payload(evaluator_name="regex"),
+        required_evaluators={"galileo.luna"},
+    )
+
+    # When: seeding on a pod that only has Luna
+    result = await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"galileo.luna"},
+        templates=(template,),
+    )
+
+    # Then: the condition's missing regex evaluator prevents seeding
+    assert template.required_evaluators == frozenset({"galileo.luna", "regex"})
+    assert result.created == ()
+    assert len(result.skipped_missing_evaluator) == 1
+    assert result.skipped_missing_evaluator[0].name == "oob-mixed-requirements"
+    assert result.skipped_missing_evaluator[0].missing_evaluators == ("regex",)
+    assert _fetch_controls() == []
+
+
+@pytest.mark.asyncio
 async def test_seed_creates_control_version_in_namespace_without_bindings() -> None:
     template = _template(name="oob-create-control")
 
