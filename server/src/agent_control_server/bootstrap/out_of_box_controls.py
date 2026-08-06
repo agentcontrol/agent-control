@@ -33,6 +33,10 @@ _CONTROL_SEED_UNIQUE_CONSTRAINT = "idx_controls_namespace_seed_source"
 _INITIAL_VERSION_NOTE = "Out-of-box control seed"
 _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
 _OUT_OF_BOX_TAGS = ["out-of-box"]
+_SQL_TOOL_NAME_PATTERN = (
+    r"(?i)(?:^|[._-])(?:sql|execute[_-]?sql|run[_-]?sql|sql[_-]?query|"
+    r"query[_-]?database|execute[_-]?query)(?:$|[._-])"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,16 +121,21 @@ def _leaf_control_payload(
     decision: str,
     tags: list[str],
     steering_message: str | None = None,
+    step_name_regex: str | None = None,
 ) -> dict[str, object]:
     action: dict[str, object] = {"decision": decision}
     if steering_message is not None:
         action["steering_context"] = {"message": steering_message}
 
+    scope: dict[str, object] = {"step_types": step_types, "stages": stages}
+    if step_name_regex is not None:
+        scope["step_name_regex"] = step_name_regex
+
     return {
         "description": description,
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": step_types, "stages": stages},
+        "scope": scope,
         "condition": {
             "selector": {"path": selector_path},
             "evaluator": {
@@ -306,6 +315,90 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
             stages=["pre"],
             decision="deny",
             tags=["tool", "allowlist", "list"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm05-read-only-sql",
+        name="oob-owasp-llm05-read-only-sql",
+        data=_leaf_control_payload(
+            description=("Block SQL tool calls that are not a single read-only SELECT statement."),
+            selector_path="input.query",
+            evaluator_name="sql",
+            evaluator_config={
+                "allowed_operations": ["SELECT"],
+                "allow_multi_statements": False,
+                "block_ddl": True,
+                "block_dcl": True,
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["owasp", "owasp-llm05", "owasp-asi02", "tool", "sql"],
+            step_name_regex=_SQL_TOOL_NAME_PATTERN,
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm10-bounded-sql-query",
+        name="oob-owasp-llm10-bounded-sql-query",
+        data=_leaf_control_payload(
+            description=("Block SQL queries without bounded results or with excessive complexity."),
+            selector_path="input.query",
+            evaluator_name="sql",
+            evaluator_config={
+                "require_limit": True,
+                "max_limit": 1000,
+                "max_result_window": 1000,
+                "max_subquery_depth": 3,
+                "max_joins": 5,
+                "max_union_count": 2,
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["owasp", "owasp-llm10", "tool", "sql", "resource-limit"],
+            step_name_regex=_SQL_TOOL_NAME_PATTERN,
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm02-common-credential-output-match",
+        name="oob-owasp-llm02-common-credential-output-match",
+        data=_leaf_control_payload(
+            description=("Block LLM output containing common private-key or API-token formats."),
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"(?:-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----|"
+                    r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|"
+                    r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b|"
+                    r"\bAIza[0-9A-Za-z_-]{35}\b|"
+                    r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b)"
+                )
+            },
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["owasp", "owasp-llm02", "credential", "secret", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm05-dangerous-uri-output-match",
+        name="oob-owasp-llm05-dangerous-uri-output-match",
+        data=_leaf_control_payload(
+            description=("Block LLM output containing executable or active-content URI schemes."),
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"(?:\b(?:javascript|vbscript)\s*:|"
+                    r"\bdata\s*:\s*(?:text/html|application/xhtml\+xml|image/svg\+xml))"
+                ),
+                "flags": ["IGNORECASE"],
+            },
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["owasp", "owasp-llm05", "output-handling", "uri", "regex"],
         ),
     ),
 )

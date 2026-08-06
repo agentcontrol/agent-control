@@ -12,6 +12,7 @@ from agent_control_evaluators.list.config import ListEvaluatorConfig
 from agent_control_evaluators.list.evaluator import ListEvaluator
 from agent_control_evaluators.regex.config import RegexEvaluatorConfig
 from agent_control_evaluators.regex.evaluator import RegexEvaluator
+from agent_control_evaluators.sql import SQLEvaluator, SQLEvaluatorConfig
 from agent_control_models import EvaluatorSpec
 from agent_control_server.bootstrap.out_of_box_controls import (
     OUT_OF_BOX_CONTROL_TEMPLATES,
@@ -43,8 +44,12 @@ _EXPECTED_OOB_CONTROL_NAMES = (
     "oob-high-value-action-requires-approval",
     "oob-outbound-communication-requires-approval",
     "oob-only-approved-tools-may-run",
+    "oob-owasp-llm05-read-only-sql",
+    "oob-owasp-llm10-bounded-sql-query",
+    "oob-owasp-llm02-common-credential-output-match",
+    "oob-owasp-llm05-dangerous-uri-output-match",
 )
-_AVAILABLE_PHASE_2_EVALUATORS = {"regex", "json", "list"}
+_AVAILABLE_PHASE_2_EVALUATORS = {"regex", "json", "list", "sql"}
 
 
 def _control_payload(*, evaluator_name: str = "regex") -> dict[str, object]:
@@ -125,6 +130,13 @@ def test_out_of_box_catalog_contains_phase_2_templates() -> None:
     approved_tools_leaf = approved_tools.control.primary_leaf()
     assert approved_tools_leaf is not None
     assert approved_tools_leaf.selector.path == "canonical_name"
+    sql_controls = [
+        template
+        for template in OUT_OF_BOX_CONTROL_TEMPLATES
+        if "sql" in template.control.tags
+    ]
+    assert len(sql_controls) == 2
+    assert all(template.control.scope.step_name_regex for template in sql_controls)
 
 
 def test_missing_required_evaluators_returns_sorted_names() -> None:
@@ -449,3 +461,73 @@ async def test_list_out_of_box_control_matches_unapproved_tools() -> None:
 
     assert delete_result.matched is True
     assert search_result.matched is False
+
+
+@pytest.mark.asyncio
+async def test_owasp_credential_control_matches_common_secret_formats() -> None:
+    # Given: the OWASP-aligned common credential output control
+    spec = _oob_evaluator_spec("oob-owasp-llm02-common-credential-output-match")
+    evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating representative secret and non-secret output
+    private_key_result = await evaluator.evaluate("-----BEGIN OPENSSH PRIVATE KEY-----\nredacted")
+    aws_key_result = await evaluator.evaluate("Credential: AKIAIOSFODNN7EXAMPLE")
+    safe_result = await evaluator.evaluate("The operation completed successfully.")
+
+    # Then: recognizable credentials are blocked while ordinary output passes
+    assert private_key_result.matched is True
+    assert aws_key_result.matched is True
+    assert safe_result.matched is False
+
+
+@pytest.mark.asyncio
+async def test_owasp_dangerous_uri_control_matches_active_content_schemes() -> None:
+    # Given: the OWASP-aligned dangerous URI output control
+    spec = _oob_evaluator_spec("oob-owasp-llm05-dangerous-uri-output-match")
+    evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating executable, active-content, and ordinary HTTPS links
+    javascript_result = await evaluator.evaluate(
+        '<a href="JaVaScRiPt:alert(document.domain)">click</a>'
+    )
+    data_uri_result = await evaluator.evaluate("data:image/svg+xml,<svg></svg>")
+    safe_result = await evaluator.evaluate("https://docs.example.com/safety")
+
+    # Then: active-content schemes are blocked while HTTPS passes
+    assert javascript_result.matched is True
+    assert data_uri_result.matched is True
+    assert safe_result.matched is False
+
+
+@pytest.mark.asyncio
+async def test_owasp_read_only_sql_control_blocks_mutation_and_multiple_statements() -> None:
+    # Given: the OWASP-aligned read-only SQL control
+    spec = _oob_evaluator_spec("oob-owasp-llm05-read-only-sql")
+    evaluator = SQLEvaluator(SQLEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating read-only, mutating, and multi-statement SQL
+    select_result = await evaluator.evaluate("SELECT id FROM users")
+    delete_result = await evaluator.evaluate("DELETE FROM users")
+    multiple_result = await evaluator.evaluate("SELECT id FROM users; DROP TABLE users")
+
+    # Then: only the single read-only query passes
+    assert select_result.matched is False
+    assert delete_result.matched is True
+    assert multiple_result.matched is True
+
+
+@pytest.mark.asyncio
+async def test_owasp_bounded_sql_control_enforces_result_and_complexity_limits() -> None:
+    # Given: the OWASP-aligned bounded SQL query control
+    spec = _oob_evaluator_spec("oob-owasp-llm10-bounded-sql-query")
+    evaluator = SQLEvaluator(SQLEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating bounded, unbounded, and oversized result windows
+    bounded_result = await evaluator.evaluate("SELECT id FROM users LIMIT 100")
+    missing_limit_result = await evaluator.evaluate("SELECT id FROM users")
+    oversized_window_result = await evaluator.evaluate("SELECT id FROM users LIMIT 1000 OFFSET 1")
+
+    # Then: only the bounded query within the configured result window passes
+    assert bounded_result.matched is False
+    assert missing_limit_result.matched is True
+    assert oversized_window_result.matched is True

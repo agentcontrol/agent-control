@@ -6,10 +6,6 @@ import uuid
 from copy import deepcopy
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-
 from agent_control_server.auth_framework import (
     Operation,
     Principal,
@@ -17,6 +13,9 @@ from agent_control_server.auth_framework import (
 )
 from agent_control_server.bootstrap.out_of_box_controls import OUT_OF_BOX_CONTROL_TEMPLATES
 from agent_control_server.models import Control
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -107,7 +106,10 @@ def test_controls_list_seeds_out_of_box_controls_for_principal_namespace(
     assert filtered.status_code == 200, filtered.text
     assert filtered.json()["controls"] == []
 
-    resp = namespace_client.get("/api/v1/controls", params={"limit": 10})
+    resp = namespace_client.get(
+        "/api/v1/controls",
+        params={"limit": len(OUT_OF_BOX_CONTROL_TEMPLATES)},
+    )
     assert resp.status_code == 200, resp.text
 
     expected_names = {template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES}
