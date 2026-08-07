@@ -104,9 +104,15 @@ def test_init_defaults_runtime_token_header_to_none() -> None:
 
 def test_init_preserves_positional_argument_order() -> None:
     """runtime_token_header is appended after the existing parameters, so a
-    positional call binds each value to its original slot. In particular the
-    5th/6th positionals stay api_key / api_key_header and are not shifted into
-    the new header, which remains unset."""
+    positional call binds each value to its original slot.
+
+    The compatibility regression this guards against began at the 7th
+    positional (``controls_file``) and would shift every slot after it, so the
+    call below supplies positionals all the way through ``target_id`` (16th)
+    and asserts they land in their pre-change slots. If the new header had been
+    inserted anywhere before ``target_id``, the ``target_type`` / ``target_id``
+    values would bind to the wrong slots and these assertions would fail.
+    ``runtime_token_header`` stays last and remains unset."""
     health_check_mock = AsyncMock(return_value={"status": "healthy"})
     register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
     try:
@@ -118,8 +124,11 @@ def test_init_preserves_positional_argument_order() -> None:
             new=register_agent_mock,
         ):
             # Positional call matching the pre-change signature order:
-            # agent_name, agent_description, agent_version, server_url,
-            # api_key, api_key_header
+            # 1 agent_name, 2 agent_description, 3 agent_version, 4 server_url,
+            # 5 api_key, 6 api_key_header, 7 controls_file, 8 steps,
+            # 9 conflict_mode, 10 observability_enabled, 11 observability_sink_name,
+            # 12 observability_sink_config, 13 log_config,
+            # 14 policy_refresh_interval_seconds, 15 target_type, 16 target_id.
             agent_control.init(
                 f"agent-{uuid4().hex[:12]}",
                 "desc",
@@ -127,13 +136,24 @@ def test_init_preserves_positional_argument_order() -> None:
                 "http://localhost:8000",
                 "key",
                 "X-API-Key",
-                policy_refresh_interval_seconds=0,
+                None,  # controls_file (slot 7: where the regression began)
+                None,  # steps
+                "overwrite",  # conflict_mode
+                False,  # observability_enabled
+                None,  # observability_sink_name
+                None,  # observability_sink_config
+                None,  # log_config
+                0,  # policy_refresh_interval_seconds
+                "env",  # target_type
+                "prod",  # target_id
             )
 
         # Positionals bound to their original slots, not shifted by the new arg.
         assert state.server_url == "http://localhost:8000"
         assert state.api_key == "key"
         assert state.api_key_header == "X-API-Key"
+        assert state.target_type == "env"
+        assert state.target_id == "prod"
         assert state.runtime_token_header is None
     finally:
         agent_control._reset_state()
