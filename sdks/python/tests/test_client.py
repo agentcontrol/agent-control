@@ -1121,6 +1121,27 @@ def test_runtime_token_header_rejects_blank_param() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "bad_header",
+    ["X Agent Control", "X-Agent:Control", "Bad\nHeader", "hÉader", "with tab\t"],
+)
+def test_runtime_token_header_rejects_invalid_field_name(bad_header: str) -> None:
+    """A header that is not a valid HTTP field name is rejected at construction,
+    not deferred to the first request."""
+    with pytest.raises(ValueError, match="HTTP header field name"):
+        AgentControlClient(
+            base_url="https://agent-control.test", runtime_token_header=bad_header
+        )
+
+
+def test_runtime_token_header_rejects_invalid_field_name_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "X Agent Control")
+    with pytest.raises(ValueError, match="HTTP header field name"):
+        AgentControlClient(base_url="https://agent-control.test")
+
+
 def test_runtime_token_header_whitespace_env_falls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1252,3 +1273,61 @@ async def test_runtime_evaluation_custom_header_fallback_keeps_api_key() -> None
     assert exchange_calls == 1
     assert seen["runtime"] is None
     assert seen["api_key"] == "test-key"
+
+
+# ---------------------------------------------------------------------------
+# HYBIM-866: 401 disambiguation for runtime-token refresh (gateway vs token)
+# ---------------------------------------------------------------------------
+
+
+def _resp(status: int, www_authenticate: str | None = None) -> httpx.Response:
+    headers = {"WWW-Authenticate": www_authenticate} if www_authenticate else {}
+    return httpx.Response(status, headers=headers)
+
+
+def test_should_refresh_401_on_authorization_header_refreshes() -> None:
+    """Default (token on Authorization): a bare 401 means the runtime token,
+    so refresh."""
+    from agent_control.client import _should_refresh_runtime_token
+
+    assert _should_refresh_runtime_token(_resp(401)) is True
+
+
+def test_should_refresh_401_on_dedicated_header_needs_invalid_token() -> None:
+    """Token on a dedicated header: a bare 401 is ambiguous (may be the gateway
+    rejecting Authorization), so do NOT evict the runtime token unless the
+    server flags it invalid."""
+    from agent_control.client import _should_refresh_runtime_token
+
+    # Bare 401 with no challenge -> gateway 401, keep the token.
+    assert (
+        _should_refresh_runtime_token(
+            _resp(401), runtime_token_on_dedicated_header=True
+        )
+        is False
+    )
+    # 401 that explicitly flags the runtime token -> refresh.
+    assert (
+        _should_refresh_runtime_token(
+            _resp(401, 'Bearer error="invalid_token"'),
+            runtime_token_on_dedicated_header=True,
+        )
+        is True
+    )
+
+
+def test_should_refresh_403_only_on_invalid_token_challenge() -> None:
+    from agent_control.client import _should_refresh_runtime_token
+
+    assert _should_refresh_runtime_token(_resp(403)) is False
+    assert (
+        _should_refresh_runtime_token(_resp(403, 'Bearer error="invalid_token"'))
+        is True
+    )
+
+
+def test_should_refresh_ignores_other_statuses() -> None:
+    from agent_control.client import _should_refresh_runtime_token
+
+    assert _should_refresh_runtime_token(_resp(200)) is False
+    assert _should_refresh_runtime_token(_resp(500)) is False

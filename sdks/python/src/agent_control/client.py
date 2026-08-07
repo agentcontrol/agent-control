@@ -15,6 +15,7 @@ from .runtime_auth import (
     RuntimeTokenCache,
     normalize_runtime_auth_mode,
     parse_runtime_token_exchange_response,
+    resolve_runtime_token_header,
 )
 
 _logger = logging.getLogger(__name__)
@@ -167,16 +168,11 @@ class AgentControlClient:
         self._runtime_auth_mode = normalize_runtime_auth_mode(configured_runtime_mode)
         # Explicit blank param is a hard error; a blank env var falls back to
         # the default (mirrors the server's _resolve_runtime_token_header).
-        if runtime_token_header is not None and not runtime_token_header.strip():
-            raise ValueError("runtime_token_header must not be blank.")
-        env_runtime_token_header = os.environ.get(_RUNTIME_TOKEN_HEADER_ENV_VAR)
-        if env_runtime_token_header is not None and not env_runtime_token_header.strip():
-            env_runtime_token_header = None
-        self._runtime_token_header = (
-            runtime_token_header
-            or env_runtime_token_header
-            or _DEFAULT_RUNTIME_TOKEN_HEADER
-        ).strip()
+        self._runtime_token_header = resolve_runtime_token_header(
+            runtime_token_header,
+            os.environ.get(_RUNTIME_TOKEN_HEADER_ENV_VAR),
+            default=_DEFAULT_RUNTIME_TOKEN_HEADER,
+        )
         # Bearer only on Authorization; a dedicated header carries the raw token
         # so it can't collide with the gateway's Authorization JWT. Must stay in
         # sync with LocalJwtVerifyProvider._require_bearer on the server.
@@ -305,7 +301,14 @@ class AgentControlClient:
             headers=request_headers,
         )
 
-        if _should_refresh_runtime_token(response) and runtime_authorization is not None:
+        runtime_token_on_dedicated_header = not self._runtime_token_use_bearer
+        if (
+            _should_refresh_runtime_token(
+                response,
+                runtime_token_on_dedicated_header=runtime_token_on_dedicated_header,
+            )
+            and runtime_authorization is not None
+        ):
             await response.aread()
             if target_type is not None and target_id is not None:
                 self._runtime_token_cache.remove(
@@ -327,7 +330,10 @@ class AgentControlClient:
                 headers=request_headers,
             )
             if (
-                _should_refresh_runtime_token(response)
+                _should_refresh_runtime_token(
+                    response,
+                    runtime_token_on_dedicated_header=runtime_token_on_dedicated_header,
+                )
                 and target_type is not None
                 and target_id is not None
             ):
@@ -507,10 +513,39 @@ class AgentControlClient:
         return token.token
 
 
-def _should_refresh_runtime_token(response: httpx.Response) -> bool:
+def _authenticate_flags_runtime_token(response: httpx.Response) -> bool:
+    """True when the response's WWW-Authenticate marks the token invalid.
+
+    Looks for the RFC 6750 ``error="invalid_token"`` challenge the runtime
+    verifier emits, so a refresh is driven by the server naming the token as
+    the problem, not by a bare status code.
+    """
+    return "invalid_token" in response.headers.get("WWW-Authenticate", "").lower()
+
+
+def _should_refresh_runtime_token(
+    response: httpx.Response,
+    *,
+    runtime_token_on_dedicated_header: bool = False,
+) -> bool:
+    """Decide whether a runtime-token refresh is warranted for this response.
+
+    When the runtime token rides ``Authorization`` (the default), a 401 is
+    unambiguous: the only credential on that header is the runtime token, so
+    treat it as expired and refresh.
+
+    When the token rides a dedicated header (behind a gateway that owns
+    ``Authorization`` for its own identity JWT), a bare 401 is ambiguous: it
+    may be the gateway rejecting its own credential, not our runtime token.
+    Evicting a still-valid token there just forces another exchange that hits
+    the same gateway 401 and hides the original error. So in that case only
+    refresh when the server explicitly flags the runtime token as invalid via
+    WWW-Authenticate (or a 403 invalid_token challenge).
+    """
     if response.status_code == 401:
+        if runtime_token_on_dedicated_header:
+            return _authenticate_flags_runtime_token(response)
         return True
     if response.status_code != 403:
         return False
-    authenticate = response.headers.get("WWW-Authenticate", "")
-    return "invalid_token" in authenticate.lower()
+    return _authenticate_flags_runtime_token(response)

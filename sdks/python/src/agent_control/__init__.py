@@ -113,6 +113,7 @@ from .observability import (
     write_events,
 )
 from .otel_sink import control_event_to_otel_span
+from .runtime_auth import validate_http_field_name
 from .tracing import (
     get_current_span_id,
     get_current_trace_id,
@@ -562,6 +563,16 @@ def init(
         raise ValueError(
             "target_type and target_id must be supplied together."
         )
+    # Validate the runtime-token header up front, before stopping the refresh
+    # loop or mutating shared session state. An explicit blank or a
+    # syntactically-invalid header must fail here rather than on the first
+    # later evaluation. (A None/unset value is fine; AgentControlClient resolves
+    # the env-var fallback and default when the eval client is built.)
+    if runtime_token_header is not None:
+        if not runtime_token_header.strip():
+            raise ValueError("runtime_token_header must not be blank.")
+        validate_http_field_name(runtime_token_header.strip())
+
     resolved_api_key_header = (
         api_key_header
         or os.getenv(AgentControlClient.API_KEY_HEADER_ENV_VAR)

@@ -1866,6 +1866,24 @@ def test_local_jwt_rejects_blank_header_name():
         LocalJwtVerifyProvider(secret=_TEST_SECRET, header_name="  ")
 
 
+@pytest.mark.parametrize(
+    "bad_header",
+    ["X Agent Control", "X-Agent:Control", "hÉader", "with\ttab"],
+)
+def test_local_jwt_rejects_invalid_field_name_header(bad_header):
+    """A syntactically invalid HTTP header name is rejected at construction."""
+    with pytest.raises(ValueError, match="HTTP header field name"):
+        LocalJwtVerifyProvider(secret=_TEST_SECRET, header_name=bad_header)
+
+
+def test_resolve_runtime_token_header_rejects_invalid_field_name(monkeypatch):
+    from agent_control_server.auth_framework import config as auth_config
+
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "X Agent Control")
+    with pytest.raises(ValueError, match="HTTP header field name"):
+        auth_config._resolve_runtime_token_header()
+
+
 # ---------------------------------------------------------------------------
 # HYBIM-741: AGENT_CONTROL_RUNTIME_TOKEN_HEADER env resolution (config wiring)
 # ---------------------------------------------------------------------------

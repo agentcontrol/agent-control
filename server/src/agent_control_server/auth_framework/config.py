@@ -43,7 +43,10 @@ from .providers import (
     NoAuthProvider,
 )
 from .providers.http_upstream import HttpUpstreamConfig
-from .providers.local_jwt import DEFAULT_RUNTIME_TOKEN_HEADER
+from .providers.local_jwt import (
+    DEFAULT_RUNTIME_TOKEN_HEADER,
+    validate_http_field_name,
+)
 
 _logger = get_logger(__name__)
 
@@ -403,7 +406,9 @@ def _resolve_runtime_token_header() -> str:
     raw = os.environ.get(_RUNTIME_TOKEN_HEADER_ENV)
     if raw is None or not raw.strip():
         return DEFAULT_RUNTIME_TOKEN_HEADER
-    return raw.strip()
+    # Reject a syntactically-invalid header name at startup (RaiseError here
+    # surfaces during config build, not as a per-request auth failure).
+    return validate_http_field_name(raw.strip())
 
 
 def _load_runtime_auth_config(*, require_secret: bool = False) -> RuntimeAuthConfig | None:
