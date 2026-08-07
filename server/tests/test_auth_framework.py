@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+
 from agent_control_server.auth_framework.core import (
     Operation,
     Principal,
@@ -875,6 +876,7 @@ def test_runtime_token_rejects_empty_required_claims(kwargs, message):
 def test_runtime_token_rejects_management_token_passed_to_runtime_verify():
     """A token without ``domain=runtime`` must be rejected by runtime verify."""
     import jwt
+
     from agent_control_server.auth_framework.runtime_token import (
         RuntimeTokenError,
         verify_runtime_token,
