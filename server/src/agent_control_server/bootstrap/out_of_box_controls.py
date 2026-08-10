@@ -208,7 +208,6 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
                     r"(?:\brm\s+(?:-(?:rf|fr)|-r\s+-f|-f\s+-r)\s+"
                     r"(?:\"(?:/|~/?|\$HOME/?)\"|'(?:/|~/?|\$HOME/?)'|"
                     r"(?:/|~/?|\$HOME/?))(?:\s|[|;&]|$)|"
-                    r"\bsudo\s+rm\s+(?:-(?:rf|fr)|-r\s+-f|-f\s+-r)(?:\s|[|;&]|$)|"
                     r"\bmkfs(?:\.[a-z0-9]+)?(?:\s|[|;&]|$)|"
                     r"\bdd\s+if=[^\s]+\s+of=/dev/[^\s]+(?:\s|[|;&]|$)|"
                     r"\bchmod\s+-R\s+777\s+/(?:\s|[|;&]|$)|"

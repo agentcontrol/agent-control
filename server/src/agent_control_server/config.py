@@ -214,6 +214,7 @@ class Settings(BaseSettings):
         "AGENT_CONTROL_ALLOW_HEADERS",
         "ALLOW_HEADERS",
     )
+
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from string or list."""
         return self._parse_list_setting(self.cors_origins)

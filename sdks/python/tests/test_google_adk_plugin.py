@@ -10,6 +10,7 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from agent_control import ControlSteerError, ControlViolationError
 from agent_control._state import state
 

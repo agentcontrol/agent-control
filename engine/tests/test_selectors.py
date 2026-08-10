@@ -97,6 +97,20 @@ def test_select_data_prefers_explicit_canonical_name() -> None:
     assert select_data(payload, "canonical_name") == "web_search"
 
 
+def test_wildcard_preserves_legacy_shape_when_canonical_name_is_present() -> None:
+    payload = Step(
+        type="tool",
+        name="writer.web_search",
+        canonical_name="web_search",
+        input={},
+    )
+
+    selected = select_data(payload, "*")
+
+    assert selected == payload.model_dump(mode="json", exclude={"canonical_name"})
+    assert "canonical_name" not in selected
+
+
 def test_list_selection():
     """Test that selecting a path pointing to a list returns the whole list."""
     # Given: a payload with a list in the output

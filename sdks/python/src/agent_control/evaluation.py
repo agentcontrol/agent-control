@@ -531,6 +531,10 @@ async def evaluate_controls(
 ) -> EvaluationResult:
     """Evaluate controls for a step.
 
+    ``canonical_step_name`` is an optional integration-independent identity for
+    qualified tool names, such as ``web_search`` for ``writer.web_search``.
+    Integrations should leave it unset when they cannot provide that identity.
+
     When ``target_type`` and ``target_id`` are both supplied, the request
     is target-bearing: the server merges target bindings into the
     effective control set. If they are omitted, the SDK falls back to the

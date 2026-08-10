@@ -57,9 +57,9 @@ async def test_check_evaluation_returns_result_model():
         json={
             "agent_name": "agent-example_01",
             "step": {
-                    "type": "llm",
-                    "name": "chat",
-                    "input": "hello",
+                "type": "llm",
+                "name": "chat",
+                "input": "hello",
                 "output": None,
                 "context": None,
             },
@@ -103,6 +103,30 @@ async def test_evaluate_controls_with_explicit_agent_name(monkeypatch):
     assert result.is_safe is True
     assert result.confidence == 1.0
     mock_check.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_forwards_canonical_step_name(monkeypatch):
+    """Qualified integrations can send a stable tool identity separately."""
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_check = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"), patch(
+        "agent_control.state.api_key", None
+    ):
+        await evaluation.evaluate_controls(
+            step_name="writer.web_search",
+            canonical_step_name="web_search",
+            input={},
+            step_type="tool",
+            stage="pre",
+            agent_name="test-bot",
+        )
+
+    step = mock_check.await_args.kwargs["step"]
+    assert step.name == "writer.web_search"
+    assert step.canonical_name == "web_search"
 
 
 @pytest.mark.asyncio

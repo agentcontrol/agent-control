@@ -478,11 +478,14 @@ async def test_dangerous_shell_control_matches_equivalent_recursive_rm_forms() -
             "rm -f -r '$HOME/'",
         )
     ]
-    scoped_result = await shell_evaluator.evaluate("rm -rf /tmp/build-output")
+    scoped_results = [
+        await shell_evaluator.evaluate("rm -rf /tmp/build-output"),
+        await shell_evaluator.evaluate("sudo rm -rf /tmp/cache"),
+    ]
 
     # Then: equivalent root/home deletions are blocked without blocking scoped deletion
     assert all(result.matched is True for result in destructive_results)
-    assert scoped_result.matched is False
+    assert all(result.matched is False for result in scoped_results)
 
 
 @pytest.mark.asyncio
@@ -584,14 +587,16 @@ async def test_owasp_read_only_sql_control_blocks_mutation_and_multiple_statemen
     spec = _oob_evaluator_spec("oob-owasp-llm05-read-only-sql")
     evaluator = SQLEvaluator(SQLEvaluatorConfig.model_validate(spec.config))
 
-    # When: evaluating read-only, mutating, and multi-statement SQL
+    # When: evaluating read-only, mutating, table-creating, and multi-statement SQL
     select_result = await evaluator.evaluate("SELECT id FROM users")
     delete_result = await evaluator.evaluate("DELETE FROM users")
+    select_into_result = await evaluator.evaluate("SELECT * INTO backup FROM users")
     multiple_result = await evaluator.evaluate("SELECT id FROM users; DROP TABLE users")
 
     # Then: only the single read-only query passes
     assert select_result.matched is False
     assert delete_result.matched is True
+    assert select_into_result.matched is True
     assert multiple_result.matched is True
 
 
@@ -605,8 +610,14 @@ async def test_owasp_bounded_sql_control_enforces_result_and_complexity_limits()
     bounded_result = await evaluator.evaluate("SELECT id FROM users LIMIT 100")
     missing_limit_result = await evaluator.evaluate("SELECT id FROM users")
     oversized_window_result = await evaluator.evaluate("SELECT id FROM users LIMIT 1000 OFFSET 1")
+    indeterminate_results = [
+        await evaluator.evaluate("SELECT * FROM users LIMIT $1"),
+        await evaluator.evaluate("SELECT * FROM users LIMIT (1000 + 1)"),
+        await evaluator.evaluate("SELECT * FROM users LIMIT 1000 OFFSET $1"),
+    ]
 
     # Then: only the bounded query within the configured result window passes
     assert bounded_result.matched is False
     assert missing_limit_result.matched is True
     assert oversized_window_result.matched is True
+    assert all(result.matched is True for result in indeterminate_results)

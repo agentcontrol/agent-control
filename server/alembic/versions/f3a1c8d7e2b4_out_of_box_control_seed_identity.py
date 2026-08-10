@@ -9,6 +9,7 @@ Create Date: 2026-07-30 12:00:00.000000
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -26,14 +27,6 @@ def upgrade() -> None:
         "controls",
         sa.Column("seed_opted_out_at", sa.DateTime(timezone=True), nullable=True),
     )
-    with op.get_context().autocommit_block():
-        op.execute(
-            """
-            CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_controls_namespace_seed_source
-            ON controls (namespace_key, seed_source_id)
-            WHERE seed_source_id IS NOT NULL
-            """
-        )
 
 
 def downgrade() -> None:
@@ -67,7 +60,5 @@ def downgrade() -> None:
           AND data #>> '{{condition,selector,path}}' = 'canonical_name'
         """
     )
-    with op.get_context().autocommit_block():
-        op.execute("DROP INDEX CONCURRENTLY IF EXISTS idx_controls_namespace_seed_source")
     op.drop_column("controls", "seed_opted_out_at")
     op.drop_column("controls", "seed_source_id")
