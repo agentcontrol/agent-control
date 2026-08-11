@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import io
 import uuid
 from pathlib import Path
 
 import pytest
+from agent_control_server.config import db_config
+from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
-
-from agent_control_server.config import db_config
-from alembic import command
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 PRE_MIGRATION_REVISION = "c1e9f9c4a1d2"
@@ -435,6 +435,27 @@ def test_control_seed_index_migration_is_split_from_column_additions(
     assert "CREATE UNIQUE INDEX idx_controls_namespace_seed_source" in index_def
     assert "ON public.controls USING btree (namespace_key, seed_source_id)" in index_def
     assert "WHERE (seed_source_id IS NOT NULL)" in index_def
+
+
+def test_control_seed_index_migration_supports_offline_sql_generation() -> None:
+    # Given: an offline Alembic configuration with no live database connection
+    output = io.StringIO()
+    config = Config(str(SERVER_DIR / "alembic.ini"), output_buffer=output)
+    config.set_main_option("script_location", str(SERVER_DIR / "alembic"))
+    config.set_main_option("sqlalchemy.url", _BASE_DB_URL.render_as_string(False))
+
+    # When: generating SQL for only the concurrent index revision
+    command.upgrade(
+        config,
+        f"{SEED_IDENTITY_REVISION}:{SEED_INDEX_REVISION}",
+        sql=True,
+    )
+
+    # Then: Alembic emits the index DDL without trying to query pg_index
+    generated_sql = output.getvalue()
+    assert "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS" in generated_sql
+    assert "idx_controls_namespace_seed_source" in generated_sql
+    assert "SELECT NOT pg_index.indisvalid" not in generated_sql
 
 
 def test_control_seed_index_downgrade_preserves_identity_columns(

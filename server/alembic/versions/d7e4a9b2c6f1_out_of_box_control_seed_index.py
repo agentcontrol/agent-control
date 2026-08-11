@@ -9,8 +9,7 @@ Create Date: 2026-08-10 12:00:00.000000
 from __future__ import annotations
 
 import sqlalchemy as sa
-
-from alembic import op
+from alembic import context, op
 
 # revision identifiers, used by Alembic.
 revision = "d7e4a9b2c6f1"
@@ -37,7 +36,10 @@ def _index_is_invalid() -> bool:
 
 def upgrade() -> None:
     with op.get_context().autocommit_block():
-        if _index_is_invalid():
+        # Offline generation has no live PostgreSQL catalog to inspect. Emitting
+        # CREATE IF NOT EXISTS is safe there; invalid-index recovery remains an
+        # online-only retry path.
+        if not context.is_offline_mode() and _index_is_invalid():
             op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}")
         op.execute(
             f"""
