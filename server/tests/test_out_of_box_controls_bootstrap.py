@@ -3,11 +3,14 @@ from __future__ import annotations
 import datetime as dt
 import uuid
 from copy import deepcopy
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from agent_control_server.bootstrap import out_of_box_controls as bootstrap_module
 from agent_control_server.bootstrap.out_of_box_controls import (
     OutOfBoxControlTemplate,
+    OutOfBoxSeedResult,
     default_out_of_box_namespace_key,
     missing_required_evaluators,
     seed_out_of_box_controls,
@@ -23,6 +26,7 @@ from agent_control_server.models import (
 from agent_control_server.services.controls import ControlService
 from pydantic import ValidationError
 from sqlalchemy import Table, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .conftest import AsyncSessionTest, engine
@@ -88,6 +92,25 @@ def test_missing_required_evaluators_returns_sorted_names() -> None:
     assert missing == ("galileo.luna", "regex")
 
 
+def test_seed_result_reports_created_and_skipped_counts() -> None:
+    # Given: a result containing every skip category
+    result = OutOfBoxSeedResult(
+        created=("created-one", "created-two"),
+        skipped_existing=("existing",),
+        skipped_missing_evaluator=(
+            bootstrap_module.SkippedOutOfBoxControl(
+                name="missing",
+                missing_evaluators=("regex",),
+            ),
+        ),
+        skipped_conflict=("conflict",),
+    )
+
+    # When/Then: its summary counts include the corresponding entries
+    assert result.created_count == 2
+    assert result.skipped_count == 3
+
+
 def test_template_from_payload_validates_control_definition() -> None:
     payload = deepcopy(_control_payload())
     payload["condition"] = {
@@ -101,6 +124,24 @@ def test_template_from_payload_validates_control_definition() -> None:
             name="invalid-oob-control",
             data=payload,
         )
+
+
+@pytest.mark.asyncio
+async def test_seed_empty_catalog_returns_without_opening_session() -> None:
+    # Given: an empty catalog and a session factory that must not be used
+    def unexpected_session_factory() -> None:
+        raise AssertionError("empty catalog should not open a database session")
+
+    # When: bootstrap runs with no templates
+    result = await seed_out_of_box_controls(
+        session_factory=unexpected_session_factory,  # type: ignore[arg-type]
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"regex"},
+        templates=(),
+    )
+
+    # Then: it returns an empty result without touching the database
+    assert result == OutOfBoxSeedResult()
 
 
 @pytest.mark.asyncio
@@ -210,6 +251,55 @@ async def test_seed_is_idempotent_for_existing_active_control_names() -> None:
 
 
 @pytest.mark.asyncio
+async def test_seed_skips_active_name_claimed_by_another_source() -> None:
+    # Given: an existing seeded control and a new template reusing its active name
+    original = _template(name="oob-shared-name", source_id="original-source")
+    replacement = _template(name="oob-shared-name", source_id="replacement-source")
+    await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"regex"},
+        templates=(original,),
+    )
+
+    # When: bootstrap evaluates the replacement template
+    result = await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"regex"},
+        templates=(replacement,),
+    )
+
+    # Then: the active name prevents a duplicate with a different seed identity
+    assert result.skipped_existing == ("oob-shared-name",)
+    assert len(_fetch_controls()) == 1
+
+
+@pytest.mark.asyncio
+async def test_seed_serializes_default_enabled_value() -> None:
+    # Given: a template payload that relies on the model's enabled default
+    payload = _control_payload()
+    payload.pop("enabled")
+    template = OutOfBoxControlTemplate.from_payload(
+        source_id="oob-default-enabled",
+        name="oob-default-enabled",
+        data=payload,
+    )
+
+    # When: the template is seeded
+    result = await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators={"regex"},
+        templates=(template,),
+    )
+
+    # Then: the stored payload explicitly contains the effective default
+    assert result.created == ("oob-default-enabled",)
+    assert _fetch_controls()[0].data["enabled"] is True
+
+
+@pytest.mark.asyncio
 async def test_seed_does_not_duplicate_a_renamed_seeded_control() -> None:
     template = _template(name="oob-original-name", source_id="stable-seed-id")
     await seed_out_of_box_controls(
@@ -309,3 +399,46 @@ async def test_seed_treats_duplicate_insert_integrity_error_as_skip(
     assert result.skipped_conflict == ("oob-race-control",)
     assert len(_fetch_controls()) == 1
     assert len(_fetch_versions()) == 1
+
+
+@pytest.mark.asyncio
+async def test_seed_reraises_unrelated_integrity_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: version creation fails for a reason unrelated to seed uniqueness
+    template = _template(name="oob-unrelated-integrity-error")
+    error = IntegrityError("statement", {}, RuntimeError("unrelated constraint"))
+
+    async def raise_integrity_error(
+        self: ControlService,
+        control: Control,
+        *,
+        event_type: str,
+        note: str | None = None,
+    ) -> None:
+        raise error
+
+    monkeypatch.setattr(ControlService, "create_version", raise_integrity_error)
+
+    # When/Then: bootstrap rolls back and propagates the unexpected failure
+    with pytest.raises(IntegrityError) as exc_info:
+        await seed_out_of_box_controls(
+            session_factory=AsyncSessionTest,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
+            available_evaluators={"regex"},
+            templates=(template,),
+        )
+
+    assert exc_info.value is error
+    assert _fetch_controls() == []
+
+
+def test_seed_conflict_recognizes_seed_constraint_diagnostic() -> None:
+    # Given: PostgreSQL reports the immutable seed index through its diagnostic
+    original = SimpleNamespace(
+        diag=SimpleNamespace(constraint_name="idx_controls_namespace_seed_source")
+    )
+    error = IntegrityError("statement", {}, original)
+
+    # When/Then: the pure classifier recognizes the race as a seed conflict
+    assert bootstrap_module._is_control_seed_conflict(error) is True
