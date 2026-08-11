@@ -1,5 +1,6 @@
 """Main server application entry point."""
 
+import asyncio
 import inspect
 import logging
 from collections.abc import AsyncGenerator
@@ -18,6 +19,10 @@ from starlette_exporter import PrometheusMiddleware, handle_metrics
 
 from . import __version__ as server_version
 from .auth import get_api_key_from_header
+from .bootstrap.out_of_box_controls import (
+    default_out_of_box_namespace_key,
+    seed_out_of_box_controls,
+)
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal, async_engine
 from .endpoints.agents import router as agent_router
@@ -146,6 +151,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     discover_evaluators()
     available = list(list_evaluators().keys())
     logger.info(f"Evaluator discovery complete. Available evaluators: {available}")
+
+    try:
+        async with asyncio.timeout(settings.out_of_box_bootstrap_timeout_seconds):
+            seed_result = await seed_out_of_box_controls(
+                session_factory=AsyncSessionLocal,
+                namespace_key=default_out_of_box_namespace_key(),
+                available_evaluators=set(available),
+            )
+        if seed_result.created_count or seed_result.skipped_count:
+            logger.info(
+                "Out-of-box control bootstrap complete: created=%s "
+                "skipped_existing=%s skipped_missing_evaluator=%s skipped_conflict=%s",
+                seed_result.created_count,
+                len(seed_result.skipped_existing),
+                len(seed_result.skipped_missing_evaluator),
+                len(seed_result.skipped_conflict),
+            )
+    except TimeoutError:
+        logger.warning(
+            "Out-of-box control bootstrap timed out after %s seconds; continuing startup",
+            settings.out_of_box_bootstrap_timeout_seconds,
+        )
+    except Exception:
+        logger.warning("Out-of-box control bootstrap failed; continuing startup", exc_info=True)
 
     # Initialize observability components (stored on app.state)
     if observability_settings.enabled:

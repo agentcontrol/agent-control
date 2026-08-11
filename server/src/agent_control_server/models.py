@@ -181,6 +181,14 @@ class Control(Base):
             postgresql_where=text("cloned_from_control_id IS NOT NULL"),
             sqlite_where=text("cloned_from_control_id IS NOT NULL"),
         ),
+        Index(
+            "idx_controls_namespace_seed_source",
+            "namespace_key",
+            "seed_source_id",
+            unique=True,
+            postgresql_where=text("seed_source_id IS NOT NULL"),
+            sqlite_where=text("seed_source_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -194,6 +202,10 @@ class Control(Base):
     )
     cloned_from_control_id: Mapped[int | None] = mapped_column(
         Integer, nullable=True
+    )
+    seed_source_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    seed_opted_out_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     deleted_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

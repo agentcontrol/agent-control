@@ -148,6 +148,7 @@ def test_settings_reads_agent_control_prefixed_env_vars(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_CONTROL_CORS_ORIGINS", "https://a.example, https://b.example")
     monkeypatch.setenv("AGENT_CONTROL_ALLOW_METHODS", "GET, POST")
     monkeypatch.setenv("AGENT_CONTROL_ALLOW_HEADERS", "Authorization, Content-Type")
+    monkeypatch.setenv("AGENT_CONTROL_OUT_OF_BOX_BOOTSTRAP_TIMEOUT_SECONDS", "3.5")
 
     # When: loading settings from the environment
     config = Settings()
@@ -157,6 +158,7 @@ def test_settings_reads_agent_control_prefixed_env_vars(monkeypatch) -> None:
     assert config.get_cors_origins() == ["https://a.example", "https://b.example"]
     assert config.get_allow_methods() == ["GET", "POST"]
     assert config.get_allow_headers() == ["Authorization", "Content-Type"]
+    assert config.out_of_box_bootstrap_timeout_seconds == 3.5
 
 
 def test_settings_reads_legacy_env_vars(monkeypatch) -> None:

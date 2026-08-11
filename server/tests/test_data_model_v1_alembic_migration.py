@@ -2,22 +2,24 @@
 
 from __future__ import annotations
 
+import io
 import uuid
 from pathlib import Path
 
 import pytest
+from agent_control_server.config import db_config
+from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
-
-from agent_control_server.config import db_config
-from alembic import command
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
 PRE_MIGRATION_REVISION = "c1e9f9c4a1d2"
 MIGRATION_REVISION = "a7f3b1e0d9c5"
 OBSERVABILITY_NAMESPACE_REVISION = "b6f4c2d8e9a1"
 CLONE_LINEAGE_REVISION = "e2b7f4a9c6d1"
+SEED_IDENTITY_REVISION = "f3a1c8d7e2b4"
+SEED_INDEX_REVISION = "d7e4a9b2c6f1"
 _BASE_DB_URL = make_url(db_config.get_url())
 
 pytestmark = pytest.mark.skipif(
@@ -113,6 +115,22 @@ def _pg_index_definition(engine: Engine, index_name: str) -> str:
                     SELECT indexdef
                     FROM pg_indexes
                     WHERE tablename = 'controls' AND indexname = :index_name
+                    """
+                ),
+                {"index_name": index_name},
+            ).scalar_one()
+        )
+
+
+def _pg_index_is_valid(engine: Engine, index_name: str) -> bool:
+    with engine.begin() as conn:
+        return bool(
+            conn.execute(
+                text(
+                    """
+                    SELECT pg_index.indisvalid
+                    FROM pg_index
+                    WHERE pg_index.indexrelid = to_regclass(:index_name)
                     """
                 ),
                 {"index_name": index_name},
@@ -394,6 +412,115 @@ def test_control_clone_lineage_migration_adds_composite_fk_and_partial_index(
     indexes = _index_names(temp_engine, "control_execution_events")
     assert "ix_events_namespace_agent_time" in indexes
     assert "ix_events_agent_time" not in indexes
+
+
+def test_control_seed_index_migration_is_split_from_column_additions(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    # Given: the identity revision has added columns without creating the index
+    command.upgrade(alembic_config, SEED_IDENTITY_REVISION)
+    assert "seed_source_id" in _column_names(temp_engine, "controls")
+    assert "seed_opted_out_at" in _column_names(temp_engine, "controls")
+    assert "idx_controls_namespace_seed_source" not in _index_names(
+        temp_engine, "controls"
+    )
+
+    # When: the separate concurrent index revision is applied
+    command.upgrade(alembic_config, SEED_INDEX_REVISION)
+
+    # Then: the partial unique index is valid
+    assert "idx_controls_namespace_seed_source" in _index_names(temp_engine, "controls")
+    assert _pg_index_is_valid(temp_engine, "idx_controls_namespace_seed_source")
+    index_def = _pg_index_definition(temp_engine, "idx_controls_namespace_seed_source")
+    assert "CREATE UNIQUE INDEX idx_controls_namespace_seed_source" in index_def
+    assert "ON public.controls USING btree (namespace_key, seed_source_id)" in index_def
+    assert "WHERE (seed_source_id IS NOT NULL)" in index_def
+
+
+def test_control_seed_index_migration_supports_offline_sql_generation() -> None:
+    # Given: an offline Alembic configuration with no live database connection
+    output = io.StringIO()
+    config = Config(str(SERVER_DIR / "alembic.ini"), output_buffer=output)
+    config.set_main_option("script_location", str(SERVER_DIR / "alembic"))
+    config.set_main_option("sqlalchemy.url", _BASE_DB_URL.render_as_string(False))
+
+    # When: generating SQL for only the concurrent index revision
+    command.upgrade(
+        config,
+        f"{SEED_IDENTITY_REVISION}:{SEED_INDEX_REVISION}",
+        sql=True,
+    )
+
+    # Then: Alembic emits the index DDL without trying to query pg_index
+    generated_sql = output.getvalue()
+    assert "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS" in generated_sql
+    assert "idx_controls_namespace_seed_source" in generated_sql
+    assert "SELECT NOT pg_index.indisvalid" not in generated_sql
+
+
+def test_control_seed_index_downgrade_preserves_identity_columns(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    # Given: both seed identity revisions have been applied
+    command.upgrade(alembic_config, SEED_INDEX_REVISION)
+
+    # When: downgrading only the concurrent index revision
+    command.downgrade(alembic_config, SEED_IDENTITY_REVISION)
+
+    # Then: the index is removed while the identity columns remain
+    assert "idx_controls_namespace_seed_source" not in _index_names(
+        temp_engine, "controls"
+    )
+    assert "seed_source_id" in _column_names(temp_engine, "controls")
+    assert "seed_opted_out_at" in _column_names(temp_engine, "controls")
+
+
+def test_control_seed_index_migration_rebuilds_an_invalid_existing_index(
+    alembic_config: Config, temp_engine: Engine
+) -> None:
+    # Given: a failed concurrent build left an invalid same-name index
+    command.upgrade(alembic_config, SEED_IDENTITY_REVISION)
+    with temp_engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO controls (namespace_key, name, data, seed_source_id)
+                VALUES
+                    ('default', 'seed-one', '{}'::jsonb, 'duplicate-seed'),
+                    ('default', 'seed-two', '{}'::jsonb, 'duplicate-seed')
+                """
+            )
+        )
+
+    with pytest.raises(Exception):
+        with temp_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX CONCURRENTLY idx_controls_namespace_seed_source
+                    ON controls (namespace_key, seed_source_id)
+                    WHERE seed_source_id IS NOT NULL
+                    """
+                )
+            )
+
+    assert not _pg_index_is_valid(temp_engine, "idx_controls_namespace_seed_source")
+    with temp_engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE controls
+                SET seed_source_id = 'distinct-seed'
+                WHERE name = 'seed-two'
+                """
+            )
+        )
+
+    # When: the index revision is retried
+    command.upgrade(alembic_config, SEED_INDEX_REVISION)
+
+    # Then: it replaces the invalid index with a valid unique index
+    assert _pg_index_is_valid(temp_engine, "idx_controls_namespace_seed_source")
 
 
 def test_downgrade_rejects_cross_namespace_agents_duplicates(
