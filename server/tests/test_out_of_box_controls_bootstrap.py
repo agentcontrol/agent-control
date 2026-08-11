@@ -48,7 +48,7 @@ _EXPECTED_OOB_CONTROL_NAMES = (
     "oob-high-value-action-requires-approval",
     "oob-outbound-communication-requires-approval",
     "oob-only-approved-tools-may-run",
-    "oob-owasp-llm05-read-only-sql",
+    "oob-owasp-llm05-select-only-sql",
     "oob-owasp-llm10-bounded-sql-query",
     "oob-owasp-llm02-common-credential-output-match",
     "oob-owasp-llm05-dangerous-uri-output-match",
@@ -141,6 +141,12 @@ def test_out_of_box_catalog_contains_phase_2_templates() -> None:
     ]
     assert len(sql_controls) == 2
     assert all(template.control.scope.step_name_regex for template in sql_controls)
+    select_only_control = next(
+        template
+        for template in sql_controls
+        if template.name == "oob-owasp-llm05-select-only-sql"
+    )
+    assert "does not guarantee read-only execution" in select_only_control.control.description
 
 
 def test_missing_required_evaluators_returns_sorted_names() -> None:
@@ -715,22 +721,28 @@ async def test_owasp_dangerous_uri_control_matches_active_content_schemes() -> N
 
 
 @pytest.mark.asyncio
-async def test_owasp_read_only_sql_control_blocks_mutation_and_multiple_statements() -> None:
-    # Given: the OWASP-aligned read-only SQL control
-    spec = _oob_evaluator_spec("oob-owasp-llm05-read-only-sql")
+async def test_owasp_select_only_sql_control_enforces_syntax_without_read_only_claim() -> None:
+    # Given: the OWASP-aligned syntactic SELECT-only SQL control
+    spec = _oob_evaluator_spec("oob-owasp-llm05-select-only-sql")
     evaluator = SQLEvaluator(SQLEvaluatorConfig.model_validate(spec.config))
 
-    # When: evaluating read-only, mutating, table-creating, and multi-statement SQL
+    # When: evaluating SELECT, mutating, table-creating, and stateful-function SQL
     select_result = await evaluator.evaluate("SELECT id FROM users")
     delete_result = await evaluator.evaluate("DELETE FROM users")
     select_into_result = await evaluator.evaluate("SELECT * INTO backup FROM users")
     multiple_result = await evaluator.evaluate("SELECT id FROM users; DROP TABLE users")
+    stateful_select_results = [
+        await evaluator.evaluate("SELECT setval('seq', 42) LIMIT 1"),
+        await evaluator.evaluate("SELECT pg_advisory_lock(42) LIMIT 1"),
+        await evaluator.evaluate("SELECT user_defined_function() LIMIT 1"),
+    ]
 
-    # Then: only the single read-only query passes
+    # Then: structural mutations are blocked, while SELECT functions remain a DB-role concern
     assert select_result.matched is False
     assert delete_result.matched is True
     assert select_into_result.matched is True
     assert multiple_result.matched is True
+    assert all(result.matched is False for result in stateful_select_results)
 
 
 @pytest.mark.asyncio

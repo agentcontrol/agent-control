@@ -319,10 +319,14 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
         ),
     ),
     OutOfBoxControlTemplate.from_payload(
-        source_id="oob-owasp-llm05-read-only-sql",
-        name="oob-owasp-llm05-read-only-sql",
+        source_id="oob-owasp-llm05-select-only-sql",
+        name="oob-owasp-llm05-select-only-sql",
         data=_leaf_control_payload(
-            description=("Block SQL tool calls that are not a single read-only SELECT statement."),
+            description=(
+                "Block SQL tool calls that are not a single syntactic SELECT statement. "
+                "This does not guarantee read-only execution; enforce a read-only database "
+                "role or transaction for that boundary."
+            ),
             selector_path="input.query",
             evaluator_name="sql",
             evaluator_config={
