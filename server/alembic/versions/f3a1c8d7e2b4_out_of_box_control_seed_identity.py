@@ -18,7 +18,7 @@ down_revision = "e2b7f4a9c6d1"
 branch_labels = None
 depends_on = None
 
-_CANONICAL_NAME_SEED_SOURCE_ID = "oob-only-approved-tools-may-run"
+_CANONICAL_NAME_SEED_SOURCE_ID = "oob-example-tool-allowlist"
 
 
 def upgrade() -> None:

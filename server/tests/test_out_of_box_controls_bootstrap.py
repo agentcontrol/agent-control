@@ -47,7 +47,7 @@ _EXPECTED_OOB_CONTROL_NAMES = (
     "oob-dangerous-shell-command-match",
     "oob-high-value-action-requires-approval",
     "oob-outbound-communication-requires-approval",
-    "oob-only-approved-tools-may-run",
+    "oob-example-tool-allowlist",
     "oob-owasp-llm05-select-only-sql",
     "oob-owasp-llm10-bounded-sql-query",
     "oob-owasp-llm02-common-credential-output-match",
@@ -129,7 +129,7 @@ def test_out_of_box_catalog_contains_phase_2_templates() -> None:
     approved_tools = next(
         template
         for template in OUT_OF_BOX_CONTROL_TEMPLATES
-        if template.name == "oob-only-approved-tools-may-run"
+        if template.name == "oob-example-tool-allowlist"
     )
     approved_tools_leaf = approved_tools.control.primary_leaf()
     assert approved_tools_leaf is not None
@@ -601,6 +601,43 @@ async def test_regex_out_of_box_controls_match_representative_payloads() -> None
 
 
 @pytest.mark.asyncio
+async def test_credit_card_control_matches_known_networks_and_ignores_generic_digit_runs() -> None:
+    # Given: the credit-card-number-match control
+    spec = _oob_evaluator_spec("oob-credit-card-number-match")
+    evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating real card numbers from each supported network, formatted
+    # and unformatted, alongside unrelated numbers with a similar digit count
+    network_results = [
+        await evaluator.evaluate(number)
+        for number in (
+            "4111 1111 1111 1111",  # Visa
+            "4111111111111111",  # Visa, unformatted
+            "4111-1111-1111-1111",  # Visa, dash-separated
+            "5500 0000 0000 0004",  # Mastercard (51-55 range)
+            "2223 0000 4841 0010",  # Mastercard (2221-2720 range)
+            "3782 822463 10005",  # American Express
+            "378282246310005",  # American Express, unformatted
+            "6011 0000 0000 0004",  # Discover
+        )
+    ]
+    generic_digit_results = [
+        await evaluator.evaluate(text)
+        for text in (
+            "Your order 1234567890123456 has shipped",
+            "Invoice #: 987654321098765",
+            "Tracking: 19999999999999999",
+            "Account number: 12345678901234",
+        )
+    ]
+
+    # Then: only genuine card-shaped numbers are blocked; other long digit
+    # runs (order/invoice/tracking/account numbers) are not false positives
+    assert all(result.matched is True for result in network_results)
+    assert all(result.matched is False for result in generic_digit_results)
+
+
+@pytest.mark.asyncio
 async def test_dangerous_shell_control_matches_equivalent_recursive_rm_forms() -> None:
     # Given: the destructive shell command control
     shell_spec = _oob_evaluator_spec("oob-dangerous-shell-command-match")
@@ -674,7 +711,7 @@ async def test_json_out_of_box_controls_ignore_caller_controlled_approval_flags(
 
 @pytest.mark.asyncio
 async def test_list_out_of_box_control_matches_unapproved_tools() -> None:
-    tool_spec = _oob_evaluator_spec("oob-only-approved-tools-may-run")
+    tool_spec = _oob_evaluator_spec("oob-example-tool-allowlist")
     tool_evaluator = ListEvaluator(ListEvaluatorConfig.model_validate(tool_spec.config))
 
     delete_result = await tool_evaluator.evaluate("delete_user")
