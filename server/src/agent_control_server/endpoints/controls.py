@@ -45,7 +45,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
-from ..bootstrap.out_of_box_controls import seed_out_of_box_controls
+from ..bootstrap.out_of_box_controls import (
+    OUT_OF_BOX_CONTROL_TEMPLATES,
+    luna_out_of_box_control_templates,
+    seed_out_of_box_controls,
+)
+from ..config import settings
 from ..db import AsyncSessionLocal, get_async_db
 from ..errors import (
     APIError,
@@ -274,6 +279,17 @@ async def _run_out_of_box_controls_reconciliation(
                 session_factory=AsyncSessionLocal,
                 namespace_key=namespace_key,
                 available_evaluators=set(list_evaluators().keys()),
+                templates=(
+                    *OUT_OF_BOX_CONTROL_TEMPLATES,
+                    *luna_out_of_box_control_templates(
+                        input_toxicity_scorer_id=settings.luna_input_toxicity_scorer_id,
+                        output_toxicity_scorer_id=settings.luna_output_toxicity_scorer_id,
+                        input_tone_scorer_id=settings.luna_input_tone_scorer_id,
+                        output_tone_scorer_id=settings.luna_output_tone_scorer_id,
+                        input_sexism_scorer_id=settings.luna_input_sexism_scorer_id,
+                        output_sexism_scorer_id=settings.luna_output_sexism_scorer_id,
+                    ),
+                ),
             )
     except TimeoutError:
         _logger.warning(

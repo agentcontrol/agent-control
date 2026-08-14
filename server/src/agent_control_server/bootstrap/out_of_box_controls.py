@@ -406,7 +406,189 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
             tags=["owasp", "owasp-llm05", "output-handling", "uri", "regex"],
         ),
     ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm01-prompt-injection-input-match",
+        name="oob-owasp-llm01-prompt-injection-input-match",
+        data=_leaf_control_payload(
+            description=(
+                "Block LLM input containing common prompt-injection or jailbreak phrasing."
+            ),
+            selector_path="input",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"(?:\b(?:ignore|disregard)\s+(?:all\s+|any\s+)?"
+                    r"(?:previous|prior|above)\s+instructions\b|"
+                    r"\b(?:override|bypass)\s+(?:the\s+)?"
+                    r"(?:system|developer|safety|policy)\s*"
+                    r"(?:prompt|instructions|rules|guidelines)?\b|"
+                    r"\breveal\s+(?:the\s+)?(?:system|developer|hidden)\s+"
+                    r"(?:prompt|message|instructions)\b|"
+                    r"\bjailbreak\b)"
+                ),
+                "flags": ["IGNORECASE"],
+            },
+            step_types=["llm"],
+            stages=["pre"],
+            decision="deny",
+            tags=["owasp", "owasp-llm01", "prompt-injection", "jailbreak", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-ssrf-metadata-endpoint-match",
+        name="oob-ssrf-metadata-endpoint-match",
+        data=_leaf_control_payload(
+            description=(
+                "Block tool calls targeting cloud metadata or loopback endpoints "
+                "commonly abused for SSRF."
+            ),
+            selector_path="input.url",
+            evaluator_name="list",
+            evaluator_config={
+                "values": [
+                    "169.254.169.254",
+                    "metadata.google.internal",
+                    "100.100.100.200",
+                    "169.254.170.2",
+                    "metadata.azure.com",
+                    "localhost",
+                    "127.0.0.1",
+                    "0.0.0.0",
+                    "[::1]",
+                ],
+                "logic": "any",
+                "match_on": "match",
+                "match_mode": "contains",
+                "case_sensitive": False,
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["tool", "ssrf", "network", "list"],
+        ),
+    ),
 )
+
+
+_LUNA_EVALUATOR_NAME = "galileo.luna"
+_LUNA_OPERATOR = "gte"
+_LUNA_THRESHOLD = 0.5
+
+# (settings attribute, source_id, scorer_label, category, stage)
+#
+# `scorer_label` is the exact Luna scorer name observed via
+# `galileo_metric_pull.py` discovery mode against the reference project; it
+# is metadata-only (the evaluator invokes by `scorer_id`), kept here so the
+# seeded control documents which scorer it maps to.
+_LUNA_CONTROL_SPECS: tuple[tuple[str, str, str, str, str], ...] = (
+    (
+        "luna_input_toxicity_scorer_id",
+        "oob-input-toxicity-slm-match",
+        "input_toxicity_luna",
+        "toxicity",
+        "pre",
+    ),
+    (
+        "luna_output_toxicity_scorer_id",
+        "oob-output-toxicity-slm-match",
+        "output_toxicity_luna",
+        "toxicity",
+        "post",
+    ),
+    ("luna_input_tone_scorer_id", "oob-input-tone-slm-match", "input_tone", "tone", "pre"),
+    ("luna_output_tone_scorer_id", "oob-output-tone-slm-match", "output_tone", "tone", "post"),
+    (
+        "luna_input_sexism_scorer_id",
+        "oob-input-sexism-slm-match",
+        "input_sexist_luna",
+        "sexism",
+        "pre",
+    ),
+    (
+        "luna_output_sexism_scorer_id",
+        "oob-output-sexism-slm-match",
+        "output_sexist_luna",
+        "sexism",
+        "post",
+    ),
+)
+
+
+def _luna_control_template(
+    *,
+    source_id: str,
+    scorer_id: str,
+    scorer_label: str,
+    category: str,
+    stage: str,
+) -> OutOfBoxControlTemplate:
+    side = "input" if stage == "pre" else "output"
+    return OutOfBoxControlTemplate.from_payload(
+        source_id=source_id,
+        name=source_id,
+        data=_leaf_control_payload(
+            description=(
+                f"Block LLM {side} scored above threshold for {category} by the "
+                f"Galileo Luna '{scorer_label}' SLM scorer."
+            ),
+            selector_path=side,
+            evaluator_name=_LUNA_EVALUATOR_NAME,
+            evaluator_config={
+                "scorer_id": scorer_id,
+                "scorer_label": scorer_label,
+                "operator": _LUNA_OPERATOR,
+                "threshold": _LUNA_THRESHOLD,
+                "payload_field": side,
+            },
+            step_types=["llm"],
+            stages=[stage],
+            decision="deny",
+            tags=["slm", "galileo", "luna", category, side],
+        ),
+    )
+
+
+def luna_out_of_box_control_templates(
+    *,
+    input_toxicity_scorer_id: str | None = None,
+    output_toxicity_scorer_id: str | None = None,
+    input_tone_scorer_id: str | None = None,
+    output_tone_scorer_id: str | None = None,
+    input_sexism_scorer_id: str | None = None,
+    output_sexism_scorer_id: str | None = None,
+) -> tuple[OutOfBoxControlTemplate, ...]:
+    """Build the Luna SLM out-of-box templates that have a configured scorer ID.
+
+    `galileo.luna` invokes a scorer instance by ``scorer_id``, and that UUID is
+    minted per Galileo project/org when the scorer is configured for it — unlike
+    the rest of the out-of-box catalog, there is no stable literal to embed. Each
+    of the 6 templates (toxicity/tone/sexism, each for input and output) is only
+    included when the caller supplies its scorer ID; the rest are omitted so
+    seeding neither creates a control that can never match nor fails outright.
+    """
+    scorer_ids_by_attr = {
+        "luna_input_toxicity_scorer_id": input_toxicity_scorer_id,
+        "luna_output_toxicity_scorer_id": output_toxicity_scorer_id,
+        "luna_input_tone_scorer_id": input_tone_scorer_id,
+        "luna_output_tone_scorer_id": output_tone_scorer_id,
+        "luna_input_sexism_scorer_id": input_sexism_scorer_id,
+        "luna_output_sexism_scorer_id": output_sexism_scorer_id,
+    }
+    templates: list[OutOfBoxControlTemplate] = []
+    for attr, source_id, scorer_label, category, stage in _LUNA_CONTROL_SPECS:
+        scorer_id = scorer_ids_by_attr[attr]
+        if not scorer_id:
+            continue
+        templates.append(
+            _luna_control_template(
+                source_id=source_id,
+                scorer_id=scorer_id,
+                scorer_label=scorer_label,
+                category=category,
+                stage=stage,
+            )
+        )
+    return tuple(templates)
 
 
 def default_out_of_box_namespace_key() -> str:
