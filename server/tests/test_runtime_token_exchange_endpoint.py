@@ -250,6 +250,132 @@ def test_evaluation_rejects_runtime_jwt_for_wrong_target(
     assert response.json()["detail"] == "Runtime token target_id does not match the request."
 
 
+_RUNTIME_TOKEN_HEADER = "X-Agent-Control-Runtime-Token"
+
+
+def test_evaluation_accepts_runtime_jwt_on_custom_header(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """Option A end-to-end: verifier on a custom header authorizes /evaluation.
+
+    Mints a runtime token, then drives the real /api/v1/evaluation route
+    with the token on ``X-Agent-Control-Runtime-Token`` while the default
+    ``X-API-Key`` client header rides along untouched. Auth must pass; the
+    request then 404s on agent lookup, which is the auth-passed signal
+    (a 401/403 would mean the custom header was not read).
+    """
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(
+        LocalJwtVerifyProvider(secret=_TEST_SECRET, header_name=_RUNTIME_TOKEN_HEADER),
+        operation=Operation.RUNTIME_USE,
+    )
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={_RUNTIME_TOKEN_HEADER: token},
+        json={
+            "agent_name": "no-such-agent",
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+            "target_type": "log_stream",
+            "target_id": "ls-allowed",
+        },
+    )
+
+    assert response.status_code == 404, response.text
+    assert response.json()["error_code"] == "AGENT_NOT_FOUND"
+
+
+def test_evaluation_custom_header_ignores_authorization_slot(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """The collision fix: gateway JWT on Authorization + runtime token on the
+    custom header coexist. The verifier reads only the custom header, so a
+    (bogus) Authorization value is inert and the runtime token authorizes.
+    """
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(
+        LocalJwtVerifyProvider(secret=_TEST_SECRET, header_name=_RUNTIME_TOKEN_HEADER),
+        operation=Operation.RUNTIME_USE,
+    )
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={
+            # Simulates the O11y gateway's downstream identity JWT.
+            "Authorization": "Bearer gateway-downstream-identity-jwt",
+            _RUNTIME_TOKEN_HEADER: token,
+        },
+        json={
+            "agent_name": "no-such-agent",
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+            "target_type": "log_stream",
+            "target_id": "ls-allowed",
+        },
+    )
+
+    assert response.status_code == 404, response.text
+    assert response.json()["error_code"] == "AGENT_NOT_FOUND"
+
+
+def test_evaluation_custom_header_verifier_rejects_token_on_authorization(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """When the verifier reads a custom header, a runtime token on
+    Authorization must not authorize (no fallback to Authorization).
+    """
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(
+        LocalJwtVerifyProvider(secret=_TEST_SECRET, header_name=_RUNTIME_TOKEN_HEADER),
+        operation=Operation.RUNTIME_USE,
+    )
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "agent_name": "no-such-agent",
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+            "target_type": "log_stream",
+            "target_id": "ls-allowed",
+        },
+    )
+
+    assert response.status_code == 401, response.text
+
+
 def test_evaluation_rejects_runtime_jwt_without_bound_target_context(
     client: TestClient,
     runtime_config_enabled,

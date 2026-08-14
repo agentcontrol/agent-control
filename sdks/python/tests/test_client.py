@@ -227,6 +227,101 @@ async def test_runtime_evaluation_exchanges_and_caches_bearer_token() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runtime_evaluation_sends_token_on_custom_header() -> None:
+    """With a custom runtime header, the raw token rides that header (no Bearer)
+    and Authorization is left free for a gateway's own JWT."""
+    evaluation_runtime_headers: list[str | None] = []
+    evaluation_authorization_headers: list[str | None] = []
+    evaluation_api_key_headers: list[str | None] = []
+    expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auth/runtime-token-exchange":
+            # The exchange itself must still authenticate with the API key,
+            # even when the runtime token later rides a dedicated header.
+            assert request.headers.get("X-API-Key") == "test-key"
+            return httpx.Response(
+                200,
+                json={
+                    "token": "runtime-token",
+                    "expires_at": expires_at,
+                    "target_type": "log_stream",
+                    "target_id": "ls-1",
+                    "scopes": ["runtime.use"],
+                },
+            )
+
+        evaluation_runtime_headers.append(
+            request.headers.get("X-Agent-Control-Runtime-Token")
+        )
+        evaluation_authorization_headers.append(request.headers.get("Authorization"))
+        evaluation_api_key_headers.append(request.headers.get("X-API-Key"))
+        return httpx.Response(200, json={"is_safe": True, "confidence": 1.0})
+
+    transport = httpx.MockTransport(handler)
+
+    async with AgentControlClient(
+        base_url="https://agent-control.test",
+        api_key="test-key",
+        runtime_auth_mode="jwt",
+        runtime_token_header="X-Agent-Control-Runtime-Token",
+        transport=transport,
+    ) as client:
+        response = await client.post_runtime_evaluation(
+            json={"target_type": "log_stream", "target_id": "ls-1"},
+            target_type="log_stream",
+            target_id="ls-1",
+        )
+
+    assert response.status_code == 200
+    # Raw token on the dedicated header, no Bearer prefix.
+    assert evaluation_runtime_headers == ["runtime-token"]
+    # Authorization untouched, free for the gateway JWT.
+    assert evaluation_authorization_headers == [None]
+    # The runtime token is the sole credential: the API key must not ride
+    # along just because Authorization happens to be free in custom-header mode.
+    assert evaluation_api_key_headers == [None]
+
+
+@pytest.mark.asyncio
+async def test_runtime_token_header_env_var_overrides_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AGENT_CONTROL_RUNTIME_TOKEN_HEADER selects the send header."""
+    monkeypatch.setenv(
+        "AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "X-Agent-Control-Runtime-Token"
+    )
+    client = AgentControlClient(base_url="https://agent-control.test")
+    assert client._runtime_token_header == "X-Agent-Control-Runtime-Token"
+    assert client._runtime_token_use_bearer is False
+
+
+def test_runtime_token_header_defaults_to_authorization() -> None:
+    client = AgentControlClient(base_url="https://agent-control.test")
+    assert client._runtime_token_header == "Authorization"
+    assert client._runtime_token_use_bearer is True
+
+
+def test_runtime_token_header_rejects_blank() -> None:
+    with pytest.raises(ValueError, match="runtime_token_header"):
+        AgentControlClient(
+            base_url="https://agent-control.test", runtime_token_header="  "
+        )
+
+
+def test_runtime_token_header_whitespace_env_defaults_to_authorization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A whitespace-only env var falls back to Authorization, matching the
+    server's _resolve_runtime_token_header(); only an explicit blank param
+    is a hard error."""
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "   ")
+    client = AgentControlClient(base_url="https://agent-control.test")
+    assert client._runtime_token_header == "Authorization"
+    assert client._runtime_token_use_bearer is True
+
+
+@pytest.mark.asyncio
 async def test_runtime_evaluation_single_flights_cold_cache_exchange() -> None:
     exchange_calls = 0
     evaluation_authorization_headers: list[str | None] = []
@@ -454,6 +549,49 @@ async def test_runtime_evaluation_auto_falls_back_to_api_key_when_exchange_unava
 
     assert exchange_calls == 1
     assert evaluation_api_key_headers == ["test-key", "test-key"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_evaluation_auto_fallback_keeps_api_key_on_custom_header() -> None:
+    """Custom-header mode must still fall back to the API key when the
+    exchange is unavailable: with no runtime token minted, the dedicated
+    header is absent and X-API-Key must ride the evaluation request."""
+    exchange_calls = 0
+    evaluation_api_key_headers: list[str | None] = []
+    evaluation_runtime_headers: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal exchange_calls
+        if request.url.path == "/api/v1/auth/runtime-token-exchange":
+            exchange_calls += 1
+            return httpx.Response(503, json={"detail": "runtime auth disabled"})
+
+        evaluation_api_key_headers.append(request.headers.get("X-API-Key"))
+        evaluation_runtime_headers.append(
+            request.headers.get("X-Agent-Control-Runtime-Token")
+        )
+        return httpx.Response(200, json={"is_safe": True, "confidence": 1.0})
+
+    transport = httpx.MockTransport(handler)
+
+    async with AgentControlClient(
+        base_url="https://agent-control.test",
+        api_key="test-key",
+        runtime_auth_mode="auto",
+        runtime_token_header="X-Agent-Control-Runtime-Token",
+        transport=transport,
+    ) as client:
+        response = await client.post_runtime_evaluation(
+            json={"target_type": "log_stream", "target_id": "ls-1"},
+            target_type="log_stream",
+            target_id="ls-1",
+        )
+        assert response.status_code == 200
+
+    assert exchange_calls == 1
+    # No token minted -> dedicated header absent -> API key authenticates.
+    assert evaluation_runtime_headers == [None]
+    assert evaluation_api_key_headers == ["test-key"]
 
 
 @pytest.mark.asyncio
