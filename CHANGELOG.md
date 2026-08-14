@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v8.5.0 (2026-08-14)
+
+### Features
+
+- **sdk**: Add out of the box controls - part 1
+  ([#246](https://github.com/agentcontrol/agent-control/pull/246),
+  [`45dea6d`](https://github.com/agentcontrol/agent-control/commit/45dea6d965a92cffd32bea13567c10aac946c962))
+
+- **server**: Configurable runtime-token header to avoid gateway Authorization collision [HYBIM-866]
+  ([#258](https://github.com/agentcontrol/agent-control/pull/258),
+  [`e6c00b2`](https://github.com/agentcontrol/agent-control/commit/e6c00b2991ac37909df2f7f375b15a2ea03ec520))
+
+
 ## v8.4.0 (2026-07-27)
 
 ### Features
