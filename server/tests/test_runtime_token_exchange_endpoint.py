@@ -9,6 +9,7 @@ end-to-end exchange-then-verify path: a token minted via
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -248,6 +249,110 @@ def test_evaluation_rejects_runtime_jwt_for_wrong_target(
 
     assert response.status_code == 403, response.text
     assert response.json()["detail"] == "Runtime token target_id does not match the request."
+
+
+def test_evaluation_accepts_runtime_jwt_on_configured_header_with_gateway_authorization(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """HYBIM-741: end-to-end through /api/v1/evaluation with the runtime token
+    on a dedicated header while Authorization carries an (ignored) gateway JWT.
+
+    Exercises the config wiring (LocalJwtVerifyProvider bound to a custom
+    header) and Operation.RUNTIME_USE routing together, not just the provider
+    in isolation: the runtime token rides X-Agent-Control-Runtime-Token and is
+    accepted, while the Authorization value is left for the gateway and does
+    not interfere.
+    """
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    register = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "test agent",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+        },
+    )
+    assert register.status_code == 200, register.text
+
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(
+        LocalJwtVerifyProvider(
+            secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+        ),
+        operation=Operation.RUNTIME_USE,
+    )
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={
+            "X-Agent-Control-Runtime-Token": token,
+            "Authorization": "Bearer gateway-identity-jwt",
+        },
+        json={
+            "agent_name": agent_name,
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+            "target_type": "log_stream",
+            "target_id": "ls-allowed",
+        },
+    )
+
+    # The runtime token authorizes the request for its bound target; with no
+    # controls bound to that target the evaluation resolves to safe.
+    assert response.status_code == 200, response.text
+    assert response.json()["is_safe"] is True
+
+
+def test_evaluation_rejects_runtime_jwt_on_wrong_header_when_custom_configured(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    """With a dedicated header configured, a token presented on Authorization
+    is ignored (it can't be smuggled past the gateway boundary): the verifier
+    reads only the configured header, so the request fails to authenticate."""
+    stub = _StubExchangeAuthorizer(actor_id="actor-rt", scopes=("runtime.use",))
+    clear_authorizers()
+    set_authorizer(stub)
+    set_authorizer(
+        LocalJwtVerifyProvider(
+            secret=_TEST_SECRET, header_name="X-Agent-Control-Runtime-Token"
+        ),
+        operation=Operation.RUNTIME_USE,
+    )
+
+    exchange = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-allowed"},
+    )
+    assert exchange.status_code == 200, exchange.text
+    token = exchange.json()["token"]
+
+    response = client.post(
+        "/api/v1/evaluation",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "agent_name": "agent",
+            "step": {"type": "llm", "name": "step", "input": "hello"},
+            "stage": "pre",
+            "target_type": "log_stream",
+            "target_id": "ls-allowed",
+        },
+    )
+
+    assert response.status_code == 401, response.text
 
 
 def test_evaluation_rejects_runtime_jwt_without_bound_target_context(

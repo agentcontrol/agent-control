@@ -15,11 +15,14 @@ from .runtime_auth import (
     RuntimeTokenCache,
     normalize_runtime_auth_mode,
     parse_runtime_token_exchange_response,
+    resolve_runtime_token_header,
 )
 
 _logger = logging.getLogger(__name__)
 
 _RUNTIME_AUTH_MODE_ENV_VAR = "AGENT_CONTROL_RUNTIME_AUTH_MODE"
+_RUNTIME_TOKEN_HEADER_ENV_VAR = "AGENT_CONTROL_RUNTIME_TOKEN_HEADER"
+_DEFAULT_RUNTIME_TOKEN_HEADER = "Authorization"
 _DEFAULT_RUNTIME_TOKEN_REFRESH_MARGIN_SECONDS = 30
 _AUTO_RUNTIME_TOKEN_FALLBACK_STATUSES = {404, 500, 502, 503, 504}
 _GLOBAL_RUNTIME_TOKEN_FALLBACK_STATUSES = {404}
@@ -35,9 +38,21 @@ def _runtime_cache_identity(api_key: str | None, api_key_header: str) -> str:
 
 
 class _AgentControlAuth(httpx.Auth):
-    """Attach local API-key credentials unless a request already has Bearer auth."""
+    """Attach local API-key credentials unless the request already carries them.
 
-    def __init__(self, api_key: str | None, header_name: str = "X-API-Key") -> None:
+    The API key is suppressed only when the request already presents a bearer
+    credential on ``Authorization`` or already carries the API key on its own
+    header. When the runtime token rides a dedicated header, the API key is
+    left in place: it may be the outer credential the request needs to
+    authenticate at a gateway before Agent Control verifies the runtime token,
+    and it rides a different header so there is no collision.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None,
+        header_name: str = "X-API-Key",
+    ) -> None:
         self._api_key = api_key
         self._header_name = header_name
 
@@ -45,9 +60,12 @@ class _AgentControlAuth(httpx.Auth):
         self,
         request: httpx.Request,
     ) -> Generator[httpx.Request, httpx.Response, None]:
-        if self._api_key and "Authorization" not in request.headers:
-            if self._header_name not in request.headers:
-                request.headers[self._header_name] = self._api_key
+        if (
+            self._api_key
+            and "Authorization" not in request.headers
+            and self._header_name not in request.headers
+        ):
+            request.headers[self._header_name] = self._api_key
         yield request
 
 
@@ -102,6 +120,7 @@ class AgentControlClient:
         runtime_token_cache: RuntimeTokenCache | None = None,
         runtime_token_refresh_margin_seconds: int = (_DEFAULT_RUNTIME_TOKEN_REFRESH_MARGIN_SECONDS),
         transport: httpx.AsyncBaseTransport | None = None,
+        runtime_token_header: str | None = None,
     ):
         """
         Initialize the client.
@@ -125,6 +144,13 @@ class AgentControlClient:
             runtime_token_refresh_margin_seconds: Refresh cached runtime tokens
                 before this many seconds of validity remain.
             transport: Optional httpx transport, primarily for tests.
+            runtime_token_header: HTTP header the runtime token is sent on.
+                Defaults to ``Authorization``; the
+                AGENT_CONTROL_RUNTIME_TOKEN_HEADER environment variable
+                overrides the default. Point this at a dedicated header (e.g.
+                ``X-Agent-Control-Runtime-Token``) when the server runs behind
+                a gateway that reserves ``Authorization`` for its own identity
+                JWT. The server must be configured to read the same header.
         """
         resolved_base_url = base_url or os.environ.get(
             self.BASE_URL_ENV_VAR, "http://localhost:8000"
@@ -140,6 +166,19 @@ class AgentControlClient:
         self._runtime_cache_identity = _runtime_cache_identity(self._api_key, self._api_key_header)
         configured_runtime_mode = runtime_auth_mode or os.environ.get(_RUNTIME_AUTH_MODE_ENV_VAR)
         self._runtime_auth_mode = normalize_runtime_auth_mode(configured_runtime_mode)
+        # Explicit blank param is a hard error; a blank env var falls back to
+        # the default (mirrors the server's _resolve_runtime_token_header).
+        self._runtime_token_header = resolve_runtime_token_header(
+            runtime_token_header,
+            os.environ.get(_RUNTIME_TOKEN_HEADER_ENV_VAR),
+            default=_DEFAULT_RUNTIME_TOKEN_HEADER,
+        )
+        # Bearer only on Authorization; a dedicated header carries the raw token
+        # so it can't collide with the gateway's Authorization JWT. Must stay in
+        # sync with LocalJwtVerifyProvider._require_bearer on the server.
+        self._runtime_token_use_bearer = (
+            self._runtime_token_header.lower() == _DEFAULT_RUNTIME_TOKEN_HEADER.lower()
+        )
         if runtime_token_refresh_margin_seconds < 0:
             raise ValueError("runtime_token_refresh_margin_seconds must be >= 0.")
         self._runtime_token_refresh_margin_seconds = runtime_token_refresh_margin_seconds
@@ -198,7 +237,10 @@ class AgentControlClient:
             base_url=self.base_url,
             timeout=self.timeout,
             headers=self._get_headers(),
-            auth=_AgentControlAuth(self._api_key, self._api_key_header),
+            auth=_AgentControlAuth(
+                self._api_key,
+                self._api_key_header,
+            ),
             transport=self._transport,
             event_hooks={"response": [self._check_server_version]},
         )
@@ -259,7 +301,14 @@ class AgentControlClient:
             headers=request_headers,
         )
 
-        if _should_refresh_runtime_token(response) and runtime_authorization is not None:
+        runtime_token_on_dedicated_header = not self._runtime_token_use_bearer
+        if (
+            _should_refresh_runtime_token(
+                response,
+                runtime_token_on_dedicated_header=runtime_token_on_dedicated_header,
+            )
+            and runtime_authorization is not None
+        ):
             await response.aread()
             if target_type is not None and target_id is not None:
                 self._runtime_token_cache.remove(
@@ -281,7 +330,10 @@ class AgentControlClient:
                 headers=request_headers,
             )
             if (
-                _should_refresh_runtime_token(response)
+                _should_refresh_runtime_token(
+                    response,
+                    runtime_token_on_dedicated_header=runtime_token_on_dedicated_header,
+                )
                 and target_type is not None
                 and target_id is not None
             ):
@@ -295,18 +347,22 @@ class AgentControlClient:
 
         return response
 
+    def _format_runtime_token(self, token: str) -> str:
+        """Sole place the Bearer prefix is applied (see __init__ for the rule)."""
+        return f"Bearer {token}" if self._runtime_token_use_bearer else token
+
     def _merge_runtime_headers(
         self,
         headers: dict[str, str] | None,
         runtime_authorization: str | None,
     ) -> dict[str, str] | None:
-        """Merge caller headers with an optional Bearer token."""
+        """Merge caller headers with an optional runtime token header."""
         if headers is None and runtime_authorization is None:
             return None
 
         merged = dict(headers or {})
         if runtime_authorization is not None:
-            merged["Authorization"] = runtime_authorization
+            merged[self._runtime_token_header] = runtime_authorization
         return merged
 
     async def _runtime_authorization(
@@ -350,7 +406,7 @@ class AgentControlClient:
                 refresh_margin_seconds=self._runtime_token_refresh_margin_seconds,
             )
             if cached is not None:
-                return f"Bearer {cached.token}"
+                return self._format_runtime_token(cached.token)
 
         exchange_lock = self._runtime_token_cache.exchange_lock(
             self.base_url,
@@ -379,7 +435,7 @@ class AgentControlClient:
                     refresh_margin_seconds=self._runtime_token_refresh_margin_seconds,
                 )
                 if cached is not None:
-                    return f"Bearer {cached.token}"
+                    return self._format_runtime_token(cached.token)
 
             token = await self._exchange_runtime_token(
                 target_type=target_type,
@@ -388,7 +444,7 @@ class AgentControlClient:
             )
         if token is None:
             return None
-        return f"Bearer {token}"
+        return self._format_runtime_token(token)
 
     async def _exchange_runtime_token(
         self,
@@ -457,10 +513,39 @@ class AgentControlClient:
         return token.token
 
 
-def _should_refresh_runtime_token(response: httpx.Response) -> bool:
+def _authenticate_flags_runtime_token(response: httpx.Response) -> bool:
+    """True when the response's WWW-Authenticate marks the token invalid.
+
+    Looks for the RFC 6750 ``error="invalid_token"`` challenge the runtime
+    verifier emits, so a refresh is driven by the server naming the token as
+    the problem, not by a bare status code.
+    """
+    return "invalid_token" in response.headers.get("WWW-Authenticate", "").lower()
+
+
+def _should_refresh_runtime_token(
+    response: httpx.Response,
+    *,
+    runtime_token_on_dedicated_header: bool = False,
+) -> bool:
+    """Decide whether a runtime-token refresh is warranted for this response.
+
+    When the runtime token rides ``Authorization`` (the default), a 401 is
+    unambiguous: the only credential on that header is the runtime token, so
+    treat it as expired and refresh.
+
+    When the token rides a dedicated header (behind a gateway that owns
+    ``Authorization`` for its own identity JWT), a bare 401 is ambiguous: it
+    may be the gateway rejecting its own credential, not our runtime token.
+    Evicting a still-valid token there just forces another exchange that hits
+    the same gateway 401 and hides the original error. So in that case only
+    refresh when the server explicitly flags the runtime token as invalid via
+    WWW-Authenticate (or a 403 invalid_token challenge).
+    """
     if response.status_code == 401:
+        if runtime_token_on_dedicated_header:
+            return _authenticate_flags_runtime_token(response)
         return True
     if response.status_code != 403:
         return False
-    authenticate = response.headers.get("WWW-Authenticate", "")
-    return "invalid_token" in authenticate.lower()
+    return _authenticate_flags_runtime_token(response)

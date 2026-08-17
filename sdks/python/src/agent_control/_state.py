@@ -27,6 +27,7 @@ class _StateContainer:
         self.server_url: str | None = None
         self.api_key: str | None = None
         self.api_key_header: str | None = None
+        self.runtime_token_header: str | None = None
         self.runtime_token_cache = RuntimeTokenCache()
         # Optional target context fixed at init() time; both fields are set
         # together or both remain None.
