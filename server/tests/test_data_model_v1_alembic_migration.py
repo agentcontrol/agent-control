@@ -435,9 +435,9 @@ def test_seed_identity_downgrade_retires_canonical_name_control(
                 INSERT INTO controls (namespace_key, name, data, seed_source_id)
                 VALUES (
                     'default',
-                    'oob-only-approved-tools-may-run',
+                    'oob-example-tool-allowlist',
                     CAST(:data AS jsonb),
-                    'oob-only-approved-tools-may-run'
+                    'oob-example-tool-allowlist'
                 )
                 RETURNING id
                 """
@@ -463,7 +463,7 @@ def test_seed_identity_downgrade_retires_canonical_name_control(
                 "control_id": control_id,
                 "snapshot": json.dumps(
                     {
-                        "name": "oob-only-approved-tools-may-run",
+                        "name": "oob-example-tool-allowlist",
                         "data": control_data,
                     }
                 ),

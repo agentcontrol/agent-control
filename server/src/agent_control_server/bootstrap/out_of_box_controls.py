@@ -37,6 +37,21 @@ _SQL_TOOL_NAME_PATTERN = (
     r"(?i)(?:^|[._-])(?:sql|execute[_-]?sql|run[_-]?sql|sql[_-]?query|"
     r"query[_-]?database|execute[_-]?query)(?:$|[._-])"
 )
+# Issuer prefix + exact digit length per network, allowing the conventional
+# grouping separators (space or dash) so both "4111111111111111" and
+# "4111 1111 1111 1111" match. A bare digit-count check (e.g. `\d{13,19}`)
+# would also match order numbers, tracking numbers, and other unrelated
+# identifiers, so each branch is anchored to a real issuer prefix and length.
+_CREDIT_CARD_PATTERN = (
+    r"\b(?:"
+    r"4\d{3}(?:[ -]?\d{4}){3}"  # Visa (16 digits)
+    r"|5[1-5]\d{2}(?:[ -]?\d{4}){3}"  # Mastercard 51-55 (16 digits)
+    r"|(?:2221|222[2-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)"  # Mastercard 2221-2720
+    r"(?:[ -]?\d{4}){3}"
+    r"|3[47]\d{2}(?:[ -]?\d{6})(?:[ -]?\d{5})"  # American Express (15 digits, 4-6-5)
+    r"|6(?:011|5\d{2})(?:[ -]?\d{4}){3}"  # Discover (16 digits)
+    r")\b"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,10 +182,13 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
         source_id="oob-credit-card-number-match",
         name="oob-credit-card-number-match",
         data=_leaf_control_payload(
-            description="Block LLM output containing common credit-card-like numbers.",
+            description=(
+                "Block LLM output containing Visa, Mastercard, American Express, or "
+                "Discover card numbers (issuer prefix and length, formatted or unformatted)."
+            ),
             selector_path="output",
             evaluator_name="regex",
-            evaluator_config={"pattern": r"\b(?:\d[ -]?){13,19}\b"},
+            evaluator_config={"pattern": _CREDIT_CARD_PATTERN},
             step_types=["llm"],
             stages=["post"],
             decision="deny",
@@ -299,10 +317,15 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
         ),
     ),
     OutOfBoxControlTemplate.from_payload(
-        source_id="oob-only-approved-tools-may-run",
-        name="oob-only-approved-tools-may-run",
+        source_id="oob-example-tool-allowlist",
+        name="oob-example-tool-allowlist",
         data=_leaf_control_payload(
-            description="Deny tool calls whose step name is not in the approved tool list.",
+            description=(
+                "Example static allowlist: deny tool calls whose canonical name is not "
+                "in this list. The values below are placeholders, not a live MCP tool "
+                "catalog — replace them with your own approved tool names before "
+                "enabling this control."
+            ),
             selector_path="canonical_name",
             evaluator_name="list",
             evaluator_config={
@@ -315,7 +338,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
             step_types=["tool"],
             stages=["pre"],
             decision="deny",
-            tags=["tool", "allowlist", "list"],
+            tags=["tool", "allowlist", "example", "list"],
         ),
     ),
     OutOfBoxControlTemplate.from_payload(
