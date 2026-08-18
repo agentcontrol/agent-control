@@ -424,6 +424,31 @@ def test_hook_initialization():
     assert hook.enable_logging is False
 
 
+def test_init_agent_captures_complete_strands_tool_registry(agent_control_hook):
+    # Given: a Strands agent exposing its complete normalized registry
+    registry = MagicMock()
+    registry.get_all_tool_specs.return_value = [
+        {
+            "name": "search_docs",
+            "description": "Search documentation",
+            "inputSchema": {"json": {"type": "object", "properties": {}}},
+        }
+    ]
+    agent = MagicMock(tool_registry=registry)
+
+    # When: the plugin is initialized against that agent
+    agent_control_hook.init_agent(agent)
+
+    # Then: the full registry is normalized without executable objects
+    assert agent_control_hook._available_tools() == [
+        {
+            "name": "search_docs",
+            "description": "Search documentation",
+            "input_schema": {"type": "object", "properties": {}},
+        }
+    ]
+
+
 def test_hook_with_callback():
     """Test AgentControlPlugin with violation callback."""
     from agent_control.integrations.strands.plugin import AgentControlPlugin

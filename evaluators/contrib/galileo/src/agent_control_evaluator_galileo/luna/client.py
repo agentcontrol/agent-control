@@ -14,7 +14,7 @@ from time import time
 from urllib.parse import urlsplit
 
 import httpx
-from agent_control_models import JSONObject, JSONValue
+from agent_control_models import JSONObject, JSONValue, Step
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 logger = logging.getLogger(__name__)
@@ -154,7 +154,18 @@ class ScorerInvokeInputs(BaseModel):
     query: JSONValue = ""
     response: JSONValue = ""
     ground_truth: JSONValue = None
-    tools: JSONValue = None
+    tools: list[JSONObject] | None = None
+
+
+class ScorerInvokeRecord(BaseModel):
+    """Structured runtime record sent alongside legacy scorer inputs."""
+
+    type: str = Field(min_length=1)
+    input: JSONValue = None
+    output: JSONValue = None
+    context: JSONObject | None = None
+    tools: list[JSONObject] | None = None
+    dataset_output: JSONValue = None
 
 
 class ScorerInvokeRequest(BaseModel):
@@ -172,6 +183,7 @@ class ScorerInvokeRequest(BaseModel):
     scorer_version_id: str | None = Field(default=None, min_length=1)
     scorer_label: str | None = Field(default=None, min_length=1)
     inputs: ScorerInvokeInputs
+    record: ScorerInvokeRecord | None = None
     config: JSONObject = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -357,6 +369,7 @@ class GalileoLunaClient:
         scorer_label: str | None = None,
         input: JSONValue = None,
         output: JSONValue = None,
+        step: Step | None = None,
         config: JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
@@ -369,6 +382,7 @@ class GalileoLunaClient:
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
+            step: Optional complete runtime step used for structured dual-write.
             config: Optional scorer-specific configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
@@ -390,7 +404,22 @@ class GalileoLunaClient:
             scorer_version_id=scorer_version_id,
             scorer_label=scorer_label,
             inputs=ScorerInvokeInputs(
-                query="" if input is None else input, response="" if output is None else output
+                query="" if input is None else input,
+                response="" if output is None else output,
+                ground_truth=step.ground_truth if step is not None else None,
+                tools=step.tools if step is not None else None,
+            ),
+            record=(
+                ScorerInvokeRecord(
+                    type=step.type,
+                    input=step.input,
+                    output=step.output,
+                    context=step.context,
+                    tools=step.tools,
+                    dataset_output=step.ground_truth,
+                )
+                if step is not None
+                else None
             ),
             config=config if config is not None else {},
         ).to_dict()

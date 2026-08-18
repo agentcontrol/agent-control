@@ -19,6 +19,7 @@ from agent_control._control_registry import StepSchemaDict
 from agent_control._schema_derivation import derive_schemas
 from agent_control._state import state
 from agent_control.integrations._core import _evaluate_and_enforce
+from agent_control.integrations._tools import normalized_tool_definition
 from agent_control.validation import ensure_agent_name
 
 try:
@@ -109,11 +110,13 @@ class AgentControlPlugin(BasePlugin):
         self._known_steps: dict[tuple[str, str], StepSchemaDict] = {}
         self._synced_step_keys: set[tuple[str, str]] = set()
         self._step_sync_tasks: dict[tuple[str, str], asyncio.Task[None]] = {}
+        self._available_tools_by_step: dict[str, list[dict[str, Any]]] = {}
 
     def bind(self, agent: Any) -> None:
         """Pre-register known ADK steps before the runner starts."""
 
         steps = self._discover_steps(agent)
+        self._remember_available_tools(agent)
         self._remember_steps(steps)
         self._sync_steps_blocking(steps, raise_on_error=True)
 
@@ -176,6 +179,7 @@ class AgentControlPlugin(BasePlugin):
                 step_name,
                 input=request_text,
                 context=context,
+                tools=self._available_tools_by_step.get(step_name),
                 step_type="llm",
                 stage="pre",
             )
@@ -227,6 +231,7 @@ class AgentControlPlugin(BasePlugin):
                 input=input_text,
                 output=output_text,
                 context=context,
+                tools=self._available_tools_by_step.get(step_name),
                 step_type="llm",
                 stage="post",
             )
@@ -661,6 +666,33 @@ class AgentControlPlugin(BasePlugin):
         if isinstance(tools, (list, tuple, set)):
             return tools
         return []
+
+    def _remember_available_tools(self, root_agent: Any) -> None:
+        """Capture each ADK agent's complete bound tool set as structured JSON."""
+        available_tools: dict[str, list[dict[str, Any]]] = {}
+        for agent in self._iter_agents(root_agent):
+            agent_name = getattr(agent, "name", None)
+            if not isinstance(agent_name, str) or not agent_name:
+                continue
+            step_name = self._resolve_step_name(
+                agent_name,
+                step_type="llm",
+                callback_context=None,
+                agent=agent,
+            )
+            definitions: list[dict[str, Any]] = []
+            for tool in self._iter_tools(agent):
+                tool_name = self._resolve_tool_step_name(tool, agent_step_name=step_name)
+                schema = self._build_tool_step_schema(tool, tool_name)
+                definitions.append(
+                    normalized_tool_definition(
+                        name=resolve_tool_name(tool),
+                        description=schema.get("description"),
+                        input_schema=schema.get("input_schema"),
+                    )
+                )
+            available_tools[step_name] = definitions
+        self._available_tools_by_step = available_tools
 
     def _remember_steps(self, steps: Iterable[StepSchemaDict]) -> None:
         for step in steps:

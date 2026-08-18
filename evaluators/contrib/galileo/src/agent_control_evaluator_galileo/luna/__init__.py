@@ -3,6 +3,7 @@
 from agent_control_evaluator_galileo.luna.client import (
     GalileoLunaClient,
     ScorerInvokeInputs,
+    ScorerInvokeRecord,
     ScorerInvokeRequest,
     ScorerInvokeResponse,
 )
@@ -12,6 +13,7 @@ from agent_control_evaluator_galileo.luna.evaluator import LUNA_AVAILABLE, LunaE
 __all__ = [
     "GalileoLunaClient",
     "ScorerInvokeInputs",
+    "ScorerInvokeRecord",
     "ScorerInvokeRequest",
     "ScorerInvokeResponse",
     "LunaEvaluatorConfig",

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-from agent_control_models import EvaluatorResult
+from agent_control_models import EvaluatorResult, Step
 from pydantic import ValidationError
 
 LUNA_ENV = {
@@ -514,6 +514,65 @@ class TestGalileoLunaClient:
         payload = _decode_jwt_payload(auth_header.removeprefix("Bearer "))
         assert payload["internal"] is True
         assert payload["scope"] == "scorers.invoke"
+
+    @pytest.mark.asyncio
+    async def test_client_dual_writes_legacy_inputs_and_structured_record(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content.decode())
+            return httpx.Response(
+                200,
+                json={"score": 0.9, "status": "success", "additive_field": "ignored"},
+            )
+
+        # Given: selected legacy values and a complete structured runtime Step
+        step = Step(
+            type="llm",
+            name="answer",
+            input={"messages": [{"role": "user", "content": "question"}]},
+            output={"text": "answer"},
+            context={"session": "s-1"},
+            tools=[{"name": "search", "description": "Search", "input_schema": {}}],
+            ground_truth={"text": "expected"},
+        )
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        # When: invoking the rollout-compatible Runners endpoint
+        try:
+            response = await client.invoke(
+                scorer_id="scorer-123",
+                input="selected question",
+                output="selected answer",
+                step=step,
+            )
+        finally:
+            await client.close()
+
+        # Then: old inputs and the expanded record are sent together
+        assert response.score == 0.9
+        assert captured["body"] == {
+            "scorer_id": "scorer-123",
+            "inputs": {
+                "query": "selected question",
+                "response": "selected answer",
+                "ground_truth": {"text": "expected"},
+                "tools": [{"name": "search", "description": "Search", "input_schema": {}}],
+            },
+            "record": {
+                "type": "llm",
+                "input": {"messages": [{"role": "user", "content": "question"}]},
+                "output": {"text": "answer"},
+                "context": {"session": "s-1"},
+                "tools": [{"name": "search", "description": "Search", "input_schema": {}}],
+                "dataset_output": {"text": "expected"},
+            },
+            "config": {},
+        }
 
     @pytest.mark.asyncio
     async def test_client_forwards_scorer_version_id_when_configured(self) -> None:

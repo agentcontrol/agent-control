@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
-from agent_control_models import EvaluatorResult, JSONValue
+from agent_control_models import EvaluatorResult, JSONValue, Step
 
 from .client import GalileoLunaClient, ScorerInvokeResponse
 from .config import LunaEvaluatorConfig, coerce_number
@@ -198,6 +198,22 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         Returns:
             EvaluatorResult with local threshold decision and scorer metadata.
         """
+        return await self._evaluate(data, step=None)
+
+    async def evaluate_with_context(self, data: Any, step: Step) -> EvaluatorResult:
+        """Evaluate selected data while dual-writing the complete runtime step.
+
+        Args:
+            data: Data selected by the configured control selector.
+            step: Complete runtime step for structured scorer context.
+
+        Returns:
+            EvaluatorResult with local threshold decision and scorer metadata.
+        """
+        return await self._evaluate(data, step=step)
+
+    async def _evaluate(self, data: Any, *, step: Step | None) -> EvaluatorResult:
+        """Run a Luna evaluation with optional structured runtime context."""
         input_text, output_text = self._prepare_payload(data)
         if not (_has_text(input_text) or _has_text(output_text)):
             return EvaluatorResult(
@@ -209,6 +225,8 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
 
         try:
             scorer_kwargs = self._scorer_kwargs()
+            if step is not None:
+                scorer_kwargs["step"] = step
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,

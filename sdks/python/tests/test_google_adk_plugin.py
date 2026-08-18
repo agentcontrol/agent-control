@@ -540,6 +540,34 @@ def test_bind_discovers_root_sub_agents_and_tools(plugin_module):
     mock_sync.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_bound_agent_passes_complete_normalized_tools_to_llm(plugin_module):
+    # Given: an ADK agent whose complete tool list is available during binding
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+    root = SimpleNamespace(
+        name="planner",
+        tools=[MockTool("search_docs", "Search documentation")],
+    )
+    with patch.object(plugin, "_sync_steps_blocking"):
+        plugin.bind(root)
+
+    # When: an LLM callback is evaluated
+    with patch.object(
+        plugin_module, "_evaluate_and_enforce", AsyncMock(return_value=MagicMock())
+    ) as mock_eval:
+        await plugin.before_model_callback(
+            callback_context=MockCallbackContext("planner"),
+            llm_request=MockLlmRequest("hello"),
+        )
+
+    # Then: available definitions are normalized, not inferred from a call
+    definitions = mock_eval.await_args.kwargs["tools"]
+    assert len(definitions) == 1
+    assert definitions[0]["name"] == "search_docs"
+    assert definitions[0]["description"] == "Search documentation"
+    assert definitions[0]["input_schema"]["properties"]["city"]["type"] == "string"
+
+
 def test_bind_keeps_duplicate_tool_names_distinct_across_sub_agents(plugin_module):
     plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
     root = SimpleNamespace(

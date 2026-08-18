@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from agent_control_models import EvaluationResult
+from agent_control_models import EvaluationResult, JSONValue
 
 import agent_control
 from agent_control import ControlSteerError, ControlViolationError
@@ -51,6 +51,8 @@ async def _evaluate_and_enforce(
     input: Any | None = None,
     output: Any | None = None,
     context: dict[str, Any] | None = None,
+    tools: list[dict[str, JSONValue]] | None = None,
+    ground_truth: JSONValue | None = None,
     step_type: Literal["tool", "llm"] = "llm",
     stage: Literal["pre", "post"] = "pre",
 ) -> EvaluationResult:
@@ -61,6 +63,8 @@ async def _evaluate_and_enforce(
         input=input,
         output=output,
         context=context,
+        tools=tools,
+        ground_truth=ground_truth,
         step_type=step_type,
         stage=stage,
         agent_name=agent_name,

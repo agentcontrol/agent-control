@@ -142,6 +142,8 @@ class StepSchema(BaseModel):
 class Step(BaseModel):
     """Runtime payload for an agent step invocation."""
 
+    model_config = {"frozen": True}
+
     type: str = Field(
         ...,
         min_length=1,
@@ -158,6 +160,13 @@ class Step(BaseModel):
     )
     context: JSONObject | None = Field(
         None, description="Optional context (conversation history, metadata, etc.)"
+    )
+    tools: list[JSONObject] | None = Field(
+        None,
+        description="Complete structured definitions of tools available to the LLM",
+    )
+    ground_truth: JSONValue | None = Field(
+        None, description="Optional expected or reference output for this step"
     )
 
     @field_validator("type")

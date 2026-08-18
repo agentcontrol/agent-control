@@ -10,6 +10,7 @@ from agent_control_models import EvaluationResult
 
 import agent_control
 from agent_control import ControlSteerError, ControlViolationError
+from agent_control.integrations._tools import normalize_strands_tool_specs
 
 try:
     from strands.hooks import (  # type: ignore[import-not-found]
@@ -86,6 +87,7 @@ class AgentControlPlugin(Plugin):
         self.event_control_list = event_control_list
         self.on_violation_callback = on_violation_callback
         self.enable_logging = enable_logging
+        self._tool_registry: Any | None = None
 
     def _invoke_callback(self, control_name: str, stage: str, result: EvaluationResult) -> None:
         if self.on_violation_callback:
@@ -109,6 +111,7 @@ class AgentControlPlugin(Plugin):
         input: Any | None = None,
         output: Any | None = None,
         context: dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
         step_type: Literal["tool", "llm"] = "llm",
         stage: Literal["pre", "post"] = "pre",
         use_runtime_error: bool = False,
@@ -118,6 +121,7 @@ class AgentControlPlugin(Plugin):
             input=input,
             output=output,
             context=context,
+            tools=tools,
             step_type=step_type,
             stage=stage,
             agent_name=self.agent_name,
@@ -181,6 +185,7 @@ class AgentControlPlugin(Plugin):
             )
 
     def init_agent(self, agent: Any) -> None:
+        self._tool_registry = getattr(agent, "tool_registry", None)
         event_map = {
             BeforeInvocationEvent: self.check_before_invocation,
             BeforeModelCallEvent: self.check_before_model,
@@ -211,6 +216,7 @@ class AgentControlPlugin(Plugin):
         await self._evaluate_and_enforce(
             step_name="check_before_invocation",
             input=input_text,
+            tools=self._available_tools(),
             step_type="llm",
             stage="pre",
         )
@@ -220,6 +226,7 @@ class AgentControlPlugin(Plugin):
         await self._evaluate_and_enforce(
             step_name="check_before_model",
             input=input_text,
+            tools=self._available_tools(),
             step_type="llm",
             stage="pre",
         )
@@ -232,6 +239,7 @@ class AgentControlPlugin(Plugin):
             input=input_text,
             output=output_text,
             context=context,
+            tools=self._available_tools(),
             step_type="llm",
             stage="post",
         )
@@ -270,6 +278,7 @@ class AgentControlPlugin(Plugin):
             step_name=node_id,
             input=input_text,
             context=context,
+            tools=self._available_tools(),
             step_type="llm",
             stage="pre",
         )
@@ -283,9 +292,21 @@ class AgentControlPlugin(Plugin):
             input=input_text,
             output=output_text,
             context=context,
+            tools=self._available_tools(),
             step_type="llm",
             stage="post",
         )
+
+    def _available_tools(self) -> list[dict[str, Any]] | None:
+        """Return the complete current Strands registry in normalized form."""
+        get_specs = getattr(self._tool_registry, "get_all_tool_specs", None)
+        if not callable(get_specs):
+            return None
+        try:
+            return normalize_strands_tool_specs(get_specs())
+        except Exception:
+            logger.warning("Unable to capture complete Strands tool definitions", exc_info=True)
+            return None
 
     def _extract_user_message_from_list(self, messages: list | None, reverse: bool = False) -> str:
         if not messages:
