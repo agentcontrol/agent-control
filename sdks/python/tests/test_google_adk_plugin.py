@@ -585,6 +585,18 @@ def test_bind_keeps_duplicate_tool_names_distinct_across_sub_agents(plugin_modul
     assert ("tool", "writer.search_docs") in plugin._known_steps
 
 
+def test_available_tool_capture_skips_unnamed_agents(plugin_module):
+    # Given: a framework object that does not identify an ADK agent
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+    unnamed_agent = SimpleNamespace(tools=[MockTool("search_docs")])
+
+    # When: available tools are captured from the bound hierarchy
+    plugin._remember_available_tools(unnamed_agent)
+
+    # Then: no incomplete tool set is guessed
+    assert plugin._available_tools_by_step == {}
+
+
 @pytest.mark.asyncio
 async def test_lazy_step_sync_when_bind_skipped(plugin_module):
     plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")

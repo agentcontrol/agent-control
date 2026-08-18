@@ -449,6 +449,22 @@ def test_init_agent_captures_complete_strands_tool_registry(agent_control_hook):
     ]
 
 
+def test_available_tools_fails_closed_when_strands_registry_raises(
+    agent_control_hook, caplog
+):
+    # Given: a Strands registry that cannot provide a complete tool set
+    registry = MagicMock()
+    registry.get_all_tool_specs.side_effect = RuntimeError("registry unavailable")
+    agent_control_hook._tool_registry = registry
+
+    # When: tool definitions are requested
+    tools = agent_control_hook._available_tools()
+
+    # Then: tools remain absent and the integration records the failure
+    assert tools is None
+    assert "Unable to capture complete Strands tool definitions" in caplog.text
+
+
 def test_hook_with_callback():
     """Test AgentControlPlugin with violation callback."""
     from agent_control.integrations.strands.plugin import AgentControlPlugin

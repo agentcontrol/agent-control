@@ -3,6 +3,7 @@
  */
 
 import * as z from "zod/v4-mini";
+import { remap as remap$ } from "../lib/primitives.js";
 
 /**
  * Runtime payload for an agent step invocation.
@@ -12,6 +13,10 @@ export type Step = {
    * Optional context (conversation history, metadata, etc.)
    */
   context?: { [k: string]: any } | null | undefined;
+  /**
+   * Optional expected or reference output for this step
+   */
+  groundTruth?: any | null | undefined;
   /**
    * Any JSON value
    */
@@ -25,6 +30,10 @@ export type Step = {
    */
   output?: any | null | undefined;
   /**
+   * Complete structured definitions of tools available to the LLM
+   */
+  tools?: Array<{ [k: string]: any }> | null | undefined;
+  /**
    * Step type (e.g., 'tool', 'llm')
    */
   type: string;
@@ -33,21 +42,30 @@ export type Step = {
 /** @internal */
 export type Step$Outbound = {
   context?: { [k: string]: any } | null | undefined;
+  ground_truth?: any | null | undefined;
   input: any;
   name: string;
   output?: any | null | undefined;
+  tools?: Array<{ [k: string]: any }> | null | undefined;
   type: string;
 };
 
 /** @internal */
-export const Step$outboundSchema: z.ZodMiniType<Step$Outbound, Step> = z.object(
-  {
+export const Step$outboundSchema: z.ZodMiniType<Step$Outbound, Step> = z.pipe(
+  z.object({
     context: z.optional(z.nullable(z.record(z.string(), z.any()))),
+    groundTruth: z.optional(z.nullable(z.any())),
     input: z.any(),
     name: z.string(),
     output: z.optional(z.nullable(z.any())),
+    tools: z.optional(z.nullable(z.array(z.record(z.string(), z.any())))),
     type: z.string(),
-  },
+  }),
+  z.transform((v) => {
+    return remap$(v, {
+      groundTruth: "ground_truth",
+    });
+  }),
 );
 
 export function stepToJSON(step: Step): string {

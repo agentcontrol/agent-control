@@ -717,6 +717,41 @@ class TestLunaEvaluator:
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio
+    async def test_evaluator_contextual_hook_forwards_complete_step(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
+        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+        # Given: selected scorer data and complete structured runtime context
+        evaluator = LunaEvaluator.from_dict(
+            {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
+        )
+        step = Step(
+            type="llm",
+            name="answer",
+            input="full input",
+            output="full output",
+            tools=[{"name": "search", "description": "Search", "input_schema": {}}],
+            ground_truth="expected",
+        )
+
+        # When: evaluating through the contextual hook
+        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
+            result = await evaluator.evaluate_with_context("selected input", step)
+
+        # Then: selector-selected data and the complete Step are both forwarded
+        assert result.matched is True
+        mock_invoke.assert_awaited_once_with(
+            scorer_id="scorer-123",
+            step=step,
+            input="selected input",
+            output=None,
+            config=None,
+            timeout=10.0,
+        )
+
+    @patch.dict(os.environ, LUNA_ENV)
+    @pytest.mark.asyncio
     async def test_evaluator_forwards_configured_scorer_version_id(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
