@@ -83,6 +83,7 @@ from agent_control.settings import configure_settings, get_settings
 
 if TYPE_CHECKING:
     from agent_control_models import ControlExecutionEvent
+    from opentelemetry.sdk.trace import TracerProvider
 
 from .otel_sink import (
     OTEL_CONTROL_EVENT_SINK_NAME,
@@ -833,6 +834,8 @@ _named_event_sink_factories: ControlEventSinkFactoryRegistry[ControlEventSink] =
 )
 _configured_named_event_sink: ControlEventSink | None = None
 _configured_named_event_sink_selection: ControlEventSinkSelection | None = None
+_configured_otel_tracer_provider: TracerProvider | None = None
+_configured_named_event_sink_provider: TracerProvider | None = None
 _configured_named_event_sink_lock = threading.Lock()
 _used_custom_event_sinks: list[ControlEventSink] = []
 _used_custom_event_sinks_lock = threading.Lock()
@@ -842,7 +845,15 @@ def _register_builtin_control_event_sink_factories() -> None:
     """Ensure built-in named sink factories are available."""
     _named_event_sink_factories.register(
         OTEL_CONTROL_EVENT_SINK_NAME,
-        create_otel_control_event_sink,
+        _create_configured_otel_control_event_sink,
+    )
+
+
+def _create_configured_otel_control_event_sink(config: JSONObject) -> BaseControlEventSink:
+    """Create the OTEL sink with its runtime-only provider configuration."""
+    return create_otel_control_event_sink(
+        config,
+        tracer_provider=_configured_otel_tracer_provider,
     )
 
 
@@ -976,14 +987,21 @@ def _get_or_create_named_control_event_sink(
     selection: ControlEventSinkSelection,
 ) -> ControlEventSink | None:
     """Resolve and cache a named configured sink."""
-    global _configured_named_event_sink, _configured_named_event_sink_selection
+    global _configured_named_event_sink, _configured_named_event_sink_provider
+    global _configured_named_event_sink_selection
 
     previous_sink: ControlEventSink | None = None
+    selected_provider = (
+        _configured_otel_tracer_provider
+        if selection.name == OTEL_CONTROL_EVENT_SINK_NAME
+        else None
+    )
 
     with _configured_named_event_sink_lock:
         if (
             _configured_named_event_sink is not None
             and _configured_named_event_sink_selection == selection
+            and _configured_named_event_sink_provider is selected_provider
         ):
             return _configured_named_event_sink
 
@@ -1004,6 +1022,7 @@ def _get_or_create_named_control_event_sink(
             previous_sink = _configured_named_event_sink
         _configured_named_event_sink = sink
         _configured_named_event_sink_selection = selection.model_copy(deep=True)
+        _configured_named_event_sink_provider = selected_provider
 
     if previous_sink is not None:
         _shutdown_custom_control_event_sink(previous_sink)
@@ -1051,16 +1070,39 @@ def _shutdown_built_in_event_sink() -> None:
 
 def _shutdown_configured_named_event_sink() -> None:
     """Stop and clear the cached configured named sink if it is active."""
-    global _configured_named_event_sink, _configured_named_event_sink_selection
+    global _configured_named_event_sink, _configured_named_event_sink_provider
+    global _configured_named_event_sink_selection
 
     configured_named_sink: ControlEventSink | None = None
     with _configured_named_event_sink_lock:
         configured_named_sink = _configured_named_event_sink
         _configured_named_event_sink = None
         _configured_named_event_sink_selection = None
+        _configured_named_event_sink_provider = None
 
     if configured_named_sink is not None:
         _shutdown_custom_control_event_sink(configured_named_sink)
+
+
+def _invalidate_cached_otel_sink() -> None:
+    """Clear and shut down only the cached built-in OTEL sink, if present."""
+    global _configured_named_event_sink, _configured_named_event_sink_provider
+    global _configured_named_event_sink_selection
+
+    configured_otel_sink: ControlEventSink | None = None
+    with _configured_named_event_sink_lock:
+        if (
+            _configured_named_event_sink_selection is None
+            or _configured_named_event_sink_selection.name != OTEL_CONTROL_EVENT_SINK_NAME
+        ):
+            return
+        configured_otel_sink = _configured_named_event_sink
+        _configured_named_event_sink = None
+        _configured_named_event_sink_selection = None
+        _configured_named_event_sink_provider = None
+
+    if configured_otel_sink is not None:
+        _shutdown_custom_control_event_sink(configured_otel_sink)
 
 
 def _shutdown_custom_control_event_sink(sink: ControlEventSink) -> None:
@@ -1109,6 +1151,7 @@ def init_observability(
     enabled: bool | None = None,
     sink_name: str | None = None,
     sink_config: JSONObject | None = None,
+    otel_tracer_provider: TracerProvider | None = None,
 ) -> EventBatcher | None:
     """
     Initialize observability system.
@@ -1122,11 +1165,12 @@ def init_observability(
         enabled: Override AGENT_CONTROL_OBSERVABILITY_ENABLED
         sink_name: Override AGENT_CONTROL_OBSERVABILITY_SINK_NAME
         sink_config: Override AGENT_CONTROL_OBSERVABILITY_SINK_CONFIG
+        otel_tracer_provider: Runtime-only provider for the built-in OTEL sink
 
     Returns:
         EventBatcher instance if enabled, None otherwise
     """
-    global _batcher, _event_sink
+    global _batcher, _configured_otel_tracer_provider, _event_sink
 
     settings_updates: dict[str, object] = {}
     current_settings = get_settings()
@@ -1143,6 +1187,17 @@ def init_observability(
         settings_updates["observability_sink_config"] = sink_config
     if settings_updates:
         configure_settings(**settings_updates)
+
+    selected_sink_name = get_settings().observability_sink_name
+    selected_otel_tracer_provider = (
+        otel_tracer_provider
+        if selected_sink_name == OTEL_CONTROL_EVENT_SINK_NAME
+        else None
+    )
+    provider_changed = selected_otel_tracer_provider is not _configured_otel_tracer_provider
+    _configured_otel_tracer_provider = selected_otel_tracer_provider
+    if provider_changed:
+        _invalidate_cached_otel_sink()
 
     is_enabled = get_settings().observability_enabled
 
