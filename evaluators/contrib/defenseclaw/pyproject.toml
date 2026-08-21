@@ -1,6 +1,6 @@
 [project]
 name = "agent-control-evaluator-defenseclaw"
-version = "8.5.0"
+version = "8.6.0"
 description = "DefenseClaw evaluators for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"

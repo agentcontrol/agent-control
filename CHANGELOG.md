@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v8.6.0 (2026-08-21)
+
+### Features
+
+- **sdk**: Add optional traceprovider parameter
+  ([#260](https://github.com/agentcontrol/agent-control/pull/260),
+  [`c22fb91`](https://github.com/agentcontrol/agent-control/commit/c22fb911d63b36354a8f3138a95ada7dcde5cb9f))
+
+
 ## v8.5.0 (2026-08-14)
 
 ### Features
