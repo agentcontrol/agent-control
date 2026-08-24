@@ -5,13 +5,36 @@ from __future__ import annotations
 from typing import Literal
 
 from agent_control_evaluators import EvaluatorConfig
-from agent_control_models import JSONObject, JSONValue
-from pydantic import Field, model_validator
+from agent_control_models import JSONValue
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 LunaOperator = Literal["gt", "gte", "lt", "lte", "eq", "ne", "contains", "any"]
 LunaPayloadField = Literal["input", "output"]
 
 _NUMERIC_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
+
+
+class ScorerInvokeConfig(BaseModel):
+    """Orbit-supported overrides for a synchronous scorer invocation.
+
+    Orbit owns the Galileo scorer-invoke wire contract. Keeping this model
+    strict makes an unsupported option fail locally instead of producing a
+    less actionable HTTP 422 response from Runners.
+
+    Attributes:
+        threshold: Legacy threshold accepted by Orbit. Agent Control still
+            applies its evaluator threshold locally.
+        score_threshold: Legacy score threshold accepted by Orbit.
+        request_timeout_seconds: Optional upper bound for scorer execution in
+            Orbit. The Agent Control HTTP and evaluator deadlines must remain
+            longer than this value.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    threshold: float | None = None
+    score_threshold: float | None = None
+    request_timeout_seconds: float | None = Field(default=None, gt=0)
 
 
 def coerce_number(value: JSONValue) -> float | None:
@@ -37,7 +60,8 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         scorer_label: Optional display/metadata label.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
-        scorer_config: Optional scorer-specific config sent as ``config``.
+        scorer_config: Optional Orbit-supported scorer invocation config sent
+            as ``config``.
         payload_field: Explicit scorer input side for scalar selected data.
         timeout_ms: Request timeout in milliseconds.
     """
@@ -64,12 +88,12 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         default="gte",
         description="Local comparison operator applied to the raw Luna score.",
     )
-    scorer_config: JSONObject | None = Field(
+    scorer_config: ScorerInvokeConfig | None = Field(
         default=None,
         alias="config",
         serialization_alias="config",
         description=(
-            "Optional scorer-specific configuration sent to the Luna scorer invoke endpoint."
+            "Optional Orbit-supported configuration sent to the Luna scorer invoke endpoint."
         ),
     )
     payload_field: LunaPayloadField = Field(

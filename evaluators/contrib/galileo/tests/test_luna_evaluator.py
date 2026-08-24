@@ -10,13 +10,31 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-from agent_control_models import EvaluatorResult, Step
-from pydantic import ValidationError
+from agent_control_models import EvaluatorResult, JSONValue, Step
+from pydantic import UUID4, BaseModel, ValidationError
 
 LUNA_ENV = {
     "GALILEO_API_SECRET_KEY": "test-secret",
     "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
 }
+SCORER_ID = "3d45ef0d-5f14-4f1a-a8f1-8ab758da18b4"
+
+
+class _LegacyOrbitInputs(BaseModel):
+    """Released Orbit input shape used for backward-compatibility assertions."""
+
+    query: JSONValue = ""
+    response: JSONValue = ""
+
+
+class _LegacyOrbitRequest(BaseModel):
+    """Released Orbit request shape, whose default extra handling is additive."""
+
+    scorer_id: UUID4
+    scorer_version_id: UUID4 | None = None
+    scorer_label: str | None = None
+    inputs: _LegacyOrbitInputs
+    config: dict[str, object] | None = None
 
 
 def _decode_jwt_payload(token: str) -> dict[str, object]:
@@ -37,7 +55,7 @@ class TestLunaEvaluatorConfig:
             scorer_label="toxicity",
             threshold=0.7,
             operator="gte",
-            config={"temperature": 0},
+            config={"request_timeout_seconds": 8},
         )
 
         assert config.scorer_id == "scorer-123"
@@ -45,8 +63,21 @@ class TestLunaEvaluatorConfig:
         assert config.scorer_label == "toxicity"
         assert config.threshold == 0.7
         assert config.operator == "gte"
-        assert config.scorer_config == {"temperature": 0}
+        assert config.scorer_config is not None
+        assert config.scorer_config.model_dump(exclude_none=True) == {
+            "request_timeout_seconds": 8.0
+        }
         assert config.payload_field == "input"
+
+    def test_config_rejects_option_not_supported_by_orbit(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluatorConfig
+
+        # Given: a scorer option outside Orbit's allowlisted invoke contract
+        unsupported_config = {"temperature": 0}
+
+        # When/Then: Agent Control reports the contract error before making an HTTP request
+        with pytest.raises(ValidationError, match="temperature"):
+            LunaEvaluatorConfig(scorer_id="scorer-123", config=unsupported_config)
 
     def test_config_accepts_scorer_id_without_label(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluatorConfig
@@ -94,14 +125,18 @@ class TestGalileoLunaClient:
             )
 
     def test_scorer_invoke_request_shape_with_all_fields(self) -> None:
-        from agent_control_evaluator_galileo.luna import ScorerInvokeInputs, ScorerInvokeRequest
+        from agent_control_evaluator_galileo.luna import (
+            ScorerInvokeConfig,
+            ScorerInvokeInputs,
+            ScorerInvokeRequest,
+        )
 
         request = ScorerInvokeRequest(
             scorer_id="scorer-123",
             scorer_version_id="version-123",
             scorer_label="toxicity",
             inputs=ScorerInvokeInputs(query={"messages": [{"role": "user", "content": "hello"}]}),
-            config={"top_k": 1},
+            config=ScorerInvokeConfig(request_timeout_seconds=7),
         )
 
         assert request.to_dict() == {
@@ -112,8 +147,25 @@ class TestGalileoLunaClient:
                 "query": {"messages": [{"role": "user", "content": "hello"}]},
                 "response": "",
             },
-            "config": {"top_k": 1},
+            "config": {"request_timeout_seconds": 7.0},
         }
+
+    def test_scorer_invoke_request_rejects_unknown_config(self) -> None:
+        from agent_control_evaluator_galileo.luna import (
+            ScorerInvokeInputs,
+            ScorerInvokeRequest,
+        )
+
+        # Given: an option the current Orbit scorer-invoke schema does not accept
+        unsupported_config = {"top_k": 1}
+
+        # When/Then: the mirrored client contract rejects it locally
+        with pytest.raises(ValidationError, match="top_k"):
+            ScorerInvokeRequest(
+                scorer_id="scorer-123",
+                inputs=ScorerInvokeInputs(query="hello"),
+                config=unsupported_config,
+            )
 
     def test_scorer_invoke_request_omits_optional_fields_when_absent(self) -> None:
         from agent_control_evaluator_galileo.luna import ScorerInvokeInputs, ScorerInvokeRequest
@@ -489,10 +541,10 @@ class TestGalileoLunaClient:
 
         try:
             response = await client.invoke(
-                scorer_id="scorer-123",
+                scorer_id=SCORER_ID,
                 input="user prompt",
                 output="model answer",
-                config={"top_k": 1},
+                config={"request_timeout_seconds": 7},
             )
         finally:
             await client.close()
@@ -500,11 +552,12 @@ class TestGalileoLunaClient:
         # Then: posts to luna invoke endpoint /api/v1/scorers/invoke with JWT, no Galileo-API-Key
         assert response.score == 0.82
         assert captured["url"] == "http://luna-invoke:8090/api/v1/scorers/invoke"
-        assert captured["body"] == {
-            "scorer_id": "scorer-123",
+        expected_body = {
+            "scorer_id": SCORER_ID,
             "inputs": {"query": "user prompt", "response": "model answer"},
-            "config": {"top_k": 1},
+            "config": {"request_timeout_seconds": 7.0},
         }
+        assert captured["body"] == expected_body
         headers = captured["headers"]
         assert isinstance(headers, dict)
         assert "galileo-api-key" not in headers
@@ -545,7 +598,7 @@ class TestGalileoLunaClient:
         # When: invoking the rollout-compatible Runners endpoint
         try:
             response = await client.invoke(
-                scorer_id="scorer-123",
+                scorer_id=SCORER_ID,
                 input="selected question",
                 output="selected answer",
                 step=step,
@@ -553,10 +606,10 @@ class TestGalileoLunaClient:
         finally:
             await client.close()
 
-        # Then: old inputs and the expanded record are sent together
+        # Then: old inputs and an equivalent Orbit record are sent together
         assert response.score == 0.9
-        assert captured["body"] == {
-            "scorer_id": "scorer-123",
+        expected_body = {
+            "scorer_id": SCORER_ID,
             "inputs": {
                 "query": "selected question",
                 "response": "selected answer",
@@ -565,12 +618,51 @@ class TestGalileoLunaClient:
             },
             "record": {
                 "type": "llm",
-                "input": {"messages": [{"role": "user", "content": "question"}]},
-                "output": {"text": "answer"},
+                "name": "answer",
+                "input": "selected question",
+                "output": "selected answer",
                 "context": {"session": "s-1"},
                 "tools": [{"name": "search", "description": "Search", "input_schema": {}}],
-                "dataset_output": {"text": "expected"},
+                "dataset_output": '{"text":"expected"}',
             },
+            "config": {},
+        }
+        assert captured["body"] == expected_body
+
+        # The same request must remain consumable by released Orbit versions.
+        legacy_request = _LegacyOrbitRequest.model_validate(expected_body)
+        assert legacy_request.model_dump(mode="json", exclude_none=True) == {
+            "scorer_id": SCORER_ID,
+            "inputs": {"query": "selected question", "response": "selected answer"},
+            "config": {},
+        }
+
+    @pytest.mark.asyncio
+    async def test_client_omits_record_for_step_type_orbit_does_not_support(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content.decode())
+            return httpx.Response(200, json={"score": 0.4, "status": "success"})
+
+        # Given: a generic Agent Control step whose type is not an Orbit record discriminator
+        step = Step(type="custom", name="custom-step", input="full input", output="full output")
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        # When: the scorer is invoked with selector-selected input
+        try:
+            await client.invoke(scorer_id="scorer-123", input="selected input", step=step)
+        finally:
+            await client.close()
+
+        # Then: the legacy contract remains usable by old and new Orbit versions
+        assert captured["body"] == {
+            "scorer_id": "scorer-123",
+            "inputs": {"query": "selected input", "response": ""},
             "config": {},
         }
 

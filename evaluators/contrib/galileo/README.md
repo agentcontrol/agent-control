@@ -14,6 +14,11 @@ set `threshold` and `operator` as needed. If you still need the legacy Luna2
 evaluator, pin
 `agent-control-evaluator-galileo <8`.
 
+The optional evaluator `config` mirrors Orbit's allowlisted scorer-invoke
+configuration. Supported keys are `threshold`, `score_threshold`, and
+`request_timeout_seconds`; unsupported keys are rejected locally before an HTTP
+request is made.
+
 ## Install
 
 Canonical install path:
