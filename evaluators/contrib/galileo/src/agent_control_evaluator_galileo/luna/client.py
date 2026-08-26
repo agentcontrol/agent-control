@@ -23,6 +23,7 @@ from .config import ScorerInvokeConfig
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECS = 10.0
+SERVER_TIMEOUT_RATIO = 0.8
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 DEFAULT_LUNA_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
 LUNA_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
@@ -165,23 +166,41 @@ def _has_value(value: JSONValue) -> bool:
     return True
 
 
-def _serialize_dataset_output(value: JSONValue) -> str | None:
-    """Map Agent Control ground truth to Orbit's string dataset-output field.
+def _effective_scorer_timeout(
+    config: ScorerInvokeConfig,
+    *,
+    http_timeout_seconds: float,
+) -> ScorerInvokeConfig:
+    """Resolve an Orbit execution timeout that expires before the HTTP request.
 
-    Orbit accepts the original JSON value in the legacy ``inputs.ground_truth``
-    field, but its shared record hierarchy represents ``dataset_output`` as a
-    string. Compact, sorted JSON keeps the structured value lossless and lets
-    Orbit's semantic dual-write validator compare both representations.
+    The server execution budget defaults to 80% of the caller's HTTP deadline,
+    leaving time for Orbit to serialize and return the result. Explicit caller
+    overrides are preserved only when they maintain the same ordering.
 
     Args:
-        value: JSON-compatible ground truth from the Agent Control step.
+        config: Caller-provided scorer-invoke configuration.
+        http_timeout_seconds: Agent Control's HTTP request deadline in seconds.
 
     Returns:
-        The original string, compact JSON for a structured value, or ``None``.
+        A scorer-invoke configuration with an effective execution timeout.
+
+    Raises:
+        ValueError: If either deadline is invalid or the explicit server timeout
+            is not shorter than the HTTP deadline.
     """
-    if value is None or isinstance(value, str):
-        return value
-    return dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    if http_timeout_seconds <= 0:
+        raise ValueError("HTTP timeout must be greater than 0 seconds.")
+
+    server_timeout = config.request_timeout_seconds
+    if server_timeout is None:
+        server_timeout = http_timeout_seconds * SERVER_TIMEOUT_RATIO
+    elif server_timeout >= http_timeout_seconds:
+        raise ValueError(
+            "config.request_timeout_seconds must be shorter than the HTTP "
+            f"timeout ({http_timeout_seconds:g} seconds)."
+        )
+
+    return config.model_copy(update={"request_timeout_seconds": server_timeout})
 
 
 class ScorerInvokeInputs(BaseModel):
@@ -206,7 +225,7 @@ class ScorerInvokeRecord(BaseModel):
     output: JSONValue = None
     context: JSONObject | None = None
     tools: list[JSONObject] | None = None
-    dataset_output: str | None = None
+    dataset_output: JSONValue = None
 
 
 class ScorerInvokeRequest(BaseModel):
@@ -214,7 +233,8 @@ class ScorerInvokeRequest(BaseModel):
 
     Attributes:
         scorer_id: Required scorer identifier.
-        scorer_version_id: Optional pinned scorer version identifier.
+        scorer_version_id: Deprecated optional compatibility identifier. Orbit
+            currently invokes the scorer's current default version.
         scorer_label: Optional display/metadata label.
         inputs: Selected scorer input values.
         record: Optional Orbit-compatible structured runtime record.
@@ -277,7 +297,7 @@ def _orbit_record_from_step(
         output=selected_output if selected_output is not None else step.output,
         context=step.context,
         tools=step.tools,
-        dataset_output=_serialize_dataset_output(step.ground_truth),
+        dataset_output=step.ground_truth,
     )
 
 
@@ -462,7 +482,8 @@ class GalileoLunaClient:
 
         Args:
             scorer_id: Required scorer identifier.
-            scorer_version_id: Optional pinned scorer version identifier.
+            scorer_version_id: Deprecated optional compatibility identifier. Orbit
+                currently invokes the scorer's current default version.
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
@@ -475,8 +496,8 @@ class GalileoLunaClient:
             Parsed scorer invocation response.
 
         Raises:
-            ValueError: If neither input nor output is provided, or if config
-                contains a field Orbit does not support.
+            ValueError: If neither input nor output is provided, config contains
+                a field Orbit does not support, or the timeout ordering is invalid.
             RuntimeError: If the API response is not a JSON object.
             httpx.HTTPStatusError: If the Luna invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
@@ -490,6 +511,10 @@ class GalileoLunaClient:
             ScorerInvokeConfig.model_validate(config)
             if config is not None
             else ScorerInvokeConfig()
+        )
+        invoke_config = _effective_scorer_timeout(
+            invoke_config,
+            http_timeout_seconds=timeout,
         )
         request_body = ScorerInvokeRequest(
             scorer_id=scorer_id,

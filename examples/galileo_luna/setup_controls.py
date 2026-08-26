@@ -27,6 +27,7 @@ SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 LUNA_SCORER_ID = os.getenv("GALILEO_LUNA_SCORER_ID")
 LUNA_SCORER_LABEL = os.getenv("GALILEO_LUNA_SCORER_LABEL")
+# Deprecated compatibility ID; Orbit invokes the scorer's current default version.
 LUNA_SCORER_VERSION_ID = os.getenv("GALILEO_LUNA_SCORER_VERSION_ID")
 LUNA_THRESHOLD = float(os.getenv("GALILEO_LUNA_THRESHOLD", "0.5"))
 LUNA_PAYLOAD_FIELD = os.getenv("GALILEO_LUNA_PAYLOAD_FIELD", "output")

@@ -258,9 +258,10 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             return self._handle_error(exc)
 
     def _base_metadata(self) -> dict[str, Any]:
+        """Build result metadata without implying a requested version executed."""
         metadata: dict[str, Any] = {"scorer_id": self.config.scorer_id}
         if self.config.scorer_version_id is not None:
-            metadata["scorer_version_id"] = self.config.scorer_version_id
+            metadata["requested_scorer_version_id"] = self.config.scorer_version_id
         if self.config.scorer_label is not None:
             metadata["scorer_label"] = self.config.scorer_label
         return metadata
