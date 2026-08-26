@@ -14,7 +14,7 @@ dependencies = [
     "docstring-parser>=0.15",  # For @tool decorator schema inference
     "google-re2>=1.1",  # For engine (bundled)
     "jsonschema>=4.0.0",  # For models/engine (bundled)
-    "agent-control-evaluators>=7.5.0",  # NOT vendored - avoid conflict with galileo
+    "agent-control-evaluators>=8.6.0",  # NOT vendored - avoid conflict with galileo
 ]
 authors = [
     {name = "Agent Control Team"}

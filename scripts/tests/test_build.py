@@ -99,4 +99,4 @@ def test_builtin_evaluators_manifest_keeps_models_floor_rewritable() -> None:
 
     dependencies = manifest["project"]["dependencies"]
 
-    assert "agent-control-models>=7.5.0" in dependencies
+    assert "agent-control-models>=8.6.0" in dependencies

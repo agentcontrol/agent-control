@@ -3,11 +3,12 @@
 Architecture: Evaluators take config at __init__, evaluate() only takes data.
 """
 
-import pytest
 from typing import Any
 
+import pytest
+
 from agent_control_evaluators import Evaluator, EvaluatorConfig, EvaluatorMetadata
-from agent_control_models import EvaluatorResult
+from agent_control_models import EvaluatorResult, Step
 
 
 class MockConfig(EvaluatorConfig):
@@ -105,6 +106,20 @@ class TestEvaluator:
         result = await evaluator.evaluate("test data")
 
         assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_contextual_evaluation_delegates_to_existing_evaluate(self):
+        """Existing evaluators receive selected data through the default hook."""
+        # Given: an evaluator that implements only evaluate(data)
+        evaluator = MockEvaluator.from_dict({"should_match": True})
+        step = Step(type="llm", name="answer", input="full input")
+
+        # When: the engine-facing contextual hook is called
+        result = await evaluator.evaluate_with_context("selected data", step)
+
+        # Then: the legacy evaluate implementation handles the selected data
+        assert result.matched is True
+        assert result.metadata == {"data": "selected data"}
 
     def test_evaluator_config_stored(self):
         """Test that evaluator stores config."""

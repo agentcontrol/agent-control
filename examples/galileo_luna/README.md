@@ -36,10 +36,13 @@ Optional scorer settings:
 
 ```bash
 export GALILEO_LUNA_SCORER_LABEL="toxicity"            # display/metadata label only
-export GALILEO_LUNA_SCORER_VERSION_ID="version-uuid"  # pin a specific scorer version
+export GALILEO_LUNA_SCORER_VERSION_ID="version-uuid"  # deprecated compatibility ID
 export GALILEO_LUNA_THRESHOLD="0.5"
 export GALILEO_LUNA_PAYLOAD_FIELD="output"
 ```
+
+`GALILEO_LUNA_SCORER_VERSION_ID` is a deprecated optional compatibility
+identifier. Orbit currently invokes the scorer's current default version.
 
 `GALILEO_LUNA_PAYLOAD_FIELD` is explicit for scalar selected data. This example selects the agent's drafted reply with `selector.path="output"`, so it sends that scalar as the scorer `output` field. If a selector returns structured data with `input` and/or `output` keys, those keys are sent directly and override `GALILEO_LUNA_PAYLOAD_FIELD`.
 
