@@ -10,7 +10,6 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from agent_control import ControlSteerError, ControlViolationError
 from agent_control._state import state
 
@@ -42,10 +41,13 @@ class MockLlmRequest:
         text: str = "hello",
         config: object | None = None,
         request_id: str | None = None,
+        tools_dict: dict[str, object] | None = None,
     ):
         self.contents = [SimpleNamespace(parts=[MockPart(text)])]
         self.config = config if config is not None else MockConfig()
         self.request_id = request_id
+        if tools_dict is not None:
+            self.tools_dict = tools_dict
 
 
 class MockLlmResponse:
@@ -568,6 +570,67 @@ async def test_bound_agent_passes_complete_normalized_tools_to_llm(plugin_module
     assert definitions[0]["input_schema"]["properties"]["city"]["type"] == "string"
 
 
+@pytest.mark.asyncio
+async def test_model_callbacks_use_invocation_resolved_tools(plugin_module):
+    """Dynamic ADK tools from the prepared request override the bind-time registry."""
+    # Given: a bound tool that ADK replaces while preparing this model request
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+    with patch.object(plugin, "_sync_steps_blocking"):
+        plugin.bind(
+            SimpleNamespace(
+                name="planner",
+                tools=[MockTool("bound_search", "Bound search")],
+            )
+        )
+    context = MockCallbackContext("planner", invocation_id="inv-1")
+    request = MockLlmRequest(
+        "hello",
+        request_id="call-1",
+        tools_dict={"runtime_search": MockTool("runtime_search", "Runtime search")},
+    )
+    response = MockLlmResponse(
+        MockContent(role="model", parts=[MockPart("done")]),
+        request_id="call-1",
+    )
+
+    # When: pre- and post-model controls evaluate the same ADK invocation
+    with patch.object(
+        plugin_module, "_evaluate_and_enforce", AsyncMock(return_value=MagicMock())
+    ) as mock_eval:
+        await plugin.before_model_callback(callback_context=context, llm_request=request)
+        await plugin.after_model_callback(callback_context=context, llm_response=response)
+
+    # Then: both stages receive the exact runtime-resolved tool set
+    assert mock_eval.await_count == 2
+    for call in mock_eval.await_args_list:
+        definitions = call.kwargs["tools"]
+        assert len(definitions) == 1
+        assert definitions[0]["name"] == "runtime_search"
+        assert definitions[0]["description"] == "Runtime search"
+        assert definitions[0]["input_schema"]["properties"]["city"]["type"] == "string"
+
+
+@pytest.mark.asyncio
+async def test_empty_invocation_tool_set_does_not_fall_back_to_bound_tools(plugin_module):
+    """An authoritative empty ADK tool map remains empty for scoring."""
+    # Given: a bound tool that is disabled for the current model invocation
+    plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
+    with patch.object(plugin, "_sync_steps_blocking"):
+        plugin.bind(SimpleNamespace(name="planner", tools=[MockTool("bound_search")]))
+
+    # When: ADK exposes an empty resolved tool dictionary
+    with patch.object(
+        plugin_module, "_evaluate_and_enforce", AsyncMock(return_value=MagicMock())
+    ) as mock_eval:
+        await plugin.before_model_callback(
+            callback_context=MockCallbackContext("planner"),
+            llm_request=MockLlmRequest("hello", tools_dict={}),
+        )
+
+    # Then: Agent Control scores the empty invocation set, not stale bound tools
+    assert mock_eval.await_args.kwargs["tools"] == []
+
+
 def test_bind_keeps_duplicate_tool_names_distinct_across_sub_agents(plugin_module):
     plugin = plugin_module.AgentControlPlugin(agent_name="test-agent01")
     root = SimpleNamespace(
@@ -700,6 +763,7 @@ async def test_close_cancels_tasks_and_clears_request_cache(plugin_module):
     plugin._generated_invocation_ids_by_context_id[123] = "inv-2"
     plugin._generated_context_ids_by_invocation_id["inv-2"] = 123
     plugin._request_text_by_call_key[("inv-1", "call-1")] = "hello"
+    plugin._request_tools_by_call_key[("inv-1", "call-1")] = []
     plugin._request_object_ids_by_call_key[("inv-1", "call-1")] = 123
     plugin._current_llm_call_ids["inv-1"] = ["call-1"]
     plugin._stored_llm_call_ids[123] = "call-1"
@@ -718,6 +782,7 @@ async def test_close_cancels_tasks_and_clears_request_cache(plugin_module):
     assert plugin._generated_invocation_ids_by_context_id == {}
     assert plugin._generated_context_ids_by_invocation_id == {}
     assert plugin._request_text_by_call_key == {}
+    assert plugin._request_tools_by_call_key == {}
     assert plugin._request_object_ids_by_call_key == {}
     assert plugin._current_llm_call_ids == {}
     assert plugin._stored_llm_call_ids == {}

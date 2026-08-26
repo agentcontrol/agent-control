@@ -104,6 +104,7 @@ class AgentControlPlugin(BasePlugin):
         self._generated_invocation_ids_by_context_id: dict[int, str] = {}
         self._generated_context_ids_by_invocation_id: dict[str, int] = {}
         self._request_text_by_call_key: dict[tuple[str, str], str] = {}
+        self._request_tools_by_call_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
         self._request_object_ids_by_call_key: dict[tuple[str, str], int] = {}
         self._current_llm_call_ids: dict[str, list[str]] = {}
         self._stored_llm_call_ids: dict[int, str] = {}
@@ -134,6 +135,7 @@ class AgentControlPlugin(BasePlugin):
         self._generated_invocation_ids_by_context_id.clear()
         self._generated_context_ids_by_invocation_id.clear()
         self._request_text_by_call_key.clear()
+        self._request_tools_by_call_key.clear()
         self._request_object_ids_by_call_key.clear()
         self._current_llm_call_ids.clear()
         self._stored_llm_call_ids.clear()
@@ -157,11 +159,17 @@ class AgentControlPlugin(BasePlugin):
 
         step_name = self._resolve_llm_step_name(callback_context)
         request_text = extract_request_text(llm_request)
+        available_tools = self._invocation_tools(llm_request, step_name=step_name)
         invocation_id: str | None = None
         call_id: str | None = None
         if "after_model" in self.enabled_hooks:
             invocation_id = self._resolve_invocation_id(callback_context)
-            call_id = self._register_llm_request(invocation_id, llm_request, request_text)
+            call_id = self._register_llm_request(
+                invocation_id,
+                llm_request,
+                request_text,
+                available_tools,
+            )
         self._ensure_step_known(
             self._build_llm_step_schema(step_name, callback_context=callback_context),
         )
@@ -179,7 +187,7 @@ class AgentControlPlugin(BasePlugin):
                 step_name,
                 input=request_text,
                 context=context,
-                tools=self._available_tools_by_step.get(step_name),
+                tools=available_tools,
                 step_type="llm",
                 stage="pre",
             )
@@ -210,7 +218,12 @@ class AgentControlPlugin(BasePlugin):
         step_name = self._resolve_llm_step_name(callback_context)
         invocation_id = self._resolve_invocation_id(callback_context)
         call_id = self._resolve_llm_call_id(llm_response, invocation_id)
-        input_text = self._request_text_by_call_key.pop((invocation_id, call_id), "")
+        call_key = (invocation_id, call_id)
+        input_text = self._request_text_by_call_key.pop(call_key, "")
+        available_tools = self._request_tools_by_call_key.pop(
+            call_key,
+            self._available_tools_by_step.get(step_name, []),
+        )
         self._clear_pending_llm_state(invocation_id, call_id, llm_response=llm_response)
         output_text = extract_response_text(llm_response)
         self._ensure_step_known(
@@ -231,7 +244,7 @@ class AgentControlPlugin(BasePlugin):
                 input=input_text,
                 output=output_text,
                 context=context,
-                tools=self._available_tools_by_step.get(step_name),
+                tools=available_tools,
                 step_type="llm",
                 stage="post",
             )
@@ -694,6 +707,42 @@ class AgentControlPlugin(BasePlugin):
             available_tools[step_name] = definitions
         self._available_tools_by_step = available_tools
 
+    def _invocation_tools(
+        self,
+        llm_request: LlmRequest,
+        *,
+        step_name: str,
+    ) -> list[dict[str, Any]]:
+        """Return the tool definitions resolved for this exact ADK model call.
+
+        Modern ADK versions populate ``LlmRequest.tools_dict`` after resolving
+        dynamic toolsets. Older versions do not expose it, so the bind-time
+        registry remains a compatibility fallback rather than the primary source.
+
+        Args:
+            llm_request: Prepared ADK request for the current model invocation.
+            step_name: Resolved Agent Control LLM step name.
+
+        Returns:
+            Normalized definitions for the invocation's exact tool set.
+        """
+        resolved_tools = getattr(llm_request, "tools_dict", None)
+        if not isinstance(resolved_tools, dict):
+            return self._available_tools_by_step.get(step_name, [])
+
+        definitions: list[dict[str, Any]] = []
+        for tool in resolved_tools.values():
+            tool_name = self._resolve_tool_step_name(tool, agent_step_name=step_name)
+            schema = self._build_tool_step_schema(tool, tool_name)
+            definitions.append(
+                normalized_tool_definition(
+                    name=resolve_tool_name(tool),
+                    description=schema.get("description"),
+                    input_schema=schema.get("input_schema"),
+                )
+            )
+        return definitions
+
     def _remember_steps(self, steps: Iterable[StepSchemaDict]) -> None:
         for step in steps:
             key = (step["type"], step["name"])
@@ -803,11 +852,13 @@ class AgentControlPlugin(BasePlugin):
         invocation_id: str,
         llm_request: LlmRequest,
         request_text: str,
+        available_tools: list[dict[str, Any]],
     ) -> str:
         call_id = self._resolve_llm_call_id(llm_request, invocation_id)
         call_key = (invocation_id, call_id)
         self._stored_llm_call_ids[id(llm_request)] = call_id
         self._request_text_by_call_key[call_key] = request_text
+        self._request_tools_by_call_key[call_key] = available_tools
         self._request_object_ids_by_call_key[call_key] = id(llm_request)
         self._current_llm_call_ids.setdefault(invocation_id, []).append(call_id)
         return call_id
@@ -822,6 +873,7 @@ class AgentControlPlugin(BasePlugin):
     ) -> None:
         call_key = (invocation_id, call_id)
         self._request_text_by_call_key.pop(call_key, None)
+        self._request_tools_by_call_key.pop(call_key, None)
 
         request_object_id = self._request_object_ids_by_call_key.pop(call_key, None)
         if request_object_id is not None:

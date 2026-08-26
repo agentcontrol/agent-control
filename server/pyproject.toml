@@ -24,7 +24,7 @@ dependencies = [
     "jsonschema-rs>=0.22.0",
     "PyJWT>=2.8.0",
     "google-re2>=1.1",  # For engine (bundled)
-    "agent-control-evaluators>=7.5.0",  # NOT vendored - avoid conflict with galileo
+    "agent-control-evaluators>=8.6.0",  # NOT vendored - avoid conflict with galileo
 ]
 authors = [
     {name = "Agent Control Team"}
