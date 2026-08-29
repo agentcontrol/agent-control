@@ -36,6 +36,8 @@ Documentation = "https://github.com/yourusername/agent-control#readme"
 Repository = "https://github.com/yourusername/agent-control"
 
 [project.optional-dependencies]
+langchain = ["langchain>=1.0.0"]
+langgraph = ["langgraph>=0.2.0"]
 strands-agents = ["strands-agents>=1.26.0"]
 google-adk = ["google-adk>=1.0.0"]
 otel = [
@@ -56,6 +58,8 @@ dev = [
     "agent-control-engine",
     "agent-control-telemetry",
     "agent-control-evaluators",
+    "langchain>=1.0.0",  # For langchain middleware tests
+    "langgraph>=0.2.0",  # For langgraph integration tests
     "strands-agents>=1.26.0",  # For strands integration tests
 ]
 
