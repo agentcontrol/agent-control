@@ -1081,3 +1081,253 @@ async def test_check_server_version_ignores_missing_header() -> None:
 
     # Then: no warning is emitted
     mock_warning.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# HYBIM-741: configurable runtime-token header (gateway Authorization collision)
+# ---------------------------------------------------------------------------
+
+
+def test_runtime_token_header_defaults_to_authorization() -> None:
+    client = AgentControlClient(base_url="https://agent-control.test")
+    assert client._runtime_token_header == "Authorization"
+    assert client._runtime_token_use_bearer is True
+
+
+def test_runtime_token_header_param_selects_dedicated_header() -> None:
+    client = AgentControlClient(
+        base_url="https://agent-control.test",
+        runtime_token_header="X-Agent-Control-Runtime-Token",
+    )
+    assert client._runtime_token_header == "X-Agent-Control-Runtime-Token"
+    assert client._runtime_token_use_bearer is False
+
+
+def test_runtime_token_header_env_var_overrides_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "X-Agent-Control-Runtime-Token"
+    )
+    client = AgentControlClient(base_url="https://agent-control.test")
+    assert client._runtime_token_header == "X-Agent-Control-Runtime-Token"
+    assert client._runtime_token_use_bearer is False
+
+
+def test_runtime_token_header_rejects_blank_param() -> None:
+    with pytest.raises(ValueError, match="runtime_token_header"):
+        AgentControlClient(
+            base_url="https://agent-control.test", runtime_token_header="  "
+        )
+
+
+@pytest.mark.parametrize(
+    "bad_header",
+    ["X Agent Control", "X-Agent:Control", "Bad\nHeader", "hÉader", "with tab\t"],
+)
+def test_runtime_token_header_rejects_invalid_field_name(bad_header: str) -> None:
+    """A header that is not a valid HTTP field name is rejected at construction,
+    not deferred to the first request."""
+    with pytest.raises(ValueError, match="HTTP header field name"):
+        AgentControlClient(
+            base_url="https://agent-control.test", runtime_token_header=bad_header
+        )
+
+
+def test_runtime_token_header_rejects_invalid_field_name_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "X Agent Control")
+    with pytest.raises(ValueError, match="HTTP header field name"):
+        AgentControlClient(base_url="https://agent-control.test")
+
+
+def test_runtime_token_header_whitespace_env_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "   ")
+    client = AgentControlClient(base_url="https://agent-control.test")
+    assert client._runtime_token_header == "Authorization"
+    assert client._runtime_token_use_bearer is True
+
+
+@pytest.mark.asyncio
+async def test_runtime_evaluation_sends_raw_token_on_custom_header() -> None:
+    """Custom header carries the raw token; Authorization stays free for the
+    gateway JWT; the API key is preserved on its own header as the outer
+    credential (it rides X-API-Key, so there is no collision)."""
+    seen: dict[str, str | None] = {}
+    expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/runtime-token-exchange"):
+            assert request.headers.get("X-API-Key") == "test-key"
+            return httpx.Response(
+                200,
+                json={
+                    "token": "runtime-token",
+                    "expires_at": expires_at,
+                    "target_type": "log_stream",
+                    "target_id": "ls-1",
+                    "scopes": ["runtime.use"],
+                },
+            )
+        seen["runtime"] = request.headers.get("X-Agent-Control-Runtime-Token")
+        seen["authorization"] = request.headers.get("Authorization")
+        seen["api_key"] = request.headers.get("X-API-Key")
+        return httpx.Response(200, json={"is_safe": True, "confidence": 1.0})
+
+    transport = httpx.MockTransport(handler)
+    async with AgentControlClient(
+        base_url="https://agent-control.test",
+        api_key="test-key",
+        runtime_auth_mode="jwt",
+        runtime_token_header="X-Agent-Control-Runtime-Token",
+        transport=transport,
+    ) as client:
+        response = await client.post_runtime_evaluation(
+            json={"target_type": "log_stream", "target_id": "ls-1"},
+            target_type="log_stream",
+            target_id="ls-1",
+        )
+
+    assert response.status_code == 200
+    assert seen["runtime"] == "runtime-token"
+    assert seen["authorization"] is None
+    # The API key is retained on its own header: with the runtime token on a
+    # dedicated header, X-API-Key can still serve as the outer gateway
+    # credential without colliding with either the runtime token or the
+    # gateway's Authorization JWT.
+    assert seen["api_key"] == "test-key"
+
+
+@pytest.mark.asyncio
+async def test_runtime_evaluation_default_sends_bearer_on_authorization() -> None:
+    """Default (unset) behavior is unchanged: Bearer token on Authorization."""
+    seen: dict[str, str | None] = {}
+    expires_at = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/runtime-token-exchange"):
+            return httpx.Response(
+                200,
+                json={
+                    "token": "runtime-token",
+                    "expires_at": expires_at,
+                    "target_type": "log_stream",
+                    "target_id": "ls-1",
+                    "scopes": ["runtime.use"],
+                },
+            )
+        seen["authorization"] = request.headers.get("Authorization")
+        return httpx.Response(200, json={"is_safe": True, "confidence": 1.0})
+
+    transport = httpx.MockTransport(handler)
+    async with AgentControlClient(
+        base_url="https://agent-control.test",
+        api_key="test-key",
+        runtime_auth_mode="jwt",
+        transport=transport,
+    ) as client:
+        await client.post_runtime_evaluation(
+            json={"target_type": "log_stream", "target_id": "ls-1"},
+            target_type="log_stream",
+            target_id="ls-1",
+        )
+
+    assert seen["authorization"] == "Bearer runtime-token"
+
+
+@pytest.mark.asyncio
+async def test_runtime_evaluation_custom_header_fallback_keeps_api_key() -> None:
+    """Custom-header mode must still fall back to the API key when the exchange
+    is unavailable: with no runtime token minted, the dedicated header is absent
+    and X-API-Key must authenticate the evaluation request."""
+    exchange_calls = 0
+    seen: dict[str, str | None] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal exchange_calls
+        if request.url.path.endswith("/runtime-token-exchange"):
+            exchange_calls += 1
+            return httpx.Response(503, json={"detail": "runtime auth disabled"})
+        seen["runtime"] = request.headers.get("X-Agent-Control-Runtime-Token")
+        seen["api_key"] = request.headers.get("X-API-Key")
+        return httpx.Response(200, json={"is_safe": True, "confidence": 1.0})
+
+    transport = httpx.MockTransport(handler)
+    async with AgentControlClient(
+        base_url="https://agent-control.test",
+        api_key="test-key",
+        runtime_auth_mode="auto",
+        runtime_token_header="X-Agent-Control-Runtime-Token",
+        transport=transport,
+    ) as client:
+        response = await client.post_runtime_evaluation(
+            json={"target_type": "log_stream", "target_id": "ls-1"},
+            target_type="log_stream",
+            target_id="ls-1",
+        )
+        assert response.status_code == 200
+
+    assert exchange_calls == 1
+    assert seen["runtime"] is None
+    assert seen["api_key"] == "test-key"
+
+
+# ---------------------------------------------------------------------------
+# HYBIM-866: 401 disambiguation for runtime-token refresh (gateway vs token)
+# ---------------------------------------------------------------------------
+
+
+def _resp(status: int, www_authenticate: str | None = None) -> httpx.Response:
+    headers = {"WWW-Authenticate": www_authenticate} if www_authenticate else {}
+    return httpx.Response(status, headers=headers)
+
+
+def test_should_refresh_401_on_authorization_header_refreshes() -> None:
+    """Default (token on Authorization): a bare 401 means the runtime token,
+    so refresh."""
+    from agent_control.client import _should_refresh_runtime_token
+
+    assert _should_refresh_runtime_token(_resp(401)) is True
+
+
+def test_should_refresh_401_on_dedicated_header_needs_invalid_token() -> None:
+    """Token on a dedicated header: a bare 401 is ambiguous (may be the gateway
+    rejecting Authorization), so do NOT evict the runtime token unless the
+    server flags it invalid."""
+    from agent_control.client import _should_refresh_runtime_token
+
+    # Bare 401 with no challenge -> gateway 401, keep the token.
+    assert (
+        _should_refresh_runtime_token(
+            _resp(401), runtime_token_on_dedicated_header=True
+        )
+        is False
+    )
+    # 401 that explicitly flags the runtime token -> refresh.
+    assert (
+        _should_refresh_runtime_token(
+            _resp(401, 'Bearer error="invalid_token"'),
+            runtime_token_on_dedicated_header=True,
+        )
+        is True
+    )
+
+
+def test_should_refresh_403_only_on_invalid_token_challenge() -> None:
+    from agent_control.client import _should_refresh_runtime_token
+
+    assert _should_refresh_runtime_token(_resp(403)) is False
+    assert (
+        _should_refresh_runtime_token(_resp(403, 'Bearer error="invalid_token"'))
+        is True
+    )
+
+
+def test_should_refresh_ignores_other_statuses() -> None:
+    from agent_control.client import _should_refresh_runtime_token
+
+    assert _should_refresh_runtime_token(_resp(200)) is False
+    assert _should_refresh_runtime_token(_resp(500)) is False

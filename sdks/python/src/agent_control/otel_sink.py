@@ -8,13 +8,16 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from agent_control_models import ControlExecutionEvent, JSONObject
 from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
 
 from .settings import get_settings
 from .tracing import _generate_span_id, validate_span_id, validate_trace_id
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import TracerProvider
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +73,7 @@ class OTELSDKModules:
     tracer_provider_cls: type[Any]
     resource_cls: type[Any]
     batch_span_processor_cls: type[Any]
-    otlp_span_exporter_cls: type[Any]
+    otlp_span_exporter_cls: type[Any] | None
     span_context_cls: type[Any]
     non_recording_span_cls: type[Any]
     trace_flags_cls: type[Any]
@@ -79,6 +82,7 @@ class OTELSDKModules:
     status_code_cls: type[Any]
     span_kind: Any
     set_span_in_context: Any
+    get_tracer_provider: Any
 
 
 def _to_unix_nano(timestamp: datetime, /) -> int:
@@ -171,10 +175,12 @@ class OTELControlEventSink(BaseControlEventSink):
         tracer_provider: Any,
         tracer: Any,
         sdk_modules: OTELSDKModules,
+        provider_owned: bool,
     ) -> None:
         self._tracer_provider: Any = tracer_provider
         self._tracer: Any = tracer
         self._sdk_modules = sdk_modules
+        self._provider_owned = provider_owned
 
     def write_events(self, events: Sequence[ControlExecutionEvent]) -> SinkResult:
         accepted = 0
@@ -196,6 +202,8 @@ class OTELControlEventSink(BaseControlEventSink):
             force_flush()
 
     def close(self) -> None:
+        if not self._provider_owned:
+            return
         shutdown = getattr(self._tracer_provider, "shutdown", None)
         if callable(shutdown):
             shutdown()
@@ -285,10 +293,7 @@ def _has_explicit_otel_exporter_configuration(config: OTELSinkConfig) -> bool:
 
 
 def _load_otel_sdk_modules() -> OTELSDKModules:
-    """Import OTEL SDK modules on demand so the sink remains optional."""
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # type: ignore[import-not-found]
-        OTLPSpanExporter,
-    )
+    """Import core OTEL SDK modules on demand so the sink remains optional."""
     from opentelemetry.sdk.resources import Resource  # type: ignore[import-not-found]
     from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-not-found]
     from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore[import-not-found]
@@ -300,6 +305,7 @@ def _load_otel_sdk_modules() -> OTELSDKModules:
         StatusCode,
         TraceFlags,
         TraceState,
+        get_tracer_provider,
         set_span_in_context,
     )
 
@@ -307,7 +313,7 @@ def _load_otel_sdk_modules() -> OTELSDKModules:
         tracer_provider_cls=TracerProvider,
         resource_cls=Resource,
         batch_span_processor_cls=BatchSpanProcessor,
-        otlp_span_exporter_cls=OTLPSpanExporter,
+        otlp_span_exporter_cls=None,
         span_context_cls=SpanContext,
         non_recording_span_cls=NonRecordingSpan,
         trace_flags_cls=TraceFlags,
@@ -316,11 +322,30 @@ def _load_otel_sdk_modules() -> OTELSDKModules:
         status_code_cls=StatusCode,
         span_kind=SpanKind,
         set_span_in_context=set_span_in_context,
+        get_tracer_provider=get_tracer_provider,
     )
 
 
-def create_otel_control_event_sink(config: JSONObject) -> BaseControlEventSink:
-    """Create the built-in OTEL control-event sink."""
+def _load_otlp_span_exporter_cls() -> type[Any]:
+    """Import the OTLP exporter only for an Agent Control-owned pipeline."""
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # type: ignore[import-not-found]
+        OTLPSpanExporter,
+    )
+
+    return cast(type[Any], OTLPSpanExporter)
+
+
+def create_otel_control_event_sink(
+    config: JSONObject,
+    *,
+    tracer_provider: TracerProvider | None = None,
+) -> BaseControlEventSink:
+    """Create the built-in OTEL control-event sink.
+
+    An explicitly supplied or globally registered SDK provider is reused as an
+    application-owned provider. Only providers created here receive an Agent
+    Control exporter and processor and are shut down with the sink.
+    """
     resolved_config = _resolve_otel_sink_config(config)
     if not resolved_config.enabled:
         return _NoOpControlEventSink()
@@ -330,6 +355,29 @@ def create_otel_control_event_sink(config: JSONObject) -> BaseControlEventSink:
     except ImportError:
         logger.warning(_OTEL_NOOP_WARNING)
         return _NoOpControlEventSink()
+
+    external_provider: Any = tracer_provider
+    if external_provider is None:
+        global_provider = sdk_modules.get_tracer_provider()
+        if isinstance(global_provider, sdk_modules.tracer_provider_cls):
+            external_provider = global_provider
+
+    if external_provider is not None:
+        tracer = external_provider.get_tracer(_OTEL_INSTRUMENTATION_SCOPE)
+        return OTELControlEventSink(
+            tracer_provider=external_provider,
+            tracer=tracer,
+            sdk_modules=sdk_modules,
+            provider_owned=False,
+        )
+
+    exporter_cls = sdk_modules.otlp_span_exporter_cls
+    if exporter_cls is None:
+        try:
+            exporter_cls = _load_otlp_span_exporter_cls()
+        except ImportError:
+            logger.warning(_OTEL_NOOP_WARNING)
+            return _NoOpControlEventSink()
 
     resource = sdk_modules.resource_cls.create({"service.name": resolved_config.service_name})
     tracer_provider = sdk_modules.tracer_provider_cls(resource=resource)
@@ -346,7 +394,7 @@ def create_otel_control_event_sink(config: JSONObject) -> BaseControlEventSink:
         exporter_kwargs["endpoint"] = resolved_config.endpoint
     if resolved_config.headers:
         exporter_kwargs["headers"] = resolved_config.headers
-    exporter = sdk_modules.otlp_span_exporter_cls(**exporter_kwargs)
+    exporter = exporter_cls(**exporter_kwargs)
     tracer_provider.add_span_processor(sdk_modules.batch_span_processor_cls(exporter))
 
     tracer = tracer_provider.get_tracer(_OTEL_INSTRUMENTATION_SCOPE)
@@ -354,4 +402,5 @@ def create_otel_control_event_sink(config: JSONObject) -> BaseControlEventSink:
         tracer_provider=tracer_provider,
         tracer=tracer,
         sdk_modules=sdk_modules,
+        provider_owned=True,
     )

@@ -566,6 +566,7 @@ async def evaluate_controls(
         base_url=state.server_url,
         api_key=state.api_key,
         api_key_header=state.api_key_header,
+        runtime_token_header=state.runtime_token_header,
         runtime_token_cache=state.runtime_token_cache,
     ) as client:
         return await check_evaluation_with_local(

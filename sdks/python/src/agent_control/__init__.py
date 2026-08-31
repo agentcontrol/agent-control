@@ -38,6 +38,8 @@ Usage:
         )
 """
 
+from __future__ import annotations
+
 from importlib.metadata import PackageNotFoundError, version
 
 try:
@@ -51,7 +53,7 @@ import threading
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import httpx
 from agent_control_models import (
@@ -113,6 +115,7 @@ from .observability import (
     write_events,
 )
 from .otel_sink import control_event_to_otel_span
+from .runtime_auth import validate_http_field_name
 from .tracing import (
     get_current_span_id,
     get_current_trace_id,
@@ -121,6 +124,9 @@ from .tracing import (
     with_trace,
 )
 from .validation import ensure_agent_name
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import TracerProvider
 
 # Module logger
 logger = get_logger(__name__)
@@ -458,6 +464,8 @@ def init(
     policy_refresh_interval_seconds: int = 60,
     target_type: str | None = None,
     target_id: str | None = None,
+    runtime_token_header: str | None = None,
+    otel_tracer_provider: TracerProvider | None = None,
     **kwargs: object
 ) -> Agent:
     """
@@ -506,6 +514,16 @@ def init(
             returned set when both are present.
         target_id: Optional opaque target identifier. Required iff target_type
             is also supplied.
+        runtime_token_header: Optional HTTP header the runtime token is sent on
+            for evaluation requests (defaults to AGENT_CONTROL_RUNTIME_TOKEN_HEADER
+            env var or Authorization). Point this at a dedicated header (e.g.
+            X-Agent-Control-Runtime-Token) when the server runs behind a gateway
+            that reserves Authorization for its own identity JWT. The server must
+            be configured to read the same header.
+        otel_tracer_provider: Optional application-owned OpenTelemetry SDK provider.
+            Used only when observability_sink_name is ``"otel"``. If omitted,
+            the OTEL sink reuses a globally registered SDK provider when available,
+            otherwise it creates and owns a provider as before.
         **kwargs: Additional metadata to store with the agent
 
     Returns:
@@ -555,6 +573,16 @@ def init(
         raise ValueError(
             "target_type and target_id must be supplied together."
         )
+    # Validate the runtime-token header up front, before stopping the refresh
+    # loop or mutating shared session state. An explicit blank or a
+    # syntactically-invalid header must fail here rather than on the first
+    # later evaluation. (A None/unset value is fine; AgentControlClient resolves
+    # the env-var fallback and default when the eval client is built.)
+    if runtime_token_header is not None:
+        if not runtime_token_header.strip():
+            raise ValueError("runtime_token_header must not be blank.")
+        validate_http_field_name(runtime_token_header.strip())
+
     resolved_api_key_header = (
         api_key_header
         or os.getenv(AgentControlClient.API_KEY_HEADER_ENV_VAR)
@@ -588,6 +616,9 @@ def init(
         state.server_url = server_url or os.getenv('AGENT_CONTROL_URL') or 'http://localhost:8000'
         state.api_key = api_key
         state.api_key_header = resolved_api_key_header
+        # Stored raw (may be None); AgentControlClient resolves the env-var
+        # fallback and blank-handling so the rule stays in one place.
+        state.runtime_token_header = runtime_token_header
         state.runtime_token_cache.clear()
         state.target_type = target_type
         state.target_id = target_id
@@ -717,6 +748,7 @@ def init(
         enabled=observability_enabled,
         sink_name=observability_sink_name,
         sink_config=observability_sink_config,
+        otel_tracer_provider=otel_tracer_provider,
     )
     if batcher:
         logger.info("Observability enabled")
@@ -746,6 +778,7 @@ def _reset_state() -> None:
         state.server_url = None
         state.api_key = None
         state.api_key_header = None
+        state.runtime_token_header = None
         state.runtime_token_cache.clear()
         state.target_type = None
         state.target_id = None
