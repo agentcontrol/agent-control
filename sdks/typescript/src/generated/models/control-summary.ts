@@ -103,7 +103,7 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
     execution: z.optional(z.nullable(types.string())),
     id: types.number(),
     name: types.string(),
-    source: z._default(ControlSource$inboundSchema, "custom"),
+    source: ControlSource$inboundSchema,
     stages: z.optional(z.nullable(z.array(types.string()))),
     step_types: z.optional(z.nullable(z.array(types.string()))),
     tags: types.optional(z.array(types.string())),

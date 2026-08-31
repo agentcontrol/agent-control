@@ -84,7 +84,7 @@ export const GetControlResponse$inboundSchema: z.ZodMiniType<
     ]),
     id: types.number(),
     name: types.string(),
-    source: z._default(ControlSource$inboundSchema, "custom"),
+    source: ControlSource$inboundSchema,
   }),
   z.transform((v) => {
     return remap$(v, {
