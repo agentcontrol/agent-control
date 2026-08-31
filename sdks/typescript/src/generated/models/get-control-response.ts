@@ -49,7 +49,7 @@ export type GetControlResponse = {
   /**
    * Whether the control is user-created or provided as a preset.
    */
-  source: ControlSource;
+  source?: ControlSource | undefined;
 };
 
 /** @internal */
@@ -84,7 +84,7 @@ export const GetControlResponse$inboundSchema: z.ZodMiniType<
     ]),
     id: types.number(),
     name: types.string(),
-    source: ControlSource$inboundSchema,
+    source: types.optional(ControlSource$inboundSchema),
   }),
   z.transform((v) => {
     return remap$(v, {

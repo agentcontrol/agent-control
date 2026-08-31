@@ -359,7 +359,7 @@ class GetControlResponse(BaseModel):
         None, description="Source control ID when this control is a clone."
     )
     source: ControlSource = Field(
-        ...,
+        ControlSource.CUSTOM,
         description="Whether the control is user-created or provided as a preset.",
     )
     data: ControlDefinition | UnrenderedTemplateControl = Field(
@@ -578,7 +578,7 @@ class ControlSummary(BaseModel):
         None, description="Source control ID when this control is a clone."
     )
     source: ControlSource = Field(
-        ...,
+        ControlSource.CUSTOM,
         description="Whether the control is user-created or provided as a preset.",
     )
     description: str | None = Field(None, description="Control description")
