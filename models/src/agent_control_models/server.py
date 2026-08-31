@@ -110,6 +110,13 @@ class ConflictMode(StrEnum):
     OVERWRITE = "overwrite"
 
 
+class ControlSource(StrEnum):
+    """Origin of a control exposed by the control APIs."""
+
+    CUSTOM = "custom"
+    PRESET = "preset"
+
+
 class InitAgentEvaluatorRemoval(BaseModel):
     """Details for an evaluator removed during overwrite mode."""
 
@@ -351,6 +358,10 @@ class GetControlResponse(BaseModel):
     cloned_from_control_id: int | None = Field(
         None, description="Source control ID when this control is a clone."
     )
+    source: ControlSource = Field(
+        ControlSource.CUSTOM,
+        description="Whether the control is user-created or provided as a preset.",
+    )
     data: ControlDefinition | UnrenderedTemplateControl = Field(
         description=(
             "Control configuration data. A ControlDefinition for raw/rendered "
@@ -565,6 +576,10 @@ class ControlSummary(BaseModel):
     name: str = Field(..., description="Control name")
     cloned_from_control_id: int | None = Field(
         None, description="Source control ID when this control is a clone."
+    )
+    source: ControlSource = Field(
+        ControlSource.CUSTOM,
+        description="Whether the control is user-created or provided as a preset.",
     )
     description: str | None = Field(None, description="Control description")
     enabled: bool = Field(True, description="Whether control is enabled")

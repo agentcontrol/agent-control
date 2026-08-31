@@ -992,6 +992,7 @@ def test_create_control_trimmed_name_stored(client: TestClient) -> None:
     get_resp = client.get(f"/api/v1/controls/{control_id}")
     assert get_resp.status_code == 200
     assert get_resp.json()["name"] == "trimmed-control"
+    assert get_resp.json()["source"] == "custom"
 
 
 def test_patch_control_trimmed_name_stored(client: TestClient) -> None:

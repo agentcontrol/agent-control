@@ -12,6 +12,7 @@ import {
   ControlDefinitionOutput,
   ControlDefinitionOutput$inboundSchema,
 } from "./control-definition-output.js";
+import { ControlSource, ControlSource$inboundSchema } from "./control-source.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
   UnrenderedTemplateControl,
@@ -45,6 +46,10 @@ export type GetControlResponse = {
    * Control name
    */
   name: string;
+  /**
+   * Whether the control is user-created or provided as a preset.
+   */
+  source: ControlSource;
 };
 
 /** @internal */
@@ -79,6 +84,7 @@ export const GetControlResponse$inboundSchema: z.ZodMiniType<
     ]),
     id: types.number(),
     name: types.string(),
+    source: z._default(ControlSource$inboundSchema, "custom"),
   }),
   z.transform((v) => {
     return remap$(v, {

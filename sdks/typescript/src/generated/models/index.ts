@@ -27,6 +27,7 @@ export * from "./control-execution-event.js";
 export * from "./control-match.js";
 export * from "./control-scope.js";
 export * from "./control-selector.js";
+export * from "./control-source.js";
 export * from "./control-stats-response.js";
 export * from "./control-stats.js";
 export * from "./control-summary.js";
