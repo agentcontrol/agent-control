@@ -191,6 +191,38 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Luna out-of-box SLM control scorer IDs.
+    #
+    # `galileo.luna` invokes a specific scorer instance by UUID, and that
+    # UUID is minted per Galileo project/org when the scorer is configured —
+    # there is no stable, org-independent preset ID to embed as a literal.
+    # Each out-of-box Luna control is only seeded when its scorer ID is set;
+    # unset scorers are silently skipped (see `luna_out_of_box_control_templates`).
+    luna_input_toxicity_scorer_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_CONTROL_LUNA_INPUT_TOXICITY_SCORER_ID"),
+    )
+    luna_output_toxicity_scorer_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_CONTROL_LUNA_OUTPUT_TOXICITY_SCORER_ID"),
+    )
+    luna_input_tone_scorer_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_CONTROL_LUNA_INPUT_TONE_SCORER_ID"),
+    )
+    luna_output_tone_scorer_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_CONTROL_LUNA_OUTPUT_TONE_SCORER_ID"),
+    )
+    luna_input_sexism_scorer_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_CONTROL_LUNA_INPUT_SEXISM_SCORER_ID"),
+    )
+    luna_output_sexism_scorer_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_CONTROL_LUNA_OUTPUT_SEXISM_SCORER_ID"),
+    )
+
     # Prometheus metrics settings
     prometheus_metrics_prefix: str = _env_alias_field(
         "agent_control_server",
