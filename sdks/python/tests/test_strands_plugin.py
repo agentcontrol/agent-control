@@ -191,6 +191,29 @@ async def test_evaluate_and_enforce_safe_result(agent_control_hook):
             step_type="llm",
             stage="pre"
         )
+        assert mock_evaluate.await_args.kwargs["canonical_step_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_and_enforce_forwards_canonical_tool_name(agent_control_hook):
+    """Strands tool hooks retain the bare tool name as canonical identity."""
+    with patch(
+        "agent_control.integrations.strands.plugin.agent_control.evaluate_controls"
+    ) as mock_evaluate:
+        mock_result = MagicMock(spec=EvaluationResult)
+        mock_result.is_safe = True
+        mock_result.matches = []
+        mock_result.errors = []
+        mock_evaluate.return_value = mock_result
+
+        await agent_control_hook._evaluate_and_enforce(
+            step_name="web_search",
+            input={},
+            step_type="tool",
+            stage="pre",
+        )
+
+        assert mock_evaluate.await_args.kwargs["canonical_step_name"] == "web_search"
 
 
 @pytest.mark.asyncio

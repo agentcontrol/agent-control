@@ -48,6 +48,7 @@ async def _evaluate_and_enforce(
     agent_name: str,
     step_name: str,
     *,
+    canonical_step_name: str | None = None,
     input: Any | None = None,
     output: Any | None = None,
     context: dict[str, Any] | None = None,
@@ -58,6 +59,7 @@ async def _evaluate_and_enforce(
 
     result = await agent_control.evaluate_controls(
         step_name=step_name,
+        canonical_step_name=canonical_step_name,
         input=input,
         output=output,
         context=context,

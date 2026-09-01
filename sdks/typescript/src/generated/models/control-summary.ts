@@ -16,6 +16,10 @@ import {
   ControlAttachments,
   ControlAttachments$inboundSchema,
 } from "./control-attachments.js";
+import {
+  ControlSource,
+  ControlSource$inboundSchema,
+} from "./control-source.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
@@ -54,6 +58,10 @@ export type ControlSummary = {
    * Control name
    */
   name: string;
+  /**
+   * Origin of a control exposed by the control APIs.
+   */
+  source?: ControlSource | undefined;
   /**
    * Evaluation stages in scope
    */
@@ -98,6 +106,7 @@ export const ControlSummary$inboundSchema: z.ZodMiniType<
     execution: z.optional(z.nullable(types.string())),
     id: types.number(),
     name: types.string(),
+    source: types.optional(ControlSource$inboundSchema),
     stages: z.optional(z.nullable(z.array(types.string()))),
     step_types: z.optional(z.nullable(z.array(types.string()))),
     tags: types.optional(z.array(types.string())),

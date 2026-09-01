@@ -31,6 +31,7 @@ def llm_step_payload() -> Step:
     "path,expected",
     [
         ("name", "search_database"),
+        ("canonical_name", "search_database"),
         ("input.query", "SELECT * FROM users"),
         ("input.limit", 10),
         ("input.nested.key", "value"),
@@ -83,6 +84,31 @@ def test_select_data_none_handling():
 
     # Then: it should return None instead of raising an error
     assert result is None
+
+
+def test_select_data_prefers_explicit_canonical_name() -> None:
+    payload = Step(
+        type="tool",
+        name="writer.web_search",
+        canonical_name="web_search",
+        input={},
+    )
+
+    assert select_data(payload, "canonical_name") == "web_search"
+
+
+def test_wildcard_preserves_legacy_shape_when_canonical_name_is_present() -> None:
+    payload = Step(
+        type="tool",
+        name="writer.web_search",
+        canonical_name="web_search",
+        input={},
+    )
+
+    selected = select_data(payload, "*")
+
+    assert selected == payload.model_dump(mode="json", exclude={"canonical_name"})
+    assert "canonical_name" not in selected
 
 
 def test_list_selection():

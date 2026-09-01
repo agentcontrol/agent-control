@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator
@@ -12,6 +13,13 @@ import pytest
 from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_models import ConditionNode
 from agent_control_models.errors import ErrorCode, ErrorReason
+from fastapi.testclient import TestClient
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
+from starlette.requests import Request
+
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.db import get_async_db
 from agent_control_server.endpoints import controls as controls_module
@@ -23,11 +31,6 @@ from agent_control_server.models import (
     ControlBinding,
     ControlVersion,
 )
-from fastapi.testclient import TestClient
-from sqlalchemy import select, text
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
 from .conftest import engine
 from .utils import VALID_CONTROL_PAYLOAD
@@ -38,6 +41,22 @@ def _make_integrity_error(constraint_name: str) -> IntegrityError:
     orig = Exception(f'duplicate key value violates unique constraint "{constraint_name}"')
     setattr(orig, "diag", diag)
     return IntegrityError("statement", {}, orig)
+
+
+def _request(*, query: str = "", body: bytes = b"") -> Request:
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [],
+            "query_string": query.encode(),
+        },
+        receive,
+    )
 
 
 def _create_control(
@@ -473,6 +492,138 @@ def test_clone_and_bind_context_tolerates_invalid_body_shapes(
     assert bad_target_resp.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_clone_and_bind_context_returns_empty_for_malformed_json() -> None:
+    malformed_request = _request(body=b"{")
+    invalid_target_request = _request(
+        body=json.dumps(
+            {
+                "target_binding": {
+                    "target_type": "log_stream",
+                    "target_id": "",
+                }
+            }
+        ).encode()
+    )
+
+    assert await controls_module._clone_and_bind_context(malformed_request) == {}
+    assert await controls_module._clone_and_bind_context(invalid_target_request) == {}
+
+
+def test_attachment_target_context_rejects_invalid_values() -> None:
+    invalid_type = _request(query="attachment_target_type=&attachment_target_id=target")
+    invalid_id = _request(query="attachment_target_type=log_stream&attachment_target_id=")
+
+    assert controls_module._attachment_target_context(invalid_type) == {}
+    assert controls_module._attachment_target_context(invalid_id) == {}
+
+
+@pytest.mark.asyncio
+async def test_optional_attachment_authorization_skips_false_flag() -> None:
+    request = _request(query="include_attachments=false")
+
+    assert await controls_module._optional_attachment_target_principal(request) is None
+
+
+def test_enabled_from_stored_payload_defaults_for_non_mapping() -> None:
+    assert controls_module._enabled_from_stored_payload("invalid") is True
+
+
+@pytest.mark.asyncio
+async def test_seed_out_of_box_controls_failure_is_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seed = AsyncMock(side_effect=RuntimeError("database unavailable"))
+    monkeypatch.setattr(controls_module, "seed_out_of_box_controls", seed)
+
+    await controls_module._seed_out_of_box_controls_for_namespace(
+        namespace_key="seed-failure-namespace"
+    )
+
+    seed.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_seed_out_of_box_controls_deduplicates_concurrent_namespace_requests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: one namespace reconciliation that remains in flight
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def seed(**_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(controls_module, "seed_out_of_box_controls", seed)
+
+    # When: two list requests reconcile the same namespace concurrently
+    first = asyncio.create_task(
+        controls_module._seed_out_of_box_controls_for_namespace(
+            namespace_key="shared-reconciliation-namespace"
+        )
+    )
+    await started.wait()
+    second = asyncio.create_task(
+        controls_module._seed_out_of_box_controls_for_namespace(
+            namespace_key="shared-reconciliation-namespace"
+        )
+    )
+    await asyncio.sleep(0)
+    release.set()
+    await asyncio.gather(first, second)
+
+    # Then: both requests joined one reconciliation
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_seed_out_of_box_controls_bounds_reconciliation_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: a reconciliation that cannot complete within the read-path deadline
+    cancelled = asyncio.Event()
+
+    async def seed(**_kwargs: object) -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(controls_module, "seed_out_of_box_controls", seed)
+    monkeypatch.setattr(controls_module, "_OUT_OF_BOX_RECONCILIATION_TIMEOUT_SECONDS", 0.01)
+
+    # When: a list request starts reconciliation
+    await controls_module._seed_out_of_box_controls_for_namespace(
+        namespace_key="bounded-reconciliation-namespace"
+    )
+
+    # Then: the deadline cancels the database work and returns control to the request
+    assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_resolve_clone_name_reports_generated_name_exhaustion() -> None:
+    control_service = MagicMock()
+    control_service.active_control_name_exists = AsyncMock(return_value=True)
+
+    with pytest.raises(APIError) as exc_info:
+        await controls_module._resolve_clone_name(
+            control_service,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
+            source_id=1,
+            source_name="source-control",
+            requested_name=None,
+        )
+
+    assert exc_info.value.error_code == ErrorCode.CONTROL_NAME_CONFLICT
+    assert control_service.active_control_name_exists.await_count == 5
+
+
 def test_clone_and_bind_context_drops_invalid_target_fields(
     client: TestClient,
 ) -> None:
@@ -841,6 +992,7 @@ def test_create_control_trimmed_name_stored(client: TestClient) -> None:
     get_resp = client.get(f"/api/v1/controls/{control_id}")
     assert get_resp.status_code == 200
     assert get_resp.json()["name"] == "trimmed-control"
+    assert get_resp.json()["source"] == "custom"
 
 
 def test_patch_control_trimmed_name_stored(client: TestClient) -> None:

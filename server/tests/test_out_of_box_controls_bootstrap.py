@@ -7,8 +7,17 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from agent_control_evaluators.json.config import JSONEvaluatorConfig
+from agent_control_evaluators.json.evaluator import JSONEvaluator
+from agent_control_evaluators.list.config import ListEvaluatorConfig
+from agent_control_evaluators.list.evaluator import ListEvaluator
+from agent_control_evaluators.regex.config import RegexEvaluatorConfig
+from agent_control_evaluators.regex.evaluator import RegexEvaluator
+from agent_control_evaluators.sql import SQLEvaluator, SQLEvaluatorConfig
+from agent_control_models import EvaluatorSpec
 from agent_control_server.bootstrap import out_of_box_controls as bootstrap_module
 from agent_control_server.bootstrap.out_of_box_controls import (
+    OUT_OF_BOX_CONTROL_TEMPLATES,
     OutOfBoxControlTemplate,
     OutOfBoxSeedResult,
     default_out_of_box_namespace_key,
@@ -25,11 +34,26 @@ from agent_control_server.models import (
 )
 from agent_control_server.services.controls import ControlService
 from pydantic import ValidationError
-from sqlalchemy import Table, func, select
+from sqlalchemy import Table, event, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .conftest import AsyncSessionTest, engine
+from .conftest import AsyncSessionTest, async_engine, engine
+
+_EXPECTED_OOB_CONTROL_NAMES = (
+    "ssn-match",
+    "credit-card-number-match",
+    "phone-number-match",
+    "dangerous-shell-command-match",
+    "high-value-action-requires-approval",
+    "outbound-communication-requires-approval",
+    "example-tool-allowlist",
+    "owasp-llm05-select-only-sql",
+    "owasp-llm10-bounded-sql-query",
+    "owasp-llm02-common-credential-output-match",
+    "owasp-llm05-dangerous-uri-output-match",
+)
+_AVAILABLE_PHASE_2_EVALUATORS = {"regex", "json", "list", "sql"}
 
 
 def _control_payload(*, evaluator_name: str = "regex") -> dict[str, object]:
@@ -79,8 +103,50 @@ def _count_table_rows(table: Table) -> int:
         return cast(int, session.scalar(select(func.count()).select_from(table)))
 
 
+def _oob_evaluator_spec(name: str) -> EvaluatorSpec:
+    template = next(template for template in OUT_OF_BOX_CONTROL_TEMPLATES if template.name == name)
+    leaf = template.control.primary_leaf()
+    assert leaf is not None
+    leaf_parts = leaf.leaf_parts()
+    assert leaf_parts is not None
+    _, evaluator = leaf_parts
+    return evaluator
+
+
 def test_default_namespace_key_uses_standalone_namespace() -> None:
     assert default_out_of_box_namespace_key() == DEFAULT_NAMESPACE_KEY
+
+
+def test_out_of_box_catalog_contains_phase_2_templates() -> None:
+    assert tuple(template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES) == (
+        _EXPECTED_OOB_CONTROL_NAMES
+    )
+    assert {
+        evaluator
+        for template in OUT_OF_BOX_CONTROL_TEMPLATES
+        for evaluator in template.required_evaluators
+    } == _AVAILABLE_PHASE_2_EVALUATORS
+    approved_tools = next(
+        template
+        for template in OUT_OF_BOX_CONTROL_TEMPLATES
+        if template.name == "example-tool-allowlist"
+    )
+    approved_tools_leaf = approved_tools.control.primary_leaf()
+    assert approved_tools_leaf is not None
+    assert approved_tools_leaf.selector.path == "canonical_name"
+    sql_controls = [
+        template
+        for template in OUT_OF_BOX_CONTROL_TEMPLATES
+        if "sql" in template.control.tags
+    ]
+    assert len(sql_controls) == 2
+    assert all(template.control.scope.step_name_regex for template in sql_controls)
+    select_only_control = next(
+        template
+        for template in sql_controls
+        if template.name == "owasp-llm05-select-only-sql"
+    )
+    assert "does not guarantee read-only execution" in select_only_control.control.description
 
 
 def test_missing_required_evaluators_returns_sorted_names() -> None:
@@ -227,6 +293,85 @@ async def test_seed_creates_control_version_in_namespace_without_bindings() -> N
 
 
 @pytest.mark.asyncio
+async def test_seed_default_catalog_creates_all_controls_without_bindings() -> None:
+    result = await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators=_AVAILABLE_PHASE_2_EVALUATORS,
+    )
+
+    assert result.created == _EXPECTED_OOB_CONTROL_NAMES
+    assert result.skipped_existing == ()
+    assert result.skipped_missing_evaluator == ()
+    assert result.skipped_conflict == ()
+
+    controls = _fetch_controls()
+    assert tuple(control.name for control in controls) == _EXPECTED_OOB_CONTROL_NAMES
+    assert {control.namespace_key for control in controls} == {DEFAULT_NAMESPACE_KEY}
+    assert len(_fetch_versions()) == len(_EXPECTED_OOB_CONTROL_NAMES)
+    assert _count_table_rows(policy_controls) == 0
+    assert _count_table_rows(agent_controls) == 0
+    assert _count_table_rows(ControlBinding.__table__) == 0
+
+
+@pytest.mark.asyncio
+async def test_seed_default_catalog_is_idempotent() -> None:
+    await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators=_AVAILABLE_PHASE_2_EVALUATORS,
+    )
+
+    result = await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators=_AVAILABLE_PHASE_2_EVALUATORS,
+    )
+
+    assert result.created == ()
+    assert result.skipped_existing == _EXPECTED_OOB_CONTROL_NAMES
+    assert len(_fetch_controls()) == len(_EXPECTED_OOB_CONTROL_NAMES)
+    assert len(_fetch_versions()) == len(_EXPECTED_OOB_CONTROL_NAMES)
+
+
+@pytest.mark.asyncio
+async def test_seed_existing_catalog_uses_one_bulk_lookup() -> None:
+    # Given: a namespace whose complete catalog is already seeded
+    await seed_out_of_box_controls(
+        session_factory=AsyncSessionTest,
+        namespace_key=DEFAULT_NAMESPACE_KEY,
+        available_evaluators=_AVAILABLE_PHASE_2_EVALUATORS,
+    )
+    statements: list[str] = []
+
+    def record_statement(
+        _conn: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(async_engine.sync_engine, "before_cursor_execute", record_statement)
+    try:
+        # When: reconciling the already-seeded namespace
+        result = await seed_out_of_box_controls(
+            session_factory=AsyncSessionTest,
+            namespace_key=DEFAULT_NAMESPACE_KEY,
+            available_evaluators=_AVAILABLE_PHASE_2_EVALUATORS,
+        )
+    finally:
+        event.remove(async_engine.sync_engine, "before_cursor_execute", record_statement)
+
+    # Then: all seed identities are resolved by one database statement
+    assert result.skipped_existing == _EXPECTED_OOB_CONTROL_NAMES
+    assert len(statements) == 1
+    assert statements[0].lstrip().startswith("SELECT")
+
+
+@pytest.mark.asyncio
 async def test_seed_is_idempotent_for_existing_active_control_names() -> None:
     template = _template(name="oob-idempotent-control")
 
@@ -367,25 +512,16 @@ async def test_seed_treats_duplicate_insert_integrity_error_as_skip(
         templates=(template,),
     )
 
-    async def active_control_name_exists(
+    async def find_existing_seed_controls(
         self: ControlService,
-        name: str,
         *,
         namespace_key: str,
-        exclude_control_id: int | None = None,
-    ) -> bool:
-        return False
+        source_ids: object,
+        names: object,
+    ) -> tuple[frozenset[str], frozenset[str]]:
+        return frozenset(), frozenset()
 
-    async def seed_source_exists(
-        self: ControlService,
-        seed_source_id: str,
-        *,
-        namespace_key: str,
-    ) -> bool:
-        return False
-
-    monkeypatch.setattr(ControlService, "active_control_name_exists", active_control_name_exists)
-    monkeypatch.setattr(ControlService, "seed_source_exists", seed_source_exists)
+    monkeypatch.setattr(ControlService, "find_existing_seed_controls", find_existing_seed_controls)
 
     result = await seed_out_of_box_controls(
         session_factory=AsyncSessionTest,
@@ -442,3 +578,228 @@ def test_seed_conflict_recognizes_seed_constraint_diagnostic() -> None:
 
     # When/Then: the pure classifier recognizes the race as a seed conflict
     assert bootstrap_module._is_control_seed_conflict(error) is True
+
+
+@pytest.mark.asyncio
+async def test_regex_out_of_box_controls_match_representative_payloads() -> None:
+    ssn_spec = _oob_evaluator_spec("ssn-match")
+    ssn_evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(ssn_spec.config))
+    ssn_result = await ssn_evaluator.evaluate("Customer SSN is 123-45-6789.")
+    assert ssn_result.matched is True
+
+    shell_spec = _oob_evaluator_spec("dangerous-shell-command-match")
+    shell_evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(shell_spec.config))
+    for command in (
+        "sudo rm -rf /",
+        "rm -rf /",
+        "rm -rf ~",
+        "chmod -R 777 /",
+        "chown -R root /",
+    ):
+        shell_result = await shell_evaluator.evaluate(command)
+        assert shell_result.matched is True, command
+
+
+@pytest.mark.asyncio
+async def test_credit_card_control_matches_known_networks_and_ignores_generic_digit_runs() -> None:
+    # Given: the credit-card-number-match control
+    spec = _oob_evaluator_spec("credit-card-number-match")
+    evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating real card numbers from each supported network, formatted
+    # and unformatted, alongside unrelated numbers with a similar digit count
+    network_results = [
+        await evaluator.evaluate(number)
+        for number in (
+            "4111 1111 1111 1111",  # Visa
+            "4111111111111111",  # Visa, unformatted
+            "4111-1111-1111-1111",  # Visa, dash-separated
+            "5500 0000 0000 0004",  # Mastercard (51-55 range)
+            "2223 0000 4841 0010",  # Mastercard (2221-2720 range)
+            "3782 822463 10005",  # American Express
+            "378282246310005",  # American Express, unformatted
+            "6011 0000 0000 0004",  # Discover
+        )
+    ]
+    generic_digit_results = [
+        await evaluator.evaluate(text)
+        for text in (
+            "Your order 1234567890123456 has shipped",
+            "Invoice #: 987654321098765",
+            "Tracking: 19999999999999999",
+            "Account number: 12345678901234",
+        )
+    ]
+
+    # Then: only genuine card-shaped numbers are blocked; other long digit
+    # runs (order/invoice/tracking/account numbers) are not false positives
+    assert all(result.matched is True for result in network_results)
+    assert all(result.matched is False for result in generic_digit_results)
+
+
+@pytest.mark.asyncio
+async def test_dangerous_shell_control_matches_equivalent_recursive_rm_forms() -> None:
+    # Given: the destructive shell command control
+    shell_spec = _oob_evaluator_spec("dangerous-shell-command-match")
+    shell_evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(shell_spec.config))
+
+    # When: evaluating equivalent recursive deletion spellings and a scoped deletion
+    destructive_results = [
+        await shell_evaluator.evaluate(command)
+        for command in (
+            'rm -rf "$HOME"',
+            "rm -rf ~/",
+            "rm -fr /",
+            "rm -r -f /",
+            "rm -f -r '$HOME/'",
+        )
+    ]
+    scoped_results = [
+        await shell_evaluator.evaluate("rm -rf /tmp/build-output"),
+        await shell_evaluator.evaluate("sudo rm -rf /tmp/cache"),
+    ]
+
+    # Then: equivalent root/home deletions are blocked without blocking scoped deletion
+    assert all(result.matched is True for result in destructive_results)
+    assert all(result.matched is False for result in scoped_results)
+
+
+@pytest.mark.asyncio
+async def test_json_out_of_box_controls_ignore_caller_controlled_approval_flags() -> None:
+    high_value_spec = _oob_evaluator_spec("high-value-action-requires-approval")
+    high_value_evaluator = JSONEvaluator(
+        JSONEvaluatorConfig.model_validate(high_value_spec.config)
+    )
+
+    high_value_result = await high_value_evaluator.evaluate({"amount": 25000})
+    low_value_result = await high_value_evaluator.evaluate({"amount": 250})
+    caller_approved_results = [
+        await high_value_evaluator.evaluate({"amount": 25000, "approved": True}),
+        await high_value_evaluator.evaluate(
+            {"amount": 25000, "approval": {"approved": True}}
+        ),
+    ]
+
+    assert high_value_result.matched is True
+    assert low_value_result.matched is False
+    assert all(result.matched is True for result in caller_approved_results)
+
+    outbound_spec = _oob_evaluator_spec("outbound-communication-requires-approval")
+    outbound_evaluator = JSONEvaluator(JSONEvaluatorConfig.model_validate(outbound_spec.config))
+
+    outbound_result = await outbound_evaluator.evaluate(
+        {"to": "customer@example.com", "message": "Hello"}
+    )
+    internal_result = await outbound_evaluator.evaluate({"query": "customer history"})
+    caller_approved_outbound_results = [
+        await outbound_evaluator.evaluate(
+            {"to": "customer@example.com", "message": "Hello", "approved": True}
+        ),
+        await outbound_evaluator.evaluate(
+            {
+                "to": "customer@example.com",
+                "message": "Hello",
+                "approval": {"approved": True},
+            }
+        ),
+    ]
+
+    assert outbound_result.matched is True
+    assert internal_result.matched is False
+    assert all(result.matched is True for result in caller_approved_outbound_results)
+
+
+@pytest.mark.asyncio
+async def test_list_out_of_box_control_matches_unapproved_tools() -> None:
+    tool_spec = _oob_evaluator_spec("example-tool-allowlist")
+    tool_evaluator = ListEvaluator(ListEvaluatorConfig.model_validate(tool_spec.config))
+
+    delete_result = await tool_evaluator.evaluate("delete_user")
+    search_result = await tool_evaluator.evaluate("web_search")
+
+    assert delete_result.matched is True
+    assert search_result.matched is False
+
+
+@pytest.mark.asyncio
+async def test_owasp_credential_control_matches_common_secret_formats() -> None:
+    # Given: the OWASP-aligned common credential output control
+    spec = _oob_evaluator_spec("owasp-llm02-common-credential-output-match")
+    evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating representative secret and non-secret output
+    private_key_result = await evaluator.evaluate("-----BEGIN OPENSSH PRIVATE KEY-----\nredacted")
+    aws_key_result = await evaluator.evaluate("Credential: AKIAIOSFODNN7EXAMPLE")
+    safe_result = await evaluator.evaluate("The operation completed successfully.")
+
+    # Then: recognizable credentials are blocked while ordinary output passes
+    assert private_key_result.matched is True
+    assert aws_key_result.matched is True
+    assert safe_result.matched is False
+
+
+@pytest.mark.asyncio
+async def test_owasp_dangerous_uri_control_matches_active_content_schemes() -> None:
+    # Given: the OWASP-aligned dangerous URI output control
+    spec = _oob_evaluator_spec("owasp-llm05-dangerous-uri-output-match")
+    evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating executable, active-content, and ordinary HTTPS links
+    javascript_result = await evaluator.evaluate(
+        '<a href="JaVaScRiPt:alert(document.domain)">click</a>'
+    )
+    data_uri_result = await evaluator.evaluate("data:image/svg+xml,<svg></svg>")
+    safe_result = await evaluator.evaluate("https://docs.example.com/safety")
+
+    # Then: active-content schemes are blocked while HTTPS passes
+    assert javascript_result.matched is True
+    assert data_uri_result.matched is True
+    assert safe_result.matched is False
+
+
+@pytest.mark.asyncio
+async def test_owasp_select_only_sql_control_enforces_syntax_without_read_only_claim() -> None:
+    # Given: the OWASP-aligned syntactic SELECT-only SQL control
+    spec = _oob_evaluator_spec("owasp-llm05-select-only-sql")
+    evaluator = SQLEvaluator(SQLEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating SELECT, mutating, table-creating, and stateful-function SQL
+    select_result = await evaluator.evaluate("SELECT id FROM users")
+    delete_result = await evaluator.evaluate("DELETE FROM users")
+    select_into_result = await evaluator.evaluate("SELECT * INTO backup FROM users")
+    multiple_result = await evaluator.evaluate("SELECT id FROM users; DROP TABLE users")
+    stateful_select_results = [
+        await evaluator.evaluate("SELECT setval('seq', 42) LIMIT 1"),
+        await evaluator.evaluate("SELECT pg_advisory_lock(42) LIMIT 1"),
+        await evaluator.evaluate("SELECT user_defined_function() LIMIT 1"),
+    ]
+
+    # Then: structural mutations are blocked, while SELECT functions remain a DB-role concern
+    assert select_result.matched is False
+    assert delete_result.matched is True
+    assert select_into_result.matched is True
+    assert multiple_result.matched is True
+    assert all(result.matched is False for result in stateful_select_results)
+
+
+@pytest.mark.asyncio
+async def test_owasp_bounded_sql_control_enforces_result_and_complexity_limits() -> None:
+    # Given: the OWASP-aligned bounded SQL query control
+    spec = _oob_evaluator_spec("owasp-llm10-bounded-sql-query")
+    evaluator = SQLEvaluator(SQLEvaluatorConfig.model_validate(spec.config))
+
+    # When: evaluating bounded, unbounded, and oversized result windows
+    bounded_result = await evaluator.evaluate("SELECT id FROM users LIMIT 100")
+    missing_limit_result = await evaluator.evaluate("SELECT id FROM users")
+    oversized_window_result = await evaluator.evaluate("SELECT id FROM users LIMIT 1000 OFFSET 1")
+    indeterminate_results = [
+        await evaluator.evaluate("SELECT * FROM users LIMIT $1"),
+        await evaluator.evaluate("SELECT * FROM users LIMIT (1000 + 1)"),
+        await evaluator.evaluate("SELECT * FROM users LIMIT 1000 OFFSET $1"),
+    ]
+
+    # Then: only the bounded query within the configured result window passes
+    assert bounded_result.matched is False
+    assert missing_limit_result.matched is True
+    assert oversized_window_result.matched is True
+    assert all(result.matched is True for result in indeterminate_results)

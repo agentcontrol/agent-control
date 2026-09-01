@@ -27,7 +27,8 @@ class ControlSelector(BaseModel):
         default="*",
         description=(
             "Path to data using dot notation. "
-            "Examples: 'input', 'output', 'context.user_id', 'name', 'type', '*'"
+            "Examples: 'input', 'output', 'context.user_id', 'name', "
+            "'canonical_name', 'type', '*'"
         ),
     )
 
@@ -43,7 +44,15 @@ class ControlSelector(BaseModel):
             )
 
         # Valid root fields
-        valid_roots = {"input", "output", "name", "type", "context", "*"}
+        valid_roots = {
+            "input",
+            "output",
+            "name",
+            "canonical_name",
+            "type",
+            "context",
+            "*",
+        }
         root = v.split(".")[0]
 
         if root not in valid_roots:
@@ -61,6 +70,7 @@ class ControlSelector(BaseModel):
                 {"path": "input"},
                 {"path": "*"},
                 {"path": "name"},
+                {"path": "canonical_name"},
                 {"path": "output"},
             ]
         }

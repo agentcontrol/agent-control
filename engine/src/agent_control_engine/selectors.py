@@ -16,7 +16,12 @@ def select_data(step: Step, path: str) -> Any:
         The selected value, or None if the path doesn't exist.
     """
     if not path or path == "*":
-        return step.model_dump(mode="json")
+        # Preserve the original wildcard contract as Step gains opt-in fields.
+        # New fields must be selected explicitly so strict JSON controls written
+        # against the legacy full-step shape do not change behavior.
+        return step.model_dump(mode="json", exclude={"canonical_name"})
+    if path == "canonical_name":
+        return step.canonical_name or step.name
 
     parts = path.split(".")
     current: Any = step

@@ -517,6 +517,7 @@ async def check_evaluation_with_local(
 async def evaluate_controls(
     step_name: str,
     *,
+    canonical_step_name: str | None = None,
     input: Any | None = None,
     output: Any | None = None,
     context: dict[str, Any] | None = None,
@@ -529,6 +530,10 @@ async def evaluate_controls(
     span_id: str | None = None,
 ) -> EvaluationResult:
     """Evaluate controls for a step.
+
+    ``canonical_step_name`` is an optional integration-independent identity for
+    qualified tool names, such as ``web_search`` for ``writer.web_search``.
+    Integrations should leave it unset when they cannot provide that identity.
 
     When ``target_type`` and ``target_id`` are both supplied, the request
     is target-bearing: the server merges target bindings into the
@@ -547,6 +552,7 @@ async def evaluate_controls(
     step_dict: dict[str, Any] = {
         "type": step_type,
         "name": step_name,
+        "canonical_name": canonical_step_name,
         "input": input if input is not None else default_value,
         "output": output if output is not None else default_value,
     }

@@ -262,6 +262,12 @@ class TestSQLOperations:
         assert result.error is None
         assert result.matched is True
 
+        # PostgreSQL SELECT INTO creates a table despite its SELECT root node.
+        result = await evaluator.evaluate("SELECT * INTO backup FROM users")
+        assert result.error is None
+        assert result.matched is True
+        assert "CREATE" in result.metadata["blocked"]
+
     @pytest.mark.asyncio
     async def test_block_ddl_flag(self):
         """Should block all DDL operations when block_ddl=True."""
@@ -856,14 +862,35 @@ class TestSQLLimits:
 
     @pytest.mark.asyncio
     async def test_limit_all_allowed(self):
-        """Should allow LIMIT ALL (indeterminate limits are allowed)."""
+        """Should allow LIMIT ALL when LIMIT presence is not required."""
         config = SQLEvaluatorConfig(max_limit=1000)
         evaluator = SQLEvaluator(config)
 
-        # LIMIT ALL should be allowed (indeterminate limits are skipped)
+        # PostgreSQL normalizes LIMIT ALL to an omitted LIMIT. max_limit alone
+        # only constrains a present numeric limit; require_limit blocks this form.
         result = await evaluator.evaluate("SELECT * FROM users LIMIT ALL")
         assert result.error is None
         assert result.matched is False
+
+    @pytest.mark.asyncio
+    async def test_indeterminate_limit_and_offset_fail_closed(self):
+        """Parameterized or computed bounds must not bypass configured maxima."""
+        config = SQLEvaluatorConfig(max_limit=1000, max_result_window=1000)
+        evaluator = SQLEvaluator(config)
+
+        results = [
+            await evaluator.evaluate("SELECT * FROM users LIMIT $1"),
+            await evaluator.evaluate("SELECT * FROM users LIMIT (1000 + 1)"),
+            await evaluator.evaluate("SELECT * FROM users LIMIT 1000 OFFSET $1"),
+        ]
+
+        assert all(result.error is None for result in results)
+        assert all(result.matched is True for result in results)
+        assert [result.metadata["violation"] for result in results] == [
+            "indeterminate_limit",
+            "indeterminate_limit",
+            "indeterminate_offset",
+        ]
 
     @pytest.mark.asyncio
     async def test_require_and_max_limit_combined(self):

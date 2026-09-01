@@ -150,6 +150,15 @@ class Step(BaseModel):
     name: str = Field(
         ..., min_length=1, description="Step name (tool name or model/chain id)"
     )
+    canonical_name: str | None = Field(
+        default=None,
+        min_length=1,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Optional integration-independent identity for a qualified step name "
+            "(for example, 'web_search' for 'writer.web_search')."
+        ),
+    )
     input: JSONValue = Field(
         ..., description="Input content for this step"
     )

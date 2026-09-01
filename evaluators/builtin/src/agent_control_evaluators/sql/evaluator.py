@@ -487,13 +487,49 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
                 if limit_node:
                     limit_value = self._extract_limit_value(limit_node)
 
+                    if limit_value is None and (
+                        self.config.max_limit is not None
+                        or self.config.max_result_window is not None
+                    ):
+                        return EvaluatorResult(
+                            matched=True,
+                            confidence=1.0,
+                            message=(
+                                "LIMIT must be a numeric literal when a maximum "
+                                "result bound is configured"
+                            ),
+                            metadata={
+                                "query": query[:100],
+                                "violation": "indeterminate_limit",
+                            },
+                        )
+
                     # Extract OFFSET value if present (use args.get() for direct child only)
                     offset_node = select_node.args.get("offset")
                     offset_value = 0
                     if offset_node:
-                        offset_value = self._extract_offset_value(offset_node) or 0
+                        extracted_offset = self._extract_offset_value(offset_node)
+                        if (
+                            extracted_offset is None
+                            and self.config.max_result_window is not None
+                        ):
+                            return EvaluatorResult(
+                                matched=True,
+                                confidence=1.0,
+                                message=(
+                                    "OFFSET must be a numeric literal when a maximum "
+                                    "result window is configured"
+                                ),
+                                metadata={
+                                    "query": query[:100],
+                                    "violation": "indeterminate_offset",
+                                },
+                            )
+                        if extracted_offset is not None:
+                            offset_value = extracted_offset
 
-                    # Check LIMIT value (skip if indeterminate)
+                    # Check LIMIT value. Indeterminate values with configured
+                    # maxima returned a fail-closed result above.
                     if limit_value is not None:
                         # Check max_limit
                         if (
@@ -1283,6 +1319,9 @@ class SQLEvaluator(Evaluator[SQLEvaluatorConfig]):
             exp.Delete: "DELETE",
             exp.Merge: "MERGE",
             # DDL (Data Definition Language)
+            # PostgreSQL SELECT ... INTO creates a table but sqlglot represents
+            # it as a Select containing an Into node rather than a Create node.
+            exp.Into: "CREATE",
             exp.Create: "CREATE",
             exp.Drop: "DROP",
             exp.Alter: "ALTER",

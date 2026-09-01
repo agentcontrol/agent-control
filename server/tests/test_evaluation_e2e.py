@@ -126,25 +126,47 @@ def test_evaluation_path_failure(client: TestClient):
     assert len(data["matches"] or []) == 0
 
 
-def test_evaluation_selector_star_uses_full_step_json(client: TestClient):
-    # Given: a control with selector "*" and JSON evaluator
+def test_evaluation_selector_star_preserves_legacy_step_shape(client: TestClient):
+    # Given: a strict JSON control written against the legacy wildcard shape
     control_data = {
         "description": "Validate full step JSON",
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "scope": {"step_types": ["tool"], "stages": ["pre"]},
         "selector": {"path": "*"},
-        "evaluator": {"name": "json", "config": {"required_fields": ["type"]}},
+        "evaluator": {
+            "name": "json",
+            "config": {
+                "json_schema": {
+                    "type": "object",
+                    "properties": {
+                        "type": {},
+                        "name": {},
+                        "input": {},
+                        "output": {},
+                        "context": {},
+                    },
+                    "required": ["type"],
+                    "additionalProperties": False,
+                }
+            },
+        },
         "action": {"decision": "deny"},
     }
     agent_name, _ = create_and_assign_policy(client, control_data, agent_name="JsonStarAgent")
 
-    # When: evaluating a valid step payload
-    payload = Step(type="llm", name="test-step", input="hello", output=None)
+    # When: a current client supplies the opt-in canonical tool identity
+    payload = Step(
+        type="tool",
+        name="writer.web_search",
+        canonical_name="web_search",
+        input={},
+        output=None,
+    )
     req = EvaluationRequest(agent_name=agent_name, step=payload, stage="pre")
     resp = client.post("/api/v1/evaluation", json=req.model_dump(mode="json"))
 
-    # Then: evaluation is safe (JSON evaluator accepts the full payload)
+    # Then: wildcard selection excludes the new field and the strict legacy schema still passes
     assert resp.status_code == 200
     assert resp.json()["is_safe"] is True
     assert resp.json()["matches"] is None

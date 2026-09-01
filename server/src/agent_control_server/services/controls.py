@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -163,19 +163,32 @@ class ControlService:
         if control.seed_source_id is not None:
             control.seed_opted_out_at = deleted_at
 
-    async def seed_source_exists(
+    async def find_existing_seed_controls(
         self,
-        seed_source_id: str,
         *,
         namespace_key: str,
-    ) -> bool:
-        """Return whether a control has claimed an immutable seed identity."""
-        stmt = select(Control.id).where(
+        source_ids: Collection[str],
+        names: Collection[str],
+    ) -> tuple[frozenset[str], frozenset[str]]:
+        """Bulk-load claimed seed identities and conflicting active names."""
+        if not source_ids and not names:
+            return frozenset(), frozenset()
+
+        stmt = select(Control.seed_source_id, Control.name, Control.deleted_at).where(
             Control.namespace_key == namespace_key,
-            Control.seed_source_id == seed_source_id,
+            or_(
+                Control.seed_source_id.in_(source_ids),
+                Control.name.in_(names),
+            ),
         )
-        result = await self._db.execute(stmt)
-        return result.first() is not None
+        rows = (await self._db.execute(stmt)).all()
+        existing_source_ids = frozenset(
+            source_id for source_id, _, _ in rows if source_id is not None
+        )
+        active_names = frozenset(
+            name for _, name, deleted_at in rows if deleted_at is None
+        )
+        return existing_source_ids, active_names
 
     async def get_control_or_404(
         self,

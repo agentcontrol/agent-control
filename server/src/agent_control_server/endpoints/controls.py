@@ -1,6 +1,8 @@
+import asyncio
 import datetime as dt
 import uuid
 from copy import deepcopy
+from functools import partial
 from typing import Any
 
 from agent_control_engine import list_evaluators
@@ -11,6 +13,7 @@ from agent_control_models.server import (
     CloneAndBindControlRequest,
     CloneAndBindControlResponse,
     ControlAttachments,
+    ControlSource,
     ControlSummary,
     ControlVersionSummary,
     CreateControlRequest,
@@ -43,7 +46,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
-from ..db import get_async_db
+from ..bootstrap.out_of_box_controls import seed_out_of_box_controls
+from ..db import AsyncSessionLocal, get_async_db
 from ..errors import (
     APIError,
     APIValidationError,
@@ -94,6 +98,9 @@ _CLONE_NAME_SUFFIX_HEX_LENGTH = 16
 _GENERATED_CLONE_NAME_ATTEMPTS = 5
 _TRUE_QUERY_VALUES = {"1", "true", "t", "yes", "y", "on"}
 _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
+_OUT_OF_BOX_RECONCILIATION_TIMEOUT_SECONDS = 3.0
+_MAX_PENDING_OUT_OF_BOX_RECONCILIATIONS = 128
+_out_of_box_reconciliation_tasks: dict[str, asyncio.Task[None]] = {}
 
 
 def _is_target_context_value(value: object) -> bool:
@@ -254,6 +261,95 @@ def _validate_attachment_filters(
                 ),
             )
         ],
+    )
+
+
+async def _run_out_of_box_controls_reconciliation(
+    *,
+    namespace_key: str,
+) -> None:
+    """Run one bounded, best-effort namespace reconciliation."""
+    try:
+        async with asyncio.timeout(_OUT_OF_BOX_RECONCILIATION_TIMEOUT_SECONDS):
+            await seed_out_of_box_controls(
+                session_factory=AsyncSessionLocal,
+                namespace_key=namespace_key,
+                available_evaluators=set(list_evaluators().keys()),
+            )
+    except TimeoutError:
+        _logger.warning(
+            "Out-of-box control reconciliation timed out for namespace '%s'; "
+            "continuing request",
+            namespace_key,
+        )
+    except Exception:
+        _logger.warning(
+            "Out-of-box control seed failed for namespace '%s'; continuing request",
+            namespace_key,
+            exc_info=True,
+        )
+
+
+def _remove_out_of_box_reconciliation_task(
+    namespace_key: str,
+    task: asyncio.Future[None],
+) -> None:
+    if _out_of_box_reconciliation_tasks.get(namespace_key) is task:
+        _out_of_box_reconciliation_tasks.pop(namespace_key, None)
+
+
+async def _seed_out_of_box_controls_for_namespace(
+    *,
+    namespace_key: str,
+) -> None:
+    """Join or start the bounded reconciliation for a namespace."""
+    task = _out_of_box_reconciliation_tasks.get(namespace_key)
+    if task is None:
+        if len(_out_of_box_reconciliation_tasks) >= _MAX_PENDING_OUT_OF_BOX_RECONCILIATIONS:
+            _logger.warning(
+                "Out-of-box control reconciliation queue is full; skipping namespace '%s'",
+                namespace_key,
+            )
+            return
+        task = asyncio.create_task(
+            _run_out_of_box_controls_reconciliation(namespace_key=namespace_key)
+        )
+        _out_of_box_reconciliation_tasks[namespace_key] = task
+        task.add_done_callback(
+            partial(_remove_out_of_box_reconciliation_task, namespace_key)
+        )
+
+    await asyncio.shield(task)
+
+
+def _should_seed_out_of_box_controls_on_list(
+    *,
+    cursor: int | None,
+    name: str | None,
+    enabled: bool | None,
+    template_backed: bool | None,
+    cloned: bool | None,
+    step_type: str | None,
+    stage: str | None,
+    execution: str | None,
+    tag: str | None,
+    include_attachments: bool,
+    attachment_target_type: str | None,
+    attachment_target_id: str | None,
+) -> bool:
+    return (
+        cursor is None
+        and name is None
+        and enabled is None
+        and template_backed is None
+        and cloned is not True
+        and step_type is None
+        and stage is None
+        and execution is None
+        and tag is None
+        and not include_attachments
+        and attachment_target_type is None
+        and attachment_target_id is None
     )
 
 
@@ -917,6 +1013,11 @@ async def get_control(
         id=control.id,
         name=control.name,
         cloned_from_control_id=control.cloned_from_control_id,
+        source=(
+            ControlSource.PRESET
+            if control.seed_source_id is not None
+            else ControlSource.CUSTOM
+        ),
         data=control_data,
     )
 
@@ -1234,6 +1335,21 @@ async def list_controls(
 
     control_service = ControlService(db)
     namespace_key = principal.namespace_key
+    if _should_seed_out_of_box_controls_on_list(
+        cursor=cursor,
+        name=name,
+        enabled=enabled,
+        template_backed=template_backed,
+        cloned=cloned,
+        step_type=step_type,
+        stage=stage,
+        execution=execution,
+        tag=tag,
+        include_attachments=include_attachments,
+        attachment_target_type=attachment_target_type,
+        attachment_target_id=attachment_target_id,
+    ):
+        await _seed_out_of_box_controls_for_namespace(namespace_key=namespace_key)
     filter_by_attachment = target_principal is not None and (
         attachment_target_type is not None or attachment_target_id is not None
     )
@@ -1281,6 +1397,11 @@ async def list_controls(
                 id=ctrl.id,
                 name=ctrl.name,
                 cloned_from_control_id=ctrl.cloned_from_control_id,
+                source=(
+                    ControlSource.PRESET
+                    if ctrl.seed_source_id is not None
+                    else ControlSource.CUSTOM
+                ),
                 description=(
                     data.get("description")
                     or (data.get("template") or {}).get("description")

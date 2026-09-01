@@ -1,9 +1,5 @@
 """Startup bootstrap for out-of-box controls.
 
-Phase 1 provides the tooling needed to seed controls safely, but does not
-register the static out-of-box control catalog yet. Phase 2 should add those
-definitions to ``OUT_OF_BOX_CONTROL_TEMPLATES``.
-
 Namespace rule:
 - Standalone Agent Control seeds into ``DEFAULT_NAMESPACE_KEY``.
 - Galileo-integrated Agent Control should call the same helper with
@@ -36,6 +32,26 @@ _CONTROL_NAME_UNIQUE_CONSTRAINTS = frozenset(
 _CONTROL_SEED_UNIQUE_CONSTRAINT = "idx_controls_namespace_seed_source"
 _INITIAL_VERSION_NOTE = "Out-of-box control seed"
 _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
+_OUT_OF_BOX_TAGS = ["out-of-box"]
+_SQL_TOOL_NAME_PATTERN = (
+    r"(?i)(?:^|[._-])(?:sql|execute[_-]?sql|run[_-]?sql|sql[_-]?query|"
+    r"query[_-]?database|execute[_-]?query)(?:$|[._-])"
+)
+# Issuer prefix + exact digit length per network, allowing the conventional
+# grouping separators (space or dash) so both "4111111111111111" and
+# "4111 1111 1111 1111" match. A bare digit-count check (e.g. `\d{13,19}`)
+# would also match order numbers, tracking numbers, and other unrelated
+# identifiers, so each branch is anchored to a real issuer prefix and length.
+_CREDIT_CARD_PATTERN = (
+    r"\b(?:"
+    r"4\d{3}(?:[ -]?\d{4}){3}"  # Visa (16 digits)
+    r"|5[1-5]\d{2}(?:[ -]?\d{4}){3}"  # Mastercard 51-55 (16 digits)
+    r"|(?:2221|222[2-9]|22[3-9]\d|2[3-6]\d{2}|27[01]\d|2720)"  # Mastercard 2221-2720
+    r"(?:[ -]?\d{4}){3}"
+    r"|3[47]\d{2}(?:[ -]?\d{6})(?:[ -]?\d{5})"  # American Express (15 digits, 4-6-5)
+    r"|6(?:011|5\d{2})(?:[ -]?\d{4}){3}"  # Discover (16 digits)
+    r")\b"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +125,311 @@ class OutOfBoxSeedResult:
         )
 
 
-OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = ()
+def _leaf_control_payload(
+    *,
+    description: str,
+    selector_path: str,
+    evaluator_name: str,
+    evaluator_config: Mapping[str, object],
+    step_types: list[str],
+    stages: list[str],
+    decision: str,
+    tags: list[str],
+    steering_message: str | None = None,
+    step_name_regex: str | None = None,
+) -> dict[str, object]:
+    action: dict[str, object] = {"decision": decision}
+    if steering_message is not None:
+        action["steering_context"] = {"message": steering_message}
+
+    scope: dict[str, object] = {"step_types": step_types, "stages": stages}
+    if step_name_regex is not None:
+        scope["step_name_regex"] = step_name_regex
+
+    return {
+        "description": description,
+        "enabled": True,
+        "execution": "server",
+        "scope": scope,
+        "condition": {
+            "selector": {"path": selector_path},
+            "evaluator": {
+                "name": evaluator_name,
+                "config": dict(evaluator_config),
+            },
+        },
+        "action": action,
+        "tags": [*_OUT_OF_BOX_TAGS, *tags],
+    }
+
+
+OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-ssn-match",
+        name="ssn-match",
+        data=_leaf_control_payload(
+            description="Block LLM output containing US Social Security Numbers.",
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={"pattern": r"\b\d{3}-\d{2}-\d{4}\b"},
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["pii", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-credit-card-number-match",
+        name="credit-card-number-match",
+        data=_leaf_control_payload(
+            description=(
+                "Block LLM output containing Visa, Mastercard, American Express, or "
+                "Discover card numbers (issuer prefix and length, formatted or unformatted)."
+            ),
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={"pattern": _CREDIT_CARD_PATTERN},
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["pii", "payment", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-phone-number-match",
+        name="phone-number-match",
+        data=_leaf_control_payload(
+            description="Block LLM output containing common US phone number formats.",
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"\b(?:\+?1[-.\s]?)?(?:\(?[2-9]\d{2}\)?[-.\s]?)?"
+                    r"[2-9]\d{2}[-.\s]?\d{4}\b"
+                )
+            },
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["pii", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-dangerous-shell-command-match",
+        name="dangerous-shell-command-match",
+        data=_leaf_control_payload(
+            description="Block tool commands matching common destructive shell operations.",
+            selector_path="input.command",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"(?:\brm\s+(?:-(?:rf|fr)|-r\s+-f|-f\s+-r)\s+"
+                    r"(?:\"(?:/|~/?|\$HOME/?)\"|'(?:/|~/?|\$HOME/?)'|"
+                    r"(?:/|~/?|\$HOME/?))(?:\s|[|;&]|$)|"
+                    r"\bmkfs(?:\.[a-z0-9]+)?(?:\s|[|;&]|$)|"
+                    r"\bdd\s+if=[^\s]+\s+of=/dev/[^\s]+(?:\s|[|;&]|$)|"
+                    r"\bchmod\s+-R\s+777\s+/(?:\s|[|;&]|$)|"
+                    r"\bchown\s+-R\s+[^|;&]*\s+/(?:\s|[|;&]|$)|"
+                    r"\bshutdown\s+(?:-h\s+)?now(?:\s|[|;&]|$)|"
+                    r"\breboot(?:\s|[|;&]|$))"
+                ),
+                "flags": ["IGNORECASE"],
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["tool", "shell", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-high-value-action-requires-approval",
+        name="high-value-action-requires-approval",
+        data=_leaf_control_payload(
+            description=(
+                "Steer tool calls over the default amount threshold to collect approval."
+            ),
+            selector_path="input",
+            evaluator_name="json",
+            evaluator_config={
+                "json_schema": {
+                    "type": "object",
+                    "anyOf": [
+                        {"not": {"required": ["amount"]}},
+                        {
+                            "required": ["amount"],
+                            "properties": {
+                                "amount": {"type": "number", "maximum": 10000}
+                            },
+                        },
+                    ],
+                }
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="steer",
+            steering_message=(
+                "Pause this high-value action and submit its exact parameters to a trusted "
+                "host approval workflow. The host must bind any approval artifact to this "
+                "specific action; approval fields supplied in tool input are not evidence."
+            ),
+            tags=["tool", "approval", "json"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-outbound-communication-requires-approval",
+        name="outbound-communication-requires-approval",
+        data=_leaf_control_payload(
+            description=(
+                "Steer outbound communication tool calls to collect approval before sending."
+            ),
+            selector_path="input",
+            evaluator_name="json",
+            evaluator_config={
+                "json_schema": {
+                    "type": "object",
+                    "anyOf": [
+                        {
+                            "not": {
+                                "anyOf": [
+                                    {"required": ["to"]},
+                                    {"required": ["recipient"]},
+                                    {"required": ["recipients"]},
+                                    {"required": ["email"]},
+                                    {"required": ["phone_number"]},
+                                    {"required": ["channel"]},
+                                    {"required": ["destination"]},
+                                ]
+                            }
+                        }
+                    ],
+                }
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="steer",
+            steering_message=(
+                "Pause this outbound communication and submit its exact recipients and "
+                "content to a trusted host approval workflow. The host must bind any "
+                "approval artifact to this specific action; approval fields supplied in "
+                "tool input are not evidence."
+            ),
+            tags=["tool", "approval", "exfiltration", "json"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-example-tool-allowlist",
+        name="example-tool-allowlist",
+        data=_leaf_control_payload(
+            description=(
+                "Example static allowlist: deny tool calls whose canonical name is not "
+                "in this list. The values below are placeholders, not a live MCP tool "
+                "catalog — replace them with your own approved tool names before "
+                "enabling this control."
+            ),
+            selector_path="canonical_name",
+            evaluator_name="list",
+            evaluator_config={
+                "values": ["search", "web_search", "retrieve", "calculator"],
+                "logic": "any",
+                "match_on": "no_match",
+                "match_mode": "exact",
+                "case_sensitive": False,
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["tool", "allowlist", "example", "list"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm05-select-only-sql",
+        name="owasp-llm05-select-only-sql",
+        data=_leaf_control_payload(
+            description=(
+                "Block SQL tool calls that are not a single syntactic SELECT statement. "
+                "This does not guarantee read-only execution; enforce a read-only database "
+                "role or transaction for that boundary."
+            ),
+            selector_path="input.query",
+            evaluator_name="sql",
+            evaluator_config={
+                "allowed_operations": ["SELECT"],
+                "allow_multi_statements": False,
+                "block_ddl": True,
+                "block_dcl": True,
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["owasp", "owasp-llm05", "owasp-asi02", "tool", "sql"],
+            step_name_regex=_SQL_TOOL_NAME_PATTERN,
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm10-bounded-sql-query",
+        name="owasp-llm10-bounded-sql-query",
+        data=_leaf_control_payload(
+            description=("Block SQL queries without bounded results or with excessive complexity."),
+            selector_path="input.query",
+            evaluator_name="sql",
+            evaluator_config={
+                "require_limit": True,
+                "max_limit": 1000,
+                "max_result_window": 1000,
+                "max_subquery_depth": 3,
+                "max_joins": 5,
+                "max_union_count": 2,
+            },
+            step_types=["tool"],
+            stages=["pre"],
+            decision="deny",
+            tags=["owasp", "owasp-llm10", "tool", "sql", "resource-limit"],
+            step_name_regex=_SQL_TOOL_NAME_PATTERN,
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm02-common-credential-output-match",
+        name="owasp-llm02-common-credential-output-match",
+        data=_leaf_control_payload(
+            description=("Block LLM output containing common private-key or API-token formats."),
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"(?:-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----|"
+                    r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|"
+                    r"\bgh[pousr]_[A-Za-z0-9]{36,255}\b|"
+                    r"\bAIza[0-9A-Za-z_-]{35}\b|"
+                    r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b)"
+                )
+            },
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["owasp", "owasp-llm02", "credential", "secret", "regex"],
+        ),
+    ),
+    OutOfBoxControlTemplate.from_payload(
+        source_id="oob-owasp-llm05-dangerous-uri-output-match",
+        name="owasp-llm05-dangerous-uri-output-match",
+        data=_leaf_control_payload(
+            description=("Block LLM output containing executable or active-content URI schemes."),
+            selector_path="output",
+            evaluator_name="regex",
+            evaluator_config={
+                "pattern": (
+                    r"(?:\b(?:javascript|vbscript)\s*:|"
+                    r"\bdata\s*:\s*(?:text/html|application/xhtml\+xml|image/svg\+xml))"
+                ),
+                "flags": ["IGNORECASE"],
+            },
+            step_types=["llm"],
+            stages=["post"],
+            decision="deny",
+            tags=["owasp", "owasp-llm05", "output-handling", "uri", "regex"],
+        ),
+    ),
+)
 
 
 def default_out_of_box_namespace_key() -> str:
@@ -150,6 +470,7 @@ async def seed_out_of_box_controls(
 
     available_evaluator_names = set(available_evaluators)
     async with session_factory() as session:
+        eligible_templates: list[OutOfBoxControlTemplate] = []
         for template in templates:
             missing = missing_required_evaluators(
                 template.required_evaluators,
@@ -162,6 +483,19 @@ async def seed_out_of_box_controls(
                         missing_evaluators=missing,
                     )
                 )
+                continue
+
+            eligible_templates.append(template)
+
+        control_service = ControlService(session)
+        existing_source_ids, active_names = await control_service.find_existing_seed_controls(
+            namespace_key=namespace_key,
+            source_ids={template.source_id for template in eligible_templates},
+            names={template.name for template in eligible_templates},
+        )
+        for template in eligible_templates:
+            if template.source_id in existing_source_ids or template.name in active_names:
+                skipped_existing.append(template.name)
                 continue
 
             outcome = await _seed_one_control(
@@ -191,14 +525,6 @@ async def _seed_one_control(
     template: OutOfBoxControlTemplate,
 ) -> str:
     control_service = ControlService(session)
-    if await control_service.seed_source_exists(
-        template.source_id,
-        namespace_key=namespace_key,
-    ):
-        return "existing"
-    if await control_service.active_control_name_exists(template.name, namespace_key=namespace_key):
-        return "existing"
-
     control = control_service.create_control(
         namespace_key=namespace_key,
         name=template.name,
