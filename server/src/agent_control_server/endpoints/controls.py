@@ -13,6 +13,7 @@ from agent_control_models.server import (
     CloneAndBindControlRequest,
     CloneAndBindControlResponse,
     ControlAttachments,
+    ControlSource,
     ControlSummary,
     ControlVersionSummary,
     CreateControlRequest,
@@ -1028,6 +1029,11 @@ async def get_control(
         id=control.id,
         name=control.name,
         cloned_from_control_id=control.cloned_from_control_id,
+        source=(
+            ControlSource.PRESET
+            if control.seed_source_id is not None
+            else ControlSource.CUSTOM
+        ),
         data=control_data,
     )
 
@@ -1407,6 +1413,11 @@ async def list_controls(
                 id=ctrl.id,
                 name=ctrl.name,
                 cloned_from_control_id=ctrl.cloned_from_control_id,
+                source=(
+                    ControlSource.PRESET
+                    if ctrl.seed_source_id is not None
+                    else ControlSource.CUSTOM
+                ),
                 description=(
                     data.get("description")
                     or (data.get("template") or {}).get("description")

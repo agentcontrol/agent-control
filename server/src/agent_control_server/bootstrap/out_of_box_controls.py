@@ -166,7 +166,7 @@ def _leaf_control_payload(
 OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-ssn-match",
-        name="oob-ssn-match",
+        name="ssn-match",
         data=_leaf_control_payload(
             description="Block LLM output containing US Social Security Numbers.",
             selector_path="output",
@@ -180,7 +180,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-credit-card-number-match",
-        name="oob-credit-card-number-match",
+        name="credit-card-number-match",
         data=_leaf_control_payload(
             description=(
                 "Block LLM output containing Visa, Mastercard, American Express, or "
@@ -197,7 +197,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-phone-number-match",
-        name="oob-phone-number-match",
+        name="phone-number-match",
         data=_leaf_control_payload(
             description="Block LLM output containing common US phone number formats.",
             selector_path="output",
@@ -216,7 +216,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-dangerous-shell-command-match",
-        name="oob-dangerous-shell-command-match",
+        name="dangerous-shell-command-match",
         data=_leaf_control_payload(
             description="Block tool commands matching common destructive shell operations.",
             selector_path="input.command",
@@ -243,7 +243,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-high-value-action-requires-approval",
-        name="oob-high-value-action-requires-approval",
+        name="high-value-action-requires-approval",
         data=_leaf_control_payload(
             description=(
                 "Steer tool calls over the default amount threshold to collect approval."
@@ -277,7 +277,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-outbound-communication-requires-approval",
-        name="oob-outbound-communication-requires-approval",
+        name="outbound-communication-requires-approval",
         data=_leaf_control_payload(
             description=(
                 "Steer outbound communication tool calls to collect approval before sending."
@@ -318,7 +318,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-example-tool-allowlist",
-        name="oob-example-tool-allowlist",
+        name="example-tool-allowlist",
         data=_leaf_control_payload(
             description=(
                 "Example static allowlist: deny tool calls whose canonical name is not "
@@ -343,7 +343,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-owasp-llm05-select-only-sql",
-        name="oob-owasp-llm05-select-only-sql",
+        name="owasp-llm05-select-only-sql",
         data=_leaf_control_payload(
             description=(
                 "Block SQL tool calls that are not a single syntactic SELECT statement. "
@@ -367,7 +367,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-owasp-llm10-bounded-sql-query",
-        name="oob-owasp-llm10-bounded-sql-query",
+        name="owasp-llm10-bounded-sql-query",
         data=_leaf_control_payload(
             description=("Block SQL queries without bounded results or with excessive complexity."),
             selector_path="input.query",
@@ -389,7 +389,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-owasp-llm02-common-credential-output-match",
-        name="oob-owasp-llm02-common-credential-output-match",
+        name="owasp-llm02-common-credential-output-match",
         data=_leaf_control_payload(
             description=("Block LLM output containing common private-key or API-token formats."),
             selector_path="output",
@@ -411,7 +411,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-owasp-llm05-dangerous-uri-output-match",
-        name="oob-owasp-llm05-dangerous-uri-output-match",
+        name="owasp-llm05-dangerous-uri-output-match",
         data=_leaf_control_payload(
             description=("Block LLM output containing executable or active-content URI schemes."),
             selector_path="output",
@@ -431,7 +431,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-owasp-llm01-prompt-injection-input-match",
-        name="oob-owasp-llm01-prompt-injection-input-match",
+        name="owasp-llm01-prompt-injection-input-match",
         data=_leaf_control_payload(
             description=(
                 "Block LLM input containing common prompt-injection or jailbreak phrasing."
@@ -459,7 +459,7 @@ OUT_OF_BOX_CONTROL_TEMPLATES: tuple[OutOfBoxControlTemplate, ...] = (
     ),
     OutOfBoxControlTemplate.from_payload(
         source_id="oob-ssrf-metadata-endpoint-match",
-        name="oob-ssrf-metadata-endpoint-match",
+        name="ssrf-metadata-endpoint-match",
         data=_leaf_control_payload(
             description=(
                 "Block tool calls targeting cloud metadata or loopback endpoints "
@@ -548,7 +548,7 @@ def _luna_control_template(
     side = "input" if stage == "pre" else "output"
     return OutOfBoxControlTemplate.from_payload(
         source_id=source_id,
-        name=source_id,
+        name=source_id.removeprefix("oob-"),
         data=_leaf_control_payload(
             description=(
                 f"Block LLM {side} scored above threshold for {category} by the "

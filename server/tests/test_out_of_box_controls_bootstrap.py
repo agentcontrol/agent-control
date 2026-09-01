@@ -15,6 +15,11 @@ from agent_control_evaluators.regex.config import RegexEvaluatorConfig
 from agent_control_evaluators.regex.evaluator import RegexEvaluator
 from agent_control_evaluators.sql import SQLEvaluator, SQLEvaluatorConfig
 from agent_control_models import EvaluatorSpec
+from pydantic import ValidationError
+from sqlalchemy import Table, event, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from agent_control_server.bootstrap import out_of_box_controls as bootstrap_module
 from agent_control_server.bootstrap.out_of_box_controls import (
     OUT_OF_BOX_CONTROL_TEMPLATES,
@@ -34,36 +39,32 @@ from agent_control_server.models import (
     policy_controls,
 )
 from agent_control_server.services.controls import ControlService
-from pydantic import ValidationError
-from sqlalchemy import Table, event, func, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from .conftest import AsyncSessionTest, async_engine, engine
 
 _EXPECTED_OOB_CONTROL_NAMES = (
-    "oob-ssn-match",
-    "oob-credit-card-number-match",
-    "oob-phone-number-match",
-    "oob-dangerous-shell-command-match",
-    "oob-high-value-action-requires-approval",
-    "oob-outbound-communication-requires-approval",
-    "oob-example-tool-allowlist",
-    "oob-owasp-llm05-select-only-sql",
-    "oob-owasp-llm10-bounded-sql-query",
-    "oob-owasp-llm02-common-credential-output-match",
-    "oob-owasp-llm05-dangerous-uri-output-match",
-    "oob-owasp-llm01-prompt-injection-input-match",
-    "oob-ssrf-metadata-endpoint-match",
+    "ssn-match",
+    "credit-card-number-match",
+    "phone-number-match",
+    "dangerous-shell-command-match",
+    "high-value-action-requires-approval",
+    "outbound-communication-requires-approval",
+    "example-tool-allowlist",
+    "owasp-llm05-select-only-sql",
+    "owasp-llm10-bounded-sql-query",
+    "owasp-llm02-common-credential-output-match",
+    "owasp-llm05-dangerous-uri-output-match",
+    "owasp-llm01-prompt-injection-input-match",
+    "ssrf-metadata-endpoint-match",
 )
 _AVAILABLE_PHASE_2_EVALUATORS = {"regex", "json", "list", "sql"}
 _EXPECTED_LUNA_OOB_CONTROL_NAMES = (
-    "oob-input-toxicity-slm-match",
-    "oob-output-toxicity-slm-match",
-    "oob-input-tone-slm-match",
-    "oob-output-tone-slm-match",
-    "oob-input-sexism-slm-match",
-    "oob-output-sexism-slm-match",
+    "input-toxicity-slm-match",
+    "output-toxicity-slm-match",
+    "input-tone-slm-match",
+    "output-tone-slm-match",
+    "input-sexism-slm-match",
+    "output-sexism-slm-match",
 )
 
 
@@ -140,7 +141,7 @@ def test_out_of_box_catalog_contains_phase_2_templates() -> None:
     approved_tools = next(
         template
         for template in OUT_OF_BOX_CONTROL_TEMPLATES
-        if template.name == "oob-example-tool-allowlist"
+        if template.name == "example-tool-allowlist"
     )
     approved_tools_leaf = approved_tools.control.primary_leaf()
     assert approved_tools_leaf is not None
@@ -155,7 +156,7 @@ def test_out_of_box_catalog_contains_phase_2_templates() -> None:
     select_only_control = next(
         template
         for template in sql_controls
-        if template.name == "oob-owasp-llm05-select-only-sql"
+        if template.name == "owasp-llm05-select-only-sql"
     )
     assert "does not guarantee read-only execution" in select_only_control.control.description
 
@@ -164,7 +165,7 @@ def test_out_of_box_catalog_contains_phase_3_static_templates() -> None:
     prompt_injection = next(
         template
         for template in OUT_OF_BOX_CONTROL_TEMPLATES
-        if template.name == "oob-owasp-llm01-prompt-injection-input-match"
+        if template.name == "owasp-llm01-prompt-injection-input-match"
     )
     prompt_injection_leaf = prompt_injection.control.primary_leaf()
     assert prompt_injection_leaf is not None
@@ -175,7 +176,7 @@ def test_out_of_box_catalog_contains_phase_3_static_templates() -> None:
     ssrf = next(
         template
         for template in OUT_OF_BOX_CONTROL_TEMPLATES
-        if template.name == "oob-ssrf-metadata-endpoint-match"
+        if template.name == "ssrf-metadata-endpoint-match"
     )
     ssrf_leaf = ssrf.control.primary_leaf()
     assert ssrf_leaf is not None
@@ -617,12 +618,12 @@ def test_seed_conflict_recognizes_seed_constraint_diagnostic() -> None:
 
 @pytest.mark.asyncio
 async def test_regex_out_of_box_controls_match_representative_payloads() -> None:
-    ssn_spec = _oob_evaluator_spec("oob-ssn-match")
+    ssn_spec = _oob_evaluator_spec("ssn-match")
     ssn_evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(ssn_spec.config))
     ssn_result = await ssn_evaluator.evaluate("Customer SSN is 123-45-6789.")
     assert ssn_result.matched is True
 
-    shell_spec = _oob_evaluator_spec("oob-dangerous-shell-command-match")
+    shell_spec = _oob_evaluator_spec("dangerous-shell-command-match")
     shell_evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(shell_spec.config))
     for command in (
         "sudo rm -rf /",
@@ -638,7 +639,7 @@ async def test_regex_out_of_box_controls_match_representative_payloads() -> None
 @pytest.mark.asyncio
 async def test_credit_card_control_matches_known_networks_and_ignores_generic_digit_runs() -> None:
     # Given: the credit-card-number-match control
-    spec = _oob_evaluator_spec("oob-credit-card-number-match")
+    spec = _oob_evaluator_spec("credit-card-number-match")
     evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
 
     # When: evaluating real card numbers from each supported network, formatted
@@ -675,7 +676,7 @@ async def test_credit_card_control_matches_known_networks_and_ignores_generic_di
 @pytest.mark.asyncio
 async def test_dangerous_shell_control_matches_equivalent_recursive_rm_forms() -> None:
     # Given: the destructive shell command control
-    shell_spec = _oob_evaluator_spec("oob-dangerous-shell-command-match")
+    shell_spec = _oob_evaluator_spec("dangerous-shell-command-match")
     shell_evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(shell_spec.config))
 
     # When: evaluating equivalent recursive deletion spellings and a scoped deletion
@@ -701,7 +702,7 @@ async def test_dangerous_shell_control_matches_equivalent_recursive_rm_forms() -
 
 @pytest.mark.asyncio
 async def test_json_out_of_box_controls_ignore_caller_controlled_approval_flags() -> None:
-    high_value_spec = _oob_evaluator_spec("oob-high-value-action-requires-approval")
+    high_value_spec = _oob_evaluator_spec("high-value-action-requires-approval")
     high_value_evaluator = JSONEvaluator(
         JSONEvaluatorConfig.model_validate(high_value_spec.config)
     )
@@ -719,7 +720,7 @@ async def test_json_out_of_box_controls_ignore_caller_controlled_approval_flags(
     assert low_value_result.matched is False
     assert all(result.matched is True for result in caller_approved_results)
 
-    outbound_spec = _oob_evaluator_spec("oob-outbound-communication-requires-approval")
+    outbound_spec = _oob_evaluator_spec("outbound-communication-requires-approval")
     outbound_evaluator = JSONEvaluator(JSONEvaluatorConfig.model_validate(outbound_spec.config))
 
     outbound_result = await outbound_evaluator.evaluate(
@@ -746,7 +747,7 @@ async def test_json_out_of_box_controls_ignore_caller_controlled_approval_flags(
 
 @pytest.mark.asyncio
 async def test_list_out_of_box_control_matches_unapproved_tools() -> None:
-    tool_spec = _oob_evaluator_spec("oob-example-tool-allowlist")
+    tool_spec = _oob_evaluator_spec("example-tool-allowlist")
     tool_evaluator = ListEvaluator(ListEvaluatorConfig.model_validate(tool_spec.config))
 
     delete_result = await tool_evaluator.evaluate("delete_user")
@@ -759,7 +760,7 @@ async def test_list_out_of_box_control_matches_unapproved_tools() -> None:
 @pytest.mark.asyncio
 async def test_owasp_credential_control_matches_common_secret_formats() -> None:
     # Given: the OWASP-aligned common credential output control
-    spec = _oob_evaluator_spec("oob-owasp-llm02-common-credential-output-match")
+    spec = _oob_evaluator_spec("owasp-llm02-common-credential-output-match")
     evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
 
     # When: evaluating representative secret and non-secret output
@@ -776,7 +777,7 @@ async def test_owasp_credential_control_matches_common_secret_formats() -> None:
 @pytest.mark.asyncio
 async def test_owasp_dangerous_uri_control_matches_active_content_schemes() -> None:
     # Given: the OWASP-aligned dangerous URI output control
-    spec = _oob_evaluator_spec("oob-owasp-llm05-dangerous-uri-output-match")
+    spec = _oob_evaluator_spec("owasp-llm05-dangerous-uri-output-match")
     evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
 
     # When: evaluating executable, active-content, and ordinary HTTPS links
@@ -795,7 +796,7 @@ async def test_owasp_dangerous_uri_control_matches_active_content_schemes() -> N
 @pytest.mark.asyncio
 async def test_owasp_select_only_sql_control_enforces_syntax_without_read_only_claim() -> None:
     # Given: the OWASP-aligned syntactic SELECT-only SQL control
-    spec = _oob_evaluator_spec("oob-owasp-llm05-select-only-sql")
+    spec = _oob_evaluator_spec("owasp-llm05-select-only-sql")
     evaluator = SQLEvaluator(SQLEvaluatorConfig.model_validate(spec.config))
 
     # When: evaluating SELECT, mutating, table-creating, and stateful-function SQL
@@ -820,7 +821,7 @@ async def test_owasp_select_only_sql_control_enforces_syntax_without_read_only_c
 @pytest.mark.asyncio
 async def test_prompt_injection_control_matches_common_jailbreak_phrasing() -> None:
     # Given: the OWASP LLM01 prompt-injection input control
-    spec = _oob_evaluator_spec("oob-owasp-llm01-prompt-injection-input-match")
+    spec = _oob_evaluator_spec("owasp-llm01-prompt-injection-input-match")
     evaluator = RegexEvaluator(RegexEvaluatorConfig.model_validate(spec.config))
 
     # When: evaluating common injection/jailbreak phrasing and an ordinary request
@@ -841,7 +842,7 @@ async def test_prompt_injection_control_matches_common_jailbreak_phrasing() -> N
 @pytest.mark.asyncio
 async def test_ssrf_control_matches_metadata_and_loopback_endpoints() -> None:
     # Given: the SSRF/cloud-metadata denylist control
-    spec = _oob_evaluator_spec("oob-ssrf-metadata-endpoint-match")
+    spec = _oob_evaluator_spec("ssrf-metadata-endpoint-match")
     evaluator = ListEvaluator(ListEvaluatorConfig.model_validate(spec.config))
 
     # When: evaluating metadata, loopback, and ordinary external URLs
@@ -864,7 +865,7 @@ def test_luna_out_of_box_control_templates_builds_only_configured_scorers() -> N
     templates = luna_out_of_box_control_templates(input_toxicity_scorer_id="tox-scorer-id")
 
     # Then: exactly one template is built, wired for the input/pre side
-    assert [template.name for template in templates] == ["oob-input-toxicity-slm-match"]
+    assert [template.name for template in templates] == ["input-toxicity-slm-match"]
     template = templates[0]
     assert template.source_id == "oob-input-toxicity-slm-match"
     assert template.required_evaluators == frozenset({"galileo.luna"})
@@ -904,7 +905,7 @@ def test_luna_out_of_box_control_templates_builds_all_six_with_input_output_wiri
         leaf_parts = leaf.leaf_parts()
         assert leaf_parts is not None
         selector, evaluator = leaf_parts
-        is_input = template.name.startswith("oob-input-")
+        is_input = template.name.startswith("input-")
         expected_side = "input" if is_input else "output"
         expected_stage = "pre" if is_input else "post"
         assert selector.path == expected_side, template.name
@@ -960,7 +961,7 @@ async def test_seed_creates_luna_controls_when_evaluator_is_available() -> None:
     )
 
     # Then: the control is created like any other out-of-box template
-    assert result.created == ("oob-input-toxicity-slm-match",)
+    assert result.created == ("input-toxicity-slm-match",)
     controls = _fetch_controls()
     assert len(controls) == 1
     assert controls[0].data["condition"]["evaluator"]["name"] == "galileo.luna"
@@ -970,7 +971,7 @@ async def test_seed_creates_luna_controls_when_evaluator_is_available() -> None:
 @pytest.mark.asyncio
 async def test_owasp_bounded_sql_control_enforces_result_and_complexity_limits() -> None:
     # Given: the OWASP-aligned bounded SQL query control
-    spec = _oob_evaluator_spec("oob-owasp-llm10-bounded-sql-query")
+    spec = _oob_evaluator_spec("owasp-llm10-bounded-sql-query")
     evaluator = SQLEvaluator(SQLEvaluatorConfig.model_validate(spec.config))
 
     # When: evaluating bounded, unbounded, and oversized result windows

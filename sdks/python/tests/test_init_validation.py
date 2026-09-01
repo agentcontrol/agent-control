@@ -3,13 +3,12 @@
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import agent_control
 import pytest
+from agent_control._state import state
 from agent_control_models import ControlMatch as ModelControlMatch
 from agent_control_models import ControlScope as ModelControlScope
 from agent_control_models import EvaluatorResult as ModelEvaluatorResult
-
-import agent_control
-from agent_control._state import state
 
 
 def test_init_rejects_invalid_agent_name() -> None:
@@ -155,5 +154,39 @@ def test_init_preserves_positional_argument_order() -> None:
         assert state.target_type == "env"
         assert state.target_id == "prod"
         assert state.runtime_token_header is None
+    finally:
+        agent_control._reset_state()
+
+
+def test_init_passes_otel_provider_through_runtime_only_path() -> None:
+    # Given: an application provider and successful server initialization
+    provider = object()
+    health_check_mock = AsyncMock(return_value={"status": "healthy"})
+    register_agent_mock = AsyncMock(return_value={"created": True, "controls": []})
+
+    try:
+        with patch(
+            "agent_control.__init__.AgentControlClient.health_check",
+            new=health_check_mock,
+        ), patch(
+            "agent_control.__init__.agents.register_agent",
+            new=register_agent_mock,
+        ), patch("agent_control.init_observability") as init_observability_mock:
+            # When: initializing the public SDK API with the provider
+            agent_control.init(
+                agent_name=f"agent-{uuid4().hex[:12]}",
+                observability_enabled=True,
+                observability_sink_name="otel",
+                observability_sink_config={"enabled": True},
+                otel_tracer_provider=provider,  # type: ignore[arg-type]
+                policy_refresh_interval_seconds=0,
+            )
+
+        # Then: the provider is separate from the JSON sink configuration
+        init_observability_mock.assert_called_once()
+        call_kwargs = init_observability_mock.call_args.kwargs
+        assert call_kwargs["otel_tracer_provider"] is provider
+        assert call_kwargs["sink_config"] == {"enabled": True}
+        assert "otel_tracer_provider" not in call_kwargs["sink_config"]
     finally:
         agent_control._reset_state()

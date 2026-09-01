@@ -38,6 +38,8 @@ Usage:
         )
 """
 
+from __future__ import annotations
+
 from importlib.metadata import PackageNotFoundError, version
 
 try:
@@ -51,7 +53,7 @@ import threading
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 import httpx
 from agent_control_models import (
@@ -122,6 +124,9 @@ from .tracing import (
     with_trace,
 )
 from .validation import ensure_agent_name
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import TracerProvider
 
 # Module logger
 logger = get_logger(__name__)
@@ -460,6 +465,7 @@ def init(
     target_type: str | None = None,
     target_id: str | None = None,
     runtime_token_header: str | None = None,
+    otel_tracer_provider: TracerProvider | None = None,
     **kwargs: object
 ) -> Agent:
     """
@@ -514,6 +520,10 @@ def init(
             X-Agent-Control-Runtime-Token) when the server runs behind a gateway
             that reserves Authorization for its own identity JWT. The server must
             be configured to read the same header.
+        otel_tracer_provider: Optional application-owned OpenTelemetry SDK provider.
+            Used only when observability_sink_name is ``"otel"``. If omitted,
+            the OTEL sink reuses a globally registered SDK provider when available,
+            otherwise it creates and owns a provider as before.
         **kwargs: Additional metadata to store with the agent
 
     Returns:
@@ -738,6 +748,7 @@ def init(
         enabled=observability_enabled,
         sink_name=observability_sink_name,
         sink_config=observability_sink_config,
+        otel_tracer_provider=otel_tracer_provider,
     )
     if batcher:
         logger.info("Observability enabled")

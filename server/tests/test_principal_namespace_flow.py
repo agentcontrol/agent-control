@@ -113,8 +113,10 @@ def test_controls_list_seeds_out_of_box_controls_for_principal_namespace(
     assert resp.status_code == 200, resp.text
 
     expected_names = {template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES}
-    returned_names = {control["name"] for control in resp.json()["controls"]}
+    returned_controls = resp.json()["controls"]
+    returned_names = {control["name"] for control in returned_controls}
     assert expected_names.issubset(returned_names)
+    assert all(control["source"] == "preset" for control in returned_controls)
     assert authorizer.operations == [
         Operation.CONTROLS_READ,
         Operation.CONTROLS_READ,
@@ -140,9 +142,13 @@ def test_controls_list_seeds_out_of_box_controls_alongside_custom_control(
     )
     assert response.status_code == 200, response.text
 
-    returned_names = {control["name"] for control in response.json()["controls"]}
+    returned_controls = response.json()["controls"]
+    returned_names = {control["name"] for control in returned_controls}
     expected_names = {template.name for template in OUT_OF_BOX_CONTROL_TEMPLATES}
     assert returned_names == {*expected_names, custom_name}
+    sources_by_name = {control["name"]: control["source"] for control in returned_controls}
+    assert sources_by_name[custom_name] == "custom"
+    assert all(sources_by_name[name] == "preset" for name in expected_names)
 
 
 def test_controls_list_completes_partially_seeded_namespace(app: FastAPI) -> None:
