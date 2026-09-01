@@ -12,7 +12,10 @@ import {
   ControlDefinitionOutput,
   ControlDefinitionOutput$inboundSchema,
 } from "./control-definition-output.js";
-import { ControlSource, ControlSource$inboundSchema } from "./control-source.js";
+import {
+  ControlSource,
+  ControlSource$inboundSchema,
+} from "./control-source.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 import {
   UnrenderedTemplateControl,
@@ -47,7 +50,7 @@ export type GetControlResponse = {
    */
   name: string;
   /**
-   * Whether the control is user-created or provided as a preset.
+   * Origin of a control exposed by the control APIs.
    */
   source?: ControlSource | undefined;
 };

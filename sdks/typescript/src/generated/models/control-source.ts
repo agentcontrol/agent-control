@@ -3,7 +3,8 @@
  */
 
 import * as z from "zod/v4-mini";
-import { ClosedEnum } from "../types/enums.js";
+import * as openEnums from "../types/enums.js";
+import { OpenEnum } from "../types/enums.js";
 
 /**
  * Origin of a control exposed by the control APIs.
@@ -15,8 +16,10 @@ export const ControlSource = {
 /**
  * Origin of a control exposed by the control APIs.
  */
-export type ControlSource = ClosedEnum<typeof ControlSource>;
+export type ControlSource = OpenEnum<typeof ControlSource>;
 
 /** @internal */
-export const ControlSource$inboundSchema: z.ZodMiniEnum<typeof ControlSource> =
-  z.enum(ControlSource);
+export const ControlSource$inboundSchema: z.ZodMiniType<
+  ControlSource,
+  unknown
+> = openEnums.inboundSchema(ControlSource);

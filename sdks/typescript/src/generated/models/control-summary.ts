@@ -16,7 +16,10 @@ import {
   ControlAttachments,
   ControlAttachments$inboundSchema,
 } from "./control-attachments.js";
-import { ControlSource, ControlSource$inboundSchema } from "./control-source.js";
+import {
+  ControlSource,
+  ControlSource$inboundSchema,
+} from "./control-source.js";
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
@@ -56,7 +59,7 @@ export type ControlSummary = {
    */
   name: string;
   /**
-   * Whether the control is user-created or provided as a preset.
+   * Origin of a control exposed by the control APIs.
    */
   source?: ControlSource | undefined;
   /**
