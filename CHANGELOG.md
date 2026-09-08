@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v8.7.0 (2026-09-08)
+
+### Features
+
+- **evaluators**: Add AgentControl support for Orbit preset SLM scorer invocation
+  ([#259](https://github.com/agentcontrol/agent-control/pull/259),
+  [`5a29c45`](https://github.com/agentcontrol/agent-control/commit/5a29c45df1e4aa11ae7a1ae1b1f54e6219f93eb9))
+
+
 ## v8.6.0 (2026-08-21)
 
 ### Features
