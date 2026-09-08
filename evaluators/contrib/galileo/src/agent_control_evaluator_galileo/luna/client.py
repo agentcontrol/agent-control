@@ -11,15 +11,19 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
+from typing import Literal, cast, get_args
 from urllib.parse import urlsplit
 
 import httpx
-from agent_control_models import JSONObject, JSONValue
+from agent_control_models import JSONObject, JSONValue, Step
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
+
+from .config import ScorerInvokeConfig
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECS = 10.0
+SERVER_TIMEOUT_RATIO = 0.8
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 DEFAULT_LUNA_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
 LUNA_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
@@ -39,6 +43,20 @@ LUNA_KEEPALIVE_EXPIRY_ENV = "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS"
 LUNA_MAX_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_CONNECTIONS"
 LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS"
 LUNA_CLIENT_POOL_SIZE_ENV = "GALILEO_LUNA_CLIENT_POOL_SIZE"
+
+# These values mirror Orbit's StepType discriminator. Agent Control's generic
+# Step remains extensible; only the Galileo transport boundary is constrained.
+ScorerInvokeRecordType = Literal[
+    "llm",
+    "retriever",
+    "tool",
+    "workflow",
+    "agent",
+    "control",
+    "trace",
+    "session",
+]
+SUPPORTED_SCORER_INVOKE_RECORD_TYPES = frozenset(get_args(ScorerInvokeRecordType))
 
 
 def _b64url(data: bytes) -> str:
@@ -148,13 +166,66 @@ def _has_value(value: JSONValue) -> bool:
     return True
 
 
+def _effective_scorer_timeout(
+    config: ScorerInvokeConfig,
+    *,
+    http_timeout_seconds: float,
+) -> ScorerInvokeConfig:
+    """Resolve an Orbit execution timeout that expires before the HTTP request.
+
+    The server execution budget defaults to 80% of the caller's HTTP deadline,
+    leaving time for Orbit to serialize and return the result. Explicit caller
+    overrides are preserved only when they maintain the same ordering.
+
+    Args:
+        config: Caller-provided scorer-invoke configuration.
+        http_timeout_seconds: Agent Control's HTTP request deadline in seconds.
+
+    Returns:
+        A scorer-invoke configuration with an effective execution timeout.
+
+    Raises:
+        ValueError: If either deadline is invalid or the explicit server timeout
+            is not shorter than the HTTP deadline.
+    """
+    if http_timeout_seconds <= 0:
+        raise ValueError("HTTP timeout must be greater than 0 seconds.")
+
+    server_timeout = config.request_timeout_seconds
+    if server_timeout is None:
+        server_timeout = http_timeout_seconds * SERVER_TIMEOUT_RATIO
+    elif server_timeout >= http_timeout_seconds:
+        raise ValueError(
+            "config.request_timeout_seconds must be shorter than the HTTP "
+            f"timeout ({http_timeout_seconds:g} seconds)."
+        )
+
+    return config.model_copy(update={"request_timeout_seconds": server_timeout})
+
+
 class ScorerInvokeInputs(BaseModel):
     """Input values sent to the Luna scorer invoke endpoint."""
 
     query: JSONValue = ""
     response: JSONValue = ""
     ground_truth: JSONValue = None
-    tools: JSONValue = None
+    tools: list[JSONObject] | None = None
+
+
+class ScorerInvokeRecord(BaseModel):
+    """Caller-controlled subset of Orbit's partial runtime-record contract.
+
+    Identity, ownership, persistence, and execution IDs are intentionally not
+    represented here. Orbit hydrates those fields from trusted server context.
+    """
+
+    type: ScorerInvokeRecordType
+    name: str | None = None
+    input: JSONValue = None
+    output: JSONValue = None
+    context: JSONObject | None = None
+    tools: list[JSONObject] | None = None
+    dataset_output: JSONValue = None
 
 
 class ScorerInvokeRequest(BaseModel):
@@ -162,9 +233,11 @@ class ScorerInvokeRequest(BaseModel):
 
     Attributes:
         scorer_id: Required scorer identifier.
-        scorer_version_id: Optional pinned scorer version identifier.
+        scorer_version_id: Deprecated optional compatibility identifier. Orbit
+            currently invokes the scorer's current default version.
         scorer_label: Optional display/metadata label.
         inputs: Selected scorer input values.
+        record: Optional Orbit-compatible structured runtime record.
         config: Scorer-specific configuration, always emitted.
     """
 
@@ -172,7 +245,8 @@ class ScorerInvokeRequest(BaseModel):
     scorer_version_id: str | None = Field(default=None, min_length=1)
     scorer_label: str | None = Field(default=None, min_length=1)
     inputs: ScorerInvokeInputs
-    config: JSONObject = Field(default_factory=dict)
+    record: ScorerInvokeRecord | None = None
+    config: ScorerInvokeConfig = Field(default_factory=ScorerInvokeConfig)
 
     @model_validator(mode="after")
     def ensure_required_values(self) -> ScorerInvokeRequest:
@@ -183,6 +257,48 @@ class ScorerInvokeRequest(BaseModel):
     def to_dict(self) -> JSONObject:
         """Convert to the Luna scorer invoke request shape."""
         return self.model_dump(mode="json", exclude_none=True)
+
+
+def _orbit_record_from_step(
+    step: Step | None,
+    *,
+    selected_input: JSONValue,
+    selected_output: JSONValue,
+) -> ScorerInvokeRecord | None:
+    """Translate a generic Agent Control step into Orbit's record contract.
+
+    Selector-selected values remain the primary scorer input. When a selector
+    supplies one side, that value is written to both the legacy and structured
+    representations so Orbit's conflict validation cannot observe two meanings.
+    The complete step supplies the unselected side and additional record context.
+
+    Unknown Agent Control step types intentionally fall back to the legacy
+    ``inputs`` contract. This keeps the open-source Step model extensible without
+    sending an invalid discriminator to Orbit.
+
+    Args:
+        step: Complete Agent Control step, when contextual evaluation is used.
+        selected_input: Selector-selected value sent as ``inputs.query``.
+        selected_output: Selector-selected value sent as ``inputs.response``.
+
+    Returns:
+        An Orbit-compatible record, or ``None`` for absent/unsupported steps.
+    """
+    if step is None or step.type not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
+        return None
+
+    # The membership check above narrows the runtime value to Orbit's known
+    # discriminator set, but static type checkers cannot infer that relationship.
+    record_type = cast(ScorerInvokeRecordType, step.type)
+    return ScorerInvokeRecord(
+        type=record_type,
+        name=step.name,
+        input=selected_input if selected_input is not None else step.input,
+        output=selected_output if selected_output is not None else step.output,
+        context=step.context,
+        tools=step.tools,
+        dataset_output=step.ground_truth,
+    )
 
 
 class ScorerInvokeResponse(BaseModel):
@@ -357,7 +473,8 @@ class GalileoLunaClient:
         scorer_label: str | None = None,
         input: JSONValue = None,
         output: JSONValue = None,
-        config: JSONObject | None = None,
+        step: Step | None = None,
+        config: ScorerInvokeConfig | JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
     ) -> ScorerInvokeResponse:
@@ -365,11 +482,13 @@ class GalileoLunaClient:
 
         Args:
             scorer_id: Required scorer identifier.
-            scorer_version_id: Optional pinned scorer version identifier.
+            scorer_version_id: Deprecated optional compatibility identifier. Orbit
+                currently invokes the scorer's current default version.
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
-            config: Optional scorer-specific configuration.
+            step: Optional complete runtime step used for structured dual-write.
+            config: Optional Orbit-supported scorer invocation configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
 
@@ -377,7 +496,8 @@ class GalileoLunaClient:
             Parsed scorer invocation response.
 
         Raises:
-            ValueError: If neither input nor output is provided.
+            ValueError: If neither input nor output is provided, config contains
+                a field Orbit does not support, or the timeout ordering is invalid.
             RuntimeError: If the API response is not a JSON object.
             httpx.HTTPStatusError: If the Luna invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
@@ -385,14 +505,33 @@ class GalileoLunaClient:
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
+        # Accept dictionaries for source compatibility with the original client,
+        # but validate them against Orbit's authoritative allowlist locally.
+        invoke_config = (
+            ScorerInvokeConfig.model_validate(config)
+            if config is not None
+            else ScorerInvokeConfig()
+        )
+        invoke_config = _effective_scorer_timeout(
+            invoke_config,
+            http_timeout_seconds=timeout,
+        )
         request_body = ScorerInvokeRequest(
             scorer_id=scorer_id,
             scorer_version_id=scorer_version_id,
             scorer_label=scorer_label,
             inputs=ScorerInvokeInputs(
-                query="" if input is None else input, response="" if output is None else output
+                query="" if input is None else input,
+                response="" if output is None else output,
+                ground_truth=step.ground_truth if step is not None else None,
+                tools=step.tools if step is not None else None,
             ),
-            config=config if config is not None else {},
+            record=_orbit_record_from_step(
+                step,
+                selected_input=input,
+                selected_output=output,
+            ),
+            config=invoke_config,
         ).to_dict()
 
         endpoint, auth_header = self._endpoint_and_auth_header()

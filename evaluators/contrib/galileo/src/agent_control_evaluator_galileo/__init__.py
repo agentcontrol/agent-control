@@ -25,6 +25,8 @@ from agent_control_evaluator_galileo.luna import (
     LunaEvaluator,
     LunaEvaluatorConfig,
     LunaOperator,
+    ScorerInvokeConfig,
+    ScorerInvokeRecord,
     ScorerInvokeRequest,
     ScorerInvokeResponse,
 )
@@ -32,6 +34,8 @@ from agent_control_evaluator_galileo.luna import (
 __all__ = [
     "GalileoLunaClient",
     "ScorerInvokeRequest",
+    "ScorerInvokeConfig",
+    "ScorerInvokeRecord",
     "ScorerInvokeResponse",
     "LunaEvaluator",
     "LunaEvaluatorConfig",

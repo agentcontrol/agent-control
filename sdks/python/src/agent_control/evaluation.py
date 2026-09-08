@@ -15,6 +15,7 @@ from agent_control_models import (
     EvaluationResponse,
     EvaluationResult,
     EvaluatorResult,
+    JSONValue,
     Step,
 )
 
@@ -520,6 +521,8 @@ async def evaluate_controls(
     input: Any | None = None,
     output: Any | None = None,
     context: dict[str, Any] | None = None,
+    tools: list[dict[str, JSONValue]] | None = None,
+    ground_truth: JSONValue | None = None,
     step_type: Literal["tool", "llm"] = "llm",
     stage: Literal["pre", "post"] = "pre",
     agent_name: str,
@@ -552,6 +555,10 @@ async def evaluate_controls(
     }
     if context is not None:
         step_dict["context"] = context
+    if tools is not None:
+        step_dict["tools"] = tools
+    if ground_truth is not None:
+        step_dict["ground_truth"] = ground_truth
 
     step_obj = Step(**step_dict)  # type: ignore[arg-type]
     resolved_controls = state.server_controls or []

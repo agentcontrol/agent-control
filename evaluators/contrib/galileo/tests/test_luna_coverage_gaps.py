@@ -663,7 +663,7 @@ async def test_invoke_strips_caller_supplied_galileo_api_key_header(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_invoke_always_emits_config_field(monkeypatch):
-    """Regression: config must always be present in the request body, defaulting to {}."""
+    """The request always carries a server timeout below its HTTP deadline."""
     for key, value in LUNA_ENV.items():
         monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
@@ -683,4 +683,4 @@ async def test_invoke_always_emits_config_field(monkeypatch):
         await client.close()
 
     assert "config" in captured["body"]
-    assert captured["body"]["config"] == {}
+    assert captured["body"]["config"] == {"request_timeout_seconds": 8.0}

@@ -4,8 +4,8 @@ version = "8.6.0"
 description = "Control execution engine for Agent Control"
 requires-python = ">=3.12"
 dependencies = [
-    "agent-control-models>=3.0.0",
-    "agent-control-evaluators>=3.0.0",
+    "agent-control-models>=8.6.0",
+    "agent-control-evaluators>=8.6.0",
     "google-re2>=1.1",
 ]
 authors = [

@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
-from agent_control_models import EvaluatorResult
+from agent_control_models import EvaluatorResult, Step
 from agent_control_models.base import BaseModel
 
 if TYPE_CHECKING:
@@ -160,6 +160,23 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
             EvaluatorResult with matched status, confidence, and message
         """
         pass
+
+    async def evaluate_with_context(self, data: Any, step: Step) -> EvaluatorResult:
+        """Evaluate selected data with access to the complete runtime step.
+
+        The default implementation preserves compatibility with evaluators that
+        implement only :meth:`evaluate`. Evaluators must treat ``step`` as
+        immutable request-scoped context because evaluator instances are cached
+        and may be invoked concurrently.
+
+        Args:
+            data: Data extracted by the configured selector.
+            step: Complete runtime step for the current request.
+
+        Returns:
+            EvaluatorResult produced by this evaluator.
+        """
+        return await self.evaluate(data)
 
     def get_timeout_seconds(self) -> float:
         """Get timeout in seconds from config or metadata default."""

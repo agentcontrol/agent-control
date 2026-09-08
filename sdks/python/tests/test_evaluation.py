@@ -60,8 +60,10 @@ async def test_check_evaluation_returns_result_model():
                 "type": "llm",
                 "name": "chat",
                 "input": "hello",
-                "output": None,
-                "context": None,
+                    "output": None,
+                    "context": None,
+                    "tools": None,
+                    "ground_truth": None,
             },
             "stage": "pre",
             "target_type": None,
@@ -123,6 +125,34 @@ async def test_evaluate_controls_with_context(monkeypatch):
             )
 
     assert mock_check.call_args is not None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_preserves_explicit_tools_and_ground_truth(monkeypatch):
+    """Explicit structured scorer context is preserved on the SDK Step."""
+    # Given: a configured SDK and local evaluation boundary
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+    tools = [
+        {"name": "search", "description": "Search", "input_schema": {"type": "object"}}
+    ]
+
+    # When: a direct SDK caller supplies tools and ground truth
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        await evaluation.evaluate_controls(
+            step_name="chat",
+            input="question",
+            output="answer",
+            tools=tools,
+            ground_truth={"answer": "expected"},
+            stage="post",
+            agent_name="test-bot",
+        )
+
+    # Then: both fields are retained as structured JSON
+    step = mock_check.call_args.kwargs["step"]
+    assert step.tools == tools
+    assert step.ground_truth == {"answer": "expected"}
 
 
 @pytest.mark.asyncio

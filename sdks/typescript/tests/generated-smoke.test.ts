@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { stepToJSON } from "../src/generated/models/step";
+
 describe("generated client layout", () => {
   it("has a generated index entrypoint", () => {
     const generatedIndex = path.resolve(process.cwd(), "src/generated/index.ts");
@@ -23,5 +25,37 @@ describe("generated client layout", () => {
         throw new Error(`Generated source missing for export specifier '${specifier}': ${tsSourcePath}`);
       }
     }
+  });
+
+  it("serializes structured Step scorer context", () => {
+    const serialized = stepToJSON({
+      type: "llm",
+      name: "answer",
+      input: "question",
+      output: "answer",
+      groundTruth: "expected",
+      tools: [
+        {
+          name: "search",
+          description: "Search documents",
+          input_schema: { type: "object" },
+        },
+      ],
+    });
+
+    expect(JSON.parse(serialized)).toEqual({
+      type: "llm",
+      name: "answer",
+      input: "question",
+      output: "answer",
+      ground_truth: "expected",
+      tools: [
+        {
+          name: "search",
+          description: "Search documents",
+          input_schema: { type: "object" },
+        },
+      ],
+    });
   });
 });
