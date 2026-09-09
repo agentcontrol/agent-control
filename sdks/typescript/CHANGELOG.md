@@ -1,3 +1,19 @@
+## [3.2.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.1.0...ts-sdk-v3.2.0) (2026-09-09)
+
+### Features
+
+* **evaluators:** add AgentControl support for Orbit preset SLM scorer invocation ([#259](https://github.com/agentcontrol/agent-control/issues/259)) ([5a29c45](https://github.com/agentcontrol/agent-control/commit/5a29c45df1e4aa11ae7a1ae1b1f54e6219f93eb9)), closes [#1720](https://github.com/agentcontrol/agent-control/issues/1720) [#1720](https://github.com/agentcontrol/agent-control/issues/1720)
+* **evaluators:** add defenseclaw evaluator ([#248](https://github.com/agentcontrol/agent-control/issues/248)) ([2274ca8](https://github.com/agentcontrol/agent-control/commit/2274ca8980e07f1f071b144b46ce67a1e36f16b9))
+* **evaluators:** new api from runners-api ([#242](https://github.com/agentcontrol/agent-control/issues/242)) ([b38bf08](https://github.com/agentcontrol/agent-control/commit/b38bf08e343ae11cee37ccc543deb05dcd862eaf))
+* **sdk:** add optional traceprovider parameter ([#260](https://github.com/agentcontrol/agent-control/issues/260)) ([c22fb91](https://github.com/agentcontrol/agent-control/commit/c22fb911d63b36354a8f3138a95ada7dcde5cb9f))
+* **sdk:** add out of the box controls - part 1 ([#246](https://github.com/agentcontrol/agent-control/issues/246)) ([45dea6d](https://github.com/agentcontrol/agent-control/commit/45dea6d965a92cffd32bea13567c10aac946c962))
+* **server:** configurable runtime-token header to avoid gateway Authorization collision [HYBIM-866] ([#258](https://github.com/agentcontrol/agent-control/issues/258)) ([e6c00b2](https://github.com/agentcontrol/agent-control/commit/e6c00b2991ac37909df2f7f375b15a2ea03ec520)), closes [#253](https://github.com/agentcontrol/agent-control/issues/253)
+* **server:** support optionally disabling uvicorn access logs ([#255](https://github.com/agentcontrol/agent-control/issues/255)) ([57129fd](https://github.com/agentcontrol/agent-control/commit/57129fd0ed3de65793e55aaa070e945d15e11686)), closes [#254](https://github.com/agentcontrol/agent-control/issues/254)
+
+### Bug Fixes
+
+* **evaluators:** use SQLGlot native extra without direct sqlglotc pin ([#243](https://github.com/agentcontrol/agent-control/issues/243)) ([6884ce9](https://github.com/agentcontrol/agent-control/commit/6884ce9c16f85763f029ffba99867993548fc2ae))
+
 ## [3.1.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.0.0...ts-sdk-v3.1.0) (2026-06-17)
 
 ### Features
