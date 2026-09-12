@@ -34,7 +34,7 @@ export type StepSchema = {
    */
   outputSchema?: { [k: string]: any } | null | undefined;
   /**
-   * Step type for this schema (e.g., 'tool', 'llm')
+   * Step type for this schema (e.g., 'tool', 'llm', 'retriever')
    */
   type: string;
 };

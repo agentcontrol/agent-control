@@ -53,7 +53,7 @@ export class Controls extends ClientSDK {
    *     enabled: Optional filter by enabled status
    *     template_backed: Optional filter by whether the control is template-backed
    *     cloned: Optional filter by whether the control was cloned from another control
-   *     step_type: Optional filter by step type (built-ins: 'tool', 'llm')
+   *     step_type: Optional filter by step type (built-ins: 'tool', 'llm', 'retriever')
    *     stage: Optional filter by stage ('pre' or 'post')
    *     execution: Optional filter by execution ('server' or 'sdk')
    *     tag: Optional filter by tag

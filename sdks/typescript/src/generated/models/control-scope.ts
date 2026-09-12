@@ -34,7 +34,7 @@ export type ControlScope = {
    */
   stepNames?: Array<string> | null | undefined;
   /**
-   * Step types this control applies to (omit to apply to all types). Built-in types are 'tool' and 'llm'.
+   * Step types this control applies to (omit to apply to all types). Built-in types are 'tool', 'llm', and 'retriever'.
    */
   stepTypes?: Array<string> | null | undefined;
 };

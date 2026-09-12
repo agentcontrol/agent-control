@@ -28,7 +28,7 @@ export type ListControlsApiV1ControlsGetRequest = {
    */
   cloned?: boolean | null | undefined;
   /**
-   * Filter by step type (built-ins: 'tool', 'llm')
+   * Filter by step type (built-ins: 'tool', 'llm', 'retriever')
    */
   stepType?: string | null | undefined;
   /**

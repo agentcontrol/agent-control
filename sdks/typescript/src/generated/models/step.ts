@@ -4,19 +4,41 @@
 
 import * as z from "zod/v4-mini";
 import { remap as remap$ } from "../lib/primitives.js";
+import {
+  DocumentEvidence,
+  DocumentEvidence$Outbound,
+  DocumentEvidence$outboundSchema,
+} from "./document-evidence.js";
+import {
+  ToolCallEvidence,
+  ToolCallEvidence$Outbound,
+  ToolCallEvidence$outboundSchema,
+} from "./tool-call-evidence.js";
 
 /**
  * Runtime payload for an agent step invocation.
  */
 export type Step = {
   /**
+   * Optional execution records owned by this record
+   */
+  children?: Array<Step> | null | undefined;
+  /**
    * Optional context (conversation history, metadata, etc.)
    */
   context?: { [k: string]: any } | null | undefined;
   /**
+   * Optional documents retrieved or otherwise supplied to this step
+   */
+  documents?: Array<DocumentEvidence> | null | undefined;
+  /**
    * Optional expected or reference output for this step
    */
   groundTruth?: any | null | undefined;
+  /**
+   * Optional earlier execution records supplied as context
+   */
+  history?: Array<Step> | null | undefined;
   /**
    * Any JSON value
    */
@@ -30,22 +52,35 @@ export type Step = {
    */
   output?: any | null | undefined;
   /**
+   * Optional execution status code
+   */
+  statusCode?: number | null | undefined;
+  /**
+   * Optional tool calls selected or requested by a model
+   */
+  toolCalls?: Array<ToolCallEvidence> | null | undefined;
+  /**
    * Complete structured definitions of tools available to the LLM
    */
   tools?: Array<{ [k: string]: any }> | null | undefined;
   /**
-   * Step type (e.g., 'tool', 'llm')
+   * Step type (e.g., 'tool', 'llm', 'retriever')
    */
   type: string;
 };
 
 /** @internal */
 export type Step$Outbound = {
+  children?: Array<Step$Outbound> | null | undefined;
   context?: { [k: string]: any } | null | undefined;
+  documents?: Array<DocumentEvidence$Outbound> | null | undefined;
   ground_truth?: any | null | undefined;
+  history?: Array<Step$Outbound> | null | undefined;
   input: any;
   name: string;
   output?: any | null | undefined;
+  status_code?: number | null | undefined;
+  tool_calls?: Array<ToolCallEvidence$Outbound> | null | undefined;
   tools?: Array<{ [k: string]: any }> | null | undefined;
   type: string;
 };
@@ -53,17 +88,26 @@ export type Step$Outbound = {
 /** @internal */
 export const Step$outboundSchema: z.ZodMiniType<Step$Outbound, Step> = z.pipe(
   z.object({
+    children: z.optional(
+      z.nullable(z.array(z.lazy(() => Step$outboundSchema))),
+    ),
     context: z.optional(z.nullable(z.record(z.string(), z.any()))),
+    documents: z.optional(z.nullable(z.array(DocumentEvidence$outboundSchema))),
     groundTruth: z.optional(z.nullable(z.any())),
+    history: z.optional(z.nullable(z.array(z.lazy(() => Step$outboundSchema)))),
     input: z.any(),
     name: z.string(),
     output: z.optional(z.nullable(z.any())),
+    statusCode: z.optional(z.nullable(z.int())),
+    toolCalls: z.optional(z.nullable(z.array(ToolCallEvidence$outboundSchema))),
     tools: z.optional(z.nullable(z.array(z.record(z.string(), z.any())))),
     type: z.string(),
   }),
   z.transform((v) => {
     return remap$(v, {
       groundTruth: "ground_truth",
+      statusCode: "status_code",
+      toolCalls: "tool_calls",
     });
   }),
 );
