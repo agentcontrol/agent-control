@@ -1,11 +1,17 @@
+import { FlatCompat } from '@eslint/eslintrc';
 import { defineConfig, globalIgnores } from 'eslint/config';
-import nextVitals from 'eslint-config-next/core-web-vitals';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
 import unusedImports from 'eslint-plugin-unused-imports';
 import tseslint from 'typescript-eslint';
 
+const compat = new FlatCompat({
+  baseDirectory: dirname(fileURLToPath(import.meta.url)),
+});
+
 const eslintConfig = defineConfig([
-  ...nextVitals,
+  ...compat.extends('next/core-web-vitals'),
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
