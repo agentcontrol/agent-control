@@ -11,12 +11,14 @@ from agent_control_engine.core import ControlEngine
 from agent_control_models import (
     ControlDefinitionRuntime,
     ControlMatch,
+    DocumentEvidence,
     EvaluationRequest,
     EvaluationResponse,
     EvaluationResult,
     EvaluatorResult,
     JSONValue,
     Step,
+    ToolCallEvidence,
 )
 
 from ._state import state
@@ -27,7 +29,6 @@ from .tracing import get_trace_and_span_ids
 from .validation import ensure_agent_name
 
 _RuntimePostEvaluation = Callable[..., Awaitable[httpx.Response]]
-
 
 @dataclass
 class _ControlAdapter:
@@ -523,7 +524,12 @@ async def evaluate_controls(
     context: dict[str, Any] | None = None,
     tools: list[dict[str, JSONValue]] | None = None,
     ground_truth: JSONValue | None = None,
-    step_type: Literal["tool", "llm"] = "llm",
+    documents: list[DocumentEvidence] | None = None,
+    tool_calls: list[ToolCallEvidence] | None = None,
+    status_code: int | None = None,
+    children: list[Step] | None = None,
+    history: list[Step] | None = None,
+    step_type: str = "llm",
     stage: Literal["pre", "post"] = "pre",
     agent_name: str,
     target_type: str | None = None,
@@ -559,6 +565,16 @@ async def evaluate_controls(
         step_dict["tools"] = tools
     if ground_truth is not None:
         step_dict["ground_truth"] = ground_truth
+    if documents is not None:
+        step_dict["documents"] = documents
+    if tool_calls is not None:
+        step_dict["tool_calls"] = tool_calls
+    if status_code is not None:
+        step_dict["status_code"] = status_code
+    if children is not None:
+        step_dict["children"] = children
+    if history is not None:
+        step_dict["history"] = history
 
     step_obj = Step(**step_dict)  # type: ignore[arg-type]
     resolved_controls = state.server_controls or []

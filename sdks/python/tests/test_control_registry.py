@@ -67,6 +67,21 @@ class TestRegister:
         assert steps[0]["type"] == "tool"
         assert steps[0]["name"] == "search_db"
 
+    def test_register_falsy_string_tool_marker_as_tool(self) -> None:
+        """A present, falsy string marker retains legacy tool classification."""
+
+        def search_db(query: str) -> str:
+            ...
+
+        search_db.name = ""  # type: ignore[attr-defined]
+
+        register(search_db)
+
+        steps = get_registered_steps()
+        assert len(steps) == 1
+        assert steps[0]["type"] == "tool"
+        assert steps[0]["name"] == "search_db"
+
     def test_register_with_policy(self) -> None:
         # Given a typed function and an explicit policy value at registration time.
         def my_func(x: str) -> str:
@@ -285,6 +300,20 @@ class TestDecoratorRegistration:
         assert len(steps) == 1
         assert steps[0]["type"] == "tool"
         assert steps[0]["name"] == "lookup_tool"
+
+    def test_decorator_registers_explicit_retriever(self) -> None:
+        """Explicit retriever typing overrides the default llm classification."""
+        from agent_control.control_decorators import control
+
+        @control(step_type="retriever")
+        def knowledge_search(query: str) -> list[dict[str, str]]:
+            return [{"content": query}]
+
+        steps = get_registered_steps()
+
+        assert len(steps) == 1
+        assert steps[0]["type"] == "retriever"
+        assert steps[0]["name"] == "knowledge_search"
 
     def test_stacked_decorators_deduplicate(self) -> None:
         """Stacking @control() twice on the same function deduplicates by name."""

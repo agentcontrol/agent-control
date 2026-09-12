@@ -15,7 +15,13 @@ from typing import Literal, cast, get_args
 from urllib.parse import urlsplit
 
 import httpx
-from agent_control_models import JSONObject, JSONValue, Step
+from agent_control_models import (
+    DocumentEvidence,
+    JSONObject,
+    JSONValue,
+    Step,
+    ToolCallEvidence,
+)
 from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 from .config import ScorerInvokeConfig
@@ -44,8 +50,9 @@ LUNA_MAX_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_CONNECTIONS"
 LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS"
 LUNA_CLIENT_POOL_SIZE_ENV = "GALILEO_LUNA_CLIENT_POOL_SIZE"
 
-# These values mirror Orbit's StepType discriminator. Agent Control's generic
-# Step remains extensible; only the Galileo transport boundary is constrained.
+# The public Galileo scorer-invocation contract accepts these record types. The
+# Agent Control Step remains extensible; unsupported nested records are rejected
+# only when crossing this provider boundary.
 ScorerInvokeRecordType = Literal[
     "llm",
     "retriever",
@@ -166,15 +173,25 @@ def _has_value(value: JSONValue) -> bool:
     return True
 
 
+def _has_structured_evidence(step: Step | None) -> bool:
+    """Return whether a step contains evidence that can stand in for text."""
+    if step is None:
+        return False
+    return any(
+        value is not None and len(value) > 0
+        for value in (step.documents, step.tool_calls, step.children, step.history)
+    )
+
+
 def _effective_scorer_timeout(
     config: ScorerInvokeConfig,
     *,
     http_timeout_seconds: float,
 ) -> ScorerInvokeConfig:
-    """Resolve an Orbit execution timeout that expires before the HTTP request.
+    """Resolve a server execution timeout that expires before the HTTP request.
 
     The server execution budget defaults to 80% of the caller's HTTP deadline,
-    leaving time for Orbit to serialize and return the result. Explicit caller
+    leaving time for the remote service to serialize and return the result. Explicit caller
     overrides are preserved only when they maintain the same ordering.
 
     Args:
@@ -210,13 +227,38 @@ class ScorerInvokeInputs(BaseModel):
     response: JSONValue = ""
     ground_truth: JSONValue = None
     tools: list[JSONObject] | None = None
+    tool_calls: list[ScorerInvokeToolCall] | None = None
+    documents: list[ScorerInvokeDocument] | None = None
+    history: list[ScorerInvokeRecord] | None = None
+
+
+class ScorerInvokeToolCallFunction(BaseModel):
+    """Function portion of a Galileo tool-call payload."""
+
+    name: str
+    arguments: str
+
+
+class ScorerInvokeDocument(BaseModel):
+    """Galileo HTTP representation of generic document evidence."""
+
+    content: str
+    metadata: JSONObject | None = None
+
+
+class ScorerInvokeToolCall(BaseModel):
+    """Galileo HTTP representation of a model-selected tool call."""
+
+    id: str = Field(min_length=1)
+    function: ScorerInvokeToolCallFunction
 
 
 class ScorerInvokeRecord(BaseModel):
-    """Caller-controlled subset of Orbit's partial runtime-record contract.
+    """Galileo HTTP representation of a structured runtime record.
 
     Identity, ownership, persistence, and execution IDs are intentionally not
-    represented here. Orbit hydrates those fields from trusted server context.
+    represented here. The Galileo service hydrates those fields from trusted
+    server context.
     """
 
     type: ScorerInvokeRecordType
@@ -226,6 +268,10 @@ class ScorerInvokeRecord(BaseModel):
     context: JSONObject | None = None
     tools: list[JSONObject] | None = None
     dataset_output: JSONValue = None
+    documents: list[ScorerInvokeDocument] | None = None
+    tool_calls: list[ScorerInvokeToolCall] | None = None
+    status_code: int | None = None
+    children: list[ScorerInvokeRecord] | None = None
 
 
 class ScorerInvokeRequest(BaseModel):
@@ -233,11 +279,11 @@ class ScorerInvokeRequest(BaseModel):
 
     Attributes:
         scorer_id: Required scorer identifier.
-        scorer_version_id: Deprecated optional compatibility identifier. Orbit
-            currently invokes the scorer's current default version.
+        scorer_version_id: Deprecated optional compatibility identifier. The
+            remote service currently invokes the scorer's current default version.
         scorer_label: Optional display/metadata label.
         inputs: Selected scorer input values.
-        record: Optional Orbit-compatible structured runtime record.
+        record: Optional structured runtime record.
         config: Scorer-specific configuration, always emitted.
     """
 
@@ -250,8 +296,21 @@ class ScorerInvokeRequest(BaseModel):
 
     @model_validator(mode="after")
     def ensure_required_values(self) -> ScorerInvokeRequest:
-        if not (_has_value(self.inputs.query) or _has_value(self.inputs.response)):
-            raise ValueError("Either inputs.query or inputs.response must be set.")
+        has_text = _has_value(self.inputs.query) or _has_value(self.inputs.response)
+        has_evidence = any(
+            value is not None and len(value) > 0
+            for value in (self.inputs.documents, self.inputs.tool_calls, self.inputs.history)
+        )
+        if self.record is not None:
+            has_evidence = has_evidence or any(
+                value is not None and len(value) > 0
+                for value in (self.record.documents, self.record.tool_calls, self.record.children)
+            )
+        if not (has_text or has_evidence):
+            raise ValueError(
+                "Either inputs.query or inputs.response must be set, or the request "
+                "must contain structured evidence."
+            )
         return self
 
     def to_dict(self) -> JSONObject:
@@ -259,22 +318,116 @@ class ScorerInvokeRequest(BaseModel):
         return self.model_dump(mode="json", exclude_none=True)
 
 
-def _orbit_record_from_step(
+def _json_text(value: JSONValue) -> str:
+    """Serialize structured JSON as compact text for Galileo's HTTP contract."""
+    if isinstance(value, str):
+        return value
+    return dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _document_from_step(document: DocumentEvidence, *, path: str) -> ScorerInvokeDocument:
+    """Translate provider-neutral document evidence to Galileo's document shape."""
+    # The Step model has already validated this object, but keeping the narrow
+    # attribute boundary here makes the provider adapter independent of model internals.
+    content = getattr(document, "content")
+    document_id = getattr(document, "id")
+    source_metadata = getattr(document, "metadata")
+    metadata = dict(source_metadata or {})
+    existing_id = metadata.get("document_id")
+    if document_id is not None and existing_id is not None and existing_id != document_id:
+        raise ValueError(
+            f"Galileo document {path} has conflicting id and metadata.document_id values."
+        )
+    if document_id is not None:
+        metadata["document_id"] = document_id
+    return ScorerInvokeDocument(
+        content=_json_text(content),
+        metadata=metadata or None,
+    )
+
+
+def _documents_from_steps(
+    documents: list[DocumentEvidence] | None,
+    *,
+    path: str,
+) -> list[ScorerInvokeDocument] | None:
+    if documents is None:
+        return None
+    return [
+        _document_from_step(document, path=f"{path}[{index}]")
+        for index, document in enumerate(documents)
+    ]
+
+
+def _retriever_output_from_step(step: Step, *, path: str) -> JSONValue:
+    """Adapt a retriever's native document collection for a Galileo record."""
+    if step.documents is not None:
+        documents = _documents_from_steps(step.documents, path=f"{path}.documents")
+    elif isinstance(step.output, list):
+        native_documents = [
+            DocumentEvidence.model_validate(document)
+            for document in step.output
+        ]
+        documents = _documents_from_steps(native_documents, path=f"{path}.output")
+    else:
+        return step.output
+
+    return [
+        document.model_dump(mode="json", exclude_none=True)
+        for document in documents or []
+    ]
+
+
+def _tool_call_from_step(
+    tool_call: ToolCallEvidence,
+    *,
+    path: str,
+) -> ScorerInvokeToolCall:
+    """Translate provider-neutral tool-call evidence to Galileo's function shape."""
+    tool_call_id = getattr(tool_call, "id")
+    if not tool_call_id:
+        raise ValueError(f"Galileo tool call {path} requires an id.")
+    return ScorerInvokeToolCall(
+        id=tool_call_id,
+        function=ScorerInvokeToolCallFunction(
+            name=getattr(tool_call, "name"),
+            arguments=_json_text(getattr(tool_call, "arguments")),
+        ),
+    )
+
+
+def _tool_calls_from_steps(
+    tool_calls: list[ToolCallEvidence] | None,
+    *,
+    path: str,
+) -> list[ScorerInvokeToolCall] | None:
+    if tool_calls is None:
+        return None
+    return [
+        _tool_call_from_step(tool_call, path=f"{path}[{index}]")
+        for index, tool_call in enumerate(tool_calls)
+    ]
+
+
+def _record_from_step(
     step: Step | None,
     *,
     selected_input: JSONValue,
     selected_output: JSONValue,
+    include_documents: bool = True,
+    path: str = "record",
 ) -> ScorerInvokeRecord | None:
-    """Translate a generic Agent Control step into Orbit's record contract.
+    """Translate a generic Agent Control step into Galileo's record contract.
 
-    Selector-selected values remain the primary scorer input. When a selector
-    supplies one side, that value is written to both the legacy and structured
-    representations so Orbit's conflict validation cannot observe two meanings.
-    The complete step supplies the unselected side and additional record context.
+    LLM records may use selector-selected input and output for the legacy
+    dual-write behavior. Non-LLM records use the native provider-neutral Step
+    input and output; retriever document collections are adapted to Galileo's
+    document shape. Selector-normalized values remain in legacy ``inputs`` for
+    non-LLM records rather than replacing their structured evidence.
 
     Unknown Agent Control step types intentionally fall back to the legacy
     ``inputs`` contract. This keeps the open-source Step model extensible without
-    sending an invalid discriminator to Orbit.
+    sending an invalid discriminator to Galileo.
 
     Args:
         step: Complete Agent Control step, when contextual evaluation is used.
@@ -282,23 +435,98 @@ def _orbit_record_from_step(
         selected_output: Selector-selected value sent as ``inputs.response``.
 
     Returns:
-        An Orbit-compatible record, or ``None`` for absent/unsupported steps.
+        A Galileo-compatible record, or ``None`` for absent/unsupported root steps.
     """
-    if step is None or step.type not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
+    if step is None:
+        return None
+    if step.type not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
+        # Preserve the legacy root fallback, but never hide invalid nested data
+        # merely because the root record itself is unsupported.
+        _nested_records(step.children, path=f"{path}.children")
+        _nested_records(step.history, path=f"{path}.history")
         return None
 
-    # The membership check above narrows the runtime value to Orbit's known
-    # discriminator set, but static type checkers cannot infer that relationship.
     record_type = cast(ScorerInvokeRecordType, step.type)
+    if step.type == "llm":
+        record_input = selected_input if selected_input is not None else step.input
+        record_output = selected_output if selected_output is not None else step.output
+    else:
+        record_input = step.input
+        record_output = (
+            _retriever_output_from_step(step, path=path)
+            if step.type == "retriever"
+            else step.output
+        )
     return ScorerInvokeRecord(
         type=record_type,
         name=step.name,
-        input=selected_input if selected_input is not None else step.input,
-        output=selected_output if selected_output is not None else step.output,
+        input=record_input,
+        output=record_output,
         context=step.context,
         tools=step.tools,
         dataset_output=step.ground_truth,
+        documents=(
+            _documents_from_steps(step.documents, path=f"{path}.documents")
+            if include_documents
+            else None
+        ),
+        tool_calls=_tool_calls_from_steps(step.tool_calls, path=f"{path}.tool_calls"),
+        status_code=step.status_code,
+        children=_nested_records(step.children, path=f"{path}.children"),
     )
+
+
+def _nested_records(
+    steps: list[Step] | None,
+    *,
+    path: str,
+) -> list[ScorerInvokeRecord] | None:
+    """Convert nested records recursively without silently dropping any item."""
+    if steps is None:
+        return None
+    records: list[ScorerInvokeRecord] = []
+    for index, child in enumerate(steps):
+        if child.type not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
+            raise ValueError(
+                f"Galileo cannot serialize nested record {path}[{index}]: "
+                f"unsupported step type {child.type!r}."
+            )
+        record = _record_from_step(
+            child,
+            selected_input=child.input,
+            selected_output=child.output,
+            include_documents=True,
+            path=f"{path}[{index}]",
+        )
+        if record is None:  # pragma: no cover - guarded by the discriminator check
+            raise ValueError(f"Galileo could not serialize nested record {path}[{index}].")
+        records.append(record)
+    return records
+
+
+def _request_debug_metadata(request_body: JSONObject) -> JSONObject:
+    """Build safe request metadata without logging scorer inputs or evidence."""
+    inputs = request_body.get("inputs")
+    record = request_body.get("record")
+
+    def count(container: JSONValue, field: str) -> int:
+        if isinstance(container, dict):
+            value = container.get(field)
+            return len(value) if isinstance(value, list) else 0
+        return 0
+
+    return {
+        "scorer_id": request_body.get("scorer_id"),
+        "record_type": record.get("type") if isinstance(record, dict) else None,
+        "evidence_counts": {
+            "input_documents": count(inputs, "documents"),
+            "input_tool_calls": count(inputs, "tool_calls"),
+            "input_history": count(inputs, "history"),
+            "record_documents": count(record, "documents"),
+            "record_tool_calls": count(record, "tool_calls"),
+            "record_children": count(record, "children"),
+        },
+    }
 
 
 class ScorerInvokeResponse(BaseModel):
@@ -482,13 +710,13 @@ class GalileoLunaClient:
 
         Args:
             scorer_id: Required scorer identifier.
-            scorer_version_id: Deprecated optional compatibility identifier. Orbit
-                currently invokes the scorer's current default version.
+            scorer_version_id: Deprecated optional compatibility identifier. The
+                remote service currently invokes the scorer's current default version.
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
             step: Optional complete runtime step used for structured dual-write.
-            config: Optional Orbit-supported scorer invocation configuration.
+            config: Optional scorer invocation configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
 
@@ -496,17 +724,20 @@ class GalileoLunaClient:
             Parsed scorer invocation response.
 
         Raises:
-            ValueError: If neither input nor output is provided, config contains
-                a field Orbit does not support, or the timeout ordering is invalid.
+            ValueError: If neither input/output nor structured evidence is provided,
+                config contains an unsupported field, or timeout ordering is invalid.
             RuntimeError: If the API response is not a JSON object.
             httpx.HTTPStatusError: If the Luna invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
         """
-        if not (_has_value(input) or _has_value(output)):
-            raise ValueError("At least one of input or output must be provided.")
+        if not (_has_value(input) or _has_value(output) or _has_structured_evidence(step)):
+            raise ValueError(
+                "At least one of input or output must be provided, or meaningful "
+                "structured evidence must be provided."
+            )
 
         # Accept dictionaries for source compatibility with the original client,
-        # but validate them against Orbit's authoritative allowlist locally.
+        # but validate them against the public scorer configuration locally.
         invoke_config = (
             ScorerInvokeConfig.model_validate(config)
             if config is not None
@@ -525,11 +756,23 @@ class GalileoLunaClient:
                 response="" if output is None else output,
                 ground_truth=step.ground_truth if step is not None else None,
                 tools=step.tools if step is not None else None,
+                tool_calls=_tool_calls_from_steps(step.tool_calls, path="inputs.tool_calls")
+                if step is not None
+                else None,
+                documents=_documents_from_steps(
+                    step.documents if step is not None else None,
+                    path="inputs.documents",
+                ),
+                history=_nested_records(
+                    step.history if step is not None else None,
+                    path="inputs.history",
+                ),
             ),
-            record=_orbit_record_from_step(
+            record=_record_from_step(
                 step,
                 selected_input=input,
                 selected_output=output,
+                include_documents=False,
             ),
             config=invoke_config,
         ).to_dict()
@@ -541,7 +784,10 @@ class GalileoLunaClient:
         request_headers["Authorization"] = auth_header
 
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
-        logger.debug("[GalileoLunaClient] Request body: %s", request_body)
+        logger.debug(
+            "[GalileoLunaClient] Request metadata: %s",
+            _request_debug_metadata(request_body),
+        )
 
         try:
             client = await self._get_client()

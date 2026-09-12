@@ -49,3 +49,32 @@ def test_step_is_immutable_runtime_context() -> None:
         pass
     else:
         raise AssertionError("Step must be frozen")
+
+
+def test_step_preserves_recursive_execution_evidence() -> None:
+    """Documents, tool calls, outcomes, children, and history stay distinct."""
+    child = {
+        "type": "tool",
+        "name": "search",
+        "input": {"query": "agent control"},
+        "output": {"results": []},
+        "status_code": 502,
+    }
+    step = Step(
+        type="llm",
+        name="answer",
+        input="question",
+        documents=[{"content": "reference", "id": "doc-1", "metadata": {"rank": 1}}],
+        tool_calls=[{"id": "call-1", "name": "search", "arguments": {"query": "agent control"}}],
+        status_code=200,
+        children=[child],
+        history=[child],
+    )
+
+    assert step.documents is not None
+    assert step.documents[0].content == "reference"
+    assert step.tool_calls is not None
+    assert step.tool_calls[0].arguments == {"query": "agent control"}
+    assert step.children is not step.history
+    assert step.children is not None and step.children[0].status_code == 502
+    assert step.history is not None and step.history[0].status_code == 502

@@ -6,6 +6,7 @@ import pytest
 from agent_control_models import (
     ControlDefinition,
     ControlDefinitionRuntime,
+    ControlSelector,
 )
 from agent_control_models.controls import ControlDefinitionBase
 from pydantic import ValidationError
@@ -23,6 +24,28 @@ def _leaf(
             "config": config or {"pattern": "ok"},
         },
     }
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "documents",
+        "documents.0.content",
+        "tool_calls",
+        "tool_calls.0.arguments",
+        "status_code",
+        "children.0.output",
+        "history.0.documents.0.content",
+    ],
+)
+def test_selector_accepts_step_evidence_roots(path: str) -> None:
+    """New provider-neutral Step evidence fields are valid selector roots."""
+    assert ControlSelector(path=path).path == path
+
+
+def test_selector_rejects_unknown_evidence_root() -> None:
+    with pytest.raises(ValidationError, match="Invalid path root 'metadata'"):
+        ControlSelector(path="metadata.value")
 
 
 def test_condition_leaf_requires_selector_and_evaluator() -> None:

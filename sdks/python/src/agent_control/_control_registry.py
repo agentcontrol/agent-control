@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 from ._schema_derivation import derive_schemas
 
@@ -25,6 +25,27 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 type StepKey = tuple[str, str]
+DecoratorStepType = Literal["llm", "tool", "retriever"]
+
+
+def resolve_step_name_and_type(
+    func: Callable[..., Any],
+    explicit_step_type: DecoratorStepType | None = None,
+) -> tuple[str, DecoratorStepType]:
+    """Resolve a decorated callable's name and type using shared marker rules."""
+    name_marker = getattr(func, "name", None)
+    tool_name_marker = getattr(func, "tool_name", None)
+    has_tool_marker = isinstance(name_marker, str) or isinstance(tool_name_marker, str)
+    step_name = next(
+        (
+            marker
+            for marker in (name_marker, tool_name_marker)
+            if isinstance(marker, str) and marker
+        ),
+        func.__name__,
+    )
+    resolved_type = explicit_step_type or ("tool" if has_tool_marker else "llm")
+    return step_name, resolved_type
 
 
 class StepSchemaDict(TypedDict):
@@ -70,7 +91,12 @@ _registered_steps: dict[StepKey, _RegisteredControl] = {}
 # ---------------------------------------------------------------------------
 
 
-def register(func: Callable[..., Any], policy: str | None = None) -> None:
+def register(
+    func: Callable[..., Any],
+    policy: str | None = None,
+    *,
+    step_type: DecoratorStepType | None = None,
+) -> None:
     """Register a decorated function's step schema in the registry.
 
     Extracts step metadata from the function and stores it for later retrieval
@@ -83,11 +109,10 @@ def register(func: Callable[..., Any], policy: str | None = None) -> None:
     Args:
         func: The original (unwrapped) function being decorated.
         policy: Optional policy name (stored as metadata).
+        step_type: Optional explicit decorator step type. When omitted, the
+            existing tool-marker detection is used.
     """
-    # Determine step name -- tools typically have .name or .tool_name
-    tool_name = getattr(func, "name", None) or getattr(func, "tool_name", None)
-    step_name: str = tool_name if isinstance(tool_name, str) else func.__name__
-    step_type: str = "tool" if isinstance(tool_name, str) else "llm"
+    step_name, resolved_step_type = resolve_step_name_and_type(func, step_type)
 
     # Extract description from docstring (first line only)
     description: str | None = None
@@ -100,10 +125,10 @@ def register(func: Callable[..., Any], policy: str | None = None) -> None:
     if policy is not None:
         metadata["policy"] = policy
 
-    key = _step_key(step_type, step_name)
+    key = _step_key(resolved_step_type, step_name)
     registered = _RegisteredControl(
         func=func,
-        step_type=step_type,
+        step_type=resolved_step_type,
         step_name=step_name,
         description=description,
         metadata=metadata,
@@ -114,10 +139,10 @@ def register(func: Callable[..., Any], policy: str | None = None) -> None:
         logger.debug(
             "Overwriting previously registered step '%s' (type=%s)",
             step_name,
-            step_type,
+            resolved_step_type,
         )
     _registered_steps[key] = registered
-    logger.debug("Registered step schema: %s (type=%s)", step_name, step_type)
+    logger.debug("Registered step schema: %s (type=%s)", step_name, resolved_step_type)
 
 
 def get_registered_steps() -> list[StepSchemaDict]:

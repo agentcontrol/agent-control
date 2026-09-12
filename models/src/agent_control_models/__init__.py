@@ -18,12 +18,15 @@ from .actions import (
 from .agent import (
     BUILTIN_STEP_TYPES,
     STEP_TYPE_LLM,
+    STEP_TYPE_RETRIEVER,
     STEP_TYPE_TOOL,
     Agent,
+    DocumentEvidence,
     JSONObject,
     JSONValue,
     Step,
     StepSchema,
+    ToolCallEvidence,
 )
 from .controls import (
     BooleanTemplateParameter,
@@ -127,12 +130,15 @@ __all__ = [
     "HealthResponse",
     # Agent
     "Agent",
+    "DocumentEvidence",
     "StepSchema",
     "JSONValue",
     "JSONObject",
     "Step",
+    "ToolCallEvidence",
     "STEP_TYPE_TOOL",
     "STEP_TYPE_LLM",
+    "STEP_TYPE_RETRIEVER",
     "BUILTIN_STEP_TYPES",
     "ActionDecision",
     # Policy

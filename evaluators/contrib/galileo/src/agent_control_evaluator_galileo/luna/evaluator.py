@@ -12,7 +12,7 @@ import httpx
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult, JSONValue, Step
 
-from .client import GalileoLunaClient, ScorerInvokeResponse
+from .client import GalileoLunaClient, ScorerInvokeResponse, _has_structured_evidence
 from .config import LunaEvaluatorConfig, coerce_number
 
 logger = logging.getLogger(__name__)
@@ -215,7 +215,8 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
     async def _evaluate(self, data: Any, *, step: Step | None) -> EvaluatorResult:
         """Run a Luna evaluation with optional structured runtime context."""
         input_text, output_text = self._prepare_payload(data)
-        if not (_has_text(input_text) or _has_text(output_text)):
+        has_text = _has_text(input_text) or _has_text(output_text)
+        if not (has_text or _has_structured_evidence(step)):
             return EvaluatorResult(
                 matched=False,
                 confidence=1.0,

@@ -33,7 +33,17 @@ def select_data(step: Step, path: str) -> Any:
             except KeyError:
                 return None
 
-        # 2. Try attribute access (Pydantic models or objects)
+        # 2. Support numeric list indexes for nested evidence paths.
+        if isinstance(current, list):
+            if not part.isdigit():
+                return None
+            index = int(part)
+            if index >= len(current):
+                return None
+            current = current[index]
+            continue
+
+        # 3. Try attribute access (Pydantic models or objects)
         if hasattr(current, part):
             current = getattr(current, part)
             continue

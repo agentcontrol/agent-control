@@ -1148,7 +1148,7 @@ async def list_controls(
         description="Filter by whether the control was cloned from another control",
     ),
     step_type: str | None = Query(
-        None, description="Filter by step type (built-ins: 'tool', 'llm')"
+        None, description="Filter by step type (built-ins: 'tool', 'llm', 'retriever')"
     ),
     stage: str | None = Query(None, description="Filter by stage ('pre' or 'post')"),
     execution: str | None = Query(None, description="Filter by execution ('server' or 'sdk')"),
@@ -1196,7 +1196,7 @@ async def list_controls(
         enabled: Optional filter by enabled status
         template_backed: Optional filter by whether the control is template-backed
         cloned: Optional filter by whether the control was cloned from another control
-        step_type: Optional filter by step type (built-ins: 'tool', 'llm')
+        step_type: Optional filter by step type (built-ins: 'tool', 'llm', 'retriever')
         stage: Optional filter by stage ('pre' or 'post')
         execution: Optional filter by execution ('server' or 'sdk')
         tag: Optional filter by tag

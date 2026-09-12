@@ -15,18 +15,17 @@ _NUMERIC_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
 
 
 class ScorerInvokeConfig(BaseModel):
-    """Orbit-supported overrides for a synchronous scorer invocation.
+    """Public Galileo scorer-invocation configuration overrides.
 
-    Orbit owns the Galileo scorer-invoke wire contract. Keeping this model
-    strict makes an unsupported option fail locally instead of producing a
-    less actionable HTTP 422 response from Runners.
+    Keeping this model strict makes an unsupported option fail locally instead
+    of producing a less actionable HTTP 422 response from Galileo.
 
     Attributes:
-        threshold: Legacy threshold accepted by Orbit. Agent Control still
+        threshold: Legacy threshold accepted by Galileo. Agent Control still
             applies its evaluator threshold locally.
-        score_threshold: Legacy score threshold accepted by Orbit.
+        score_threshold: Legacy score threshold accepted by Galileo.
         request_timeout_seconds: Optional upper bound for scorer execution in
-            Orbit. The Agent Control HTTP and evaluator deadlines must remain
+            Galileo. The Agent Control HTTP and evaluator deadlines must remain
             longer than this value.
     """
 
@@ -56,12 +55,12 @@ class LunaEvaluatorConfig(EvaluatorConfig):
 
     Attributes:
         scorer_id: Required scorer identifier for Luna scorer invocation.
-        scorer_version_id: Deprecated optional compatibility identifier. Orbit
+        scorer_version_id: Deprecated optional compatibility identifier. Galileo
             currently invokes the scorer's current default version.
         scorer_label: Optional display/metadata label.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
-        scorer_config: Optional Orbit-supported scorer invocation config sent
+        scorer_config: Optional Galileo scorer invocation config sent
             as ``config``.
         payload_field: Explicit scorer input side for scalar selected data.
         timeout_ms: Request timeout in milliseconds.
@@ -75,7 +74,7 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         default=None,
         min_length=1,
         description=(
-            "Deprecated optional compatibility identifier. Orbit currently invokes "
+            "Deprecated optional compatibility identifier. Galileo currently invokes "
             "the scorer's current default version."
         ),
     )
@@ -97,7 +96,7 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         alias="config",
         serialization_alias="config",
         description=(
-            "Optional Orbit-supported configuration sent to the Luna scorer invoke endpoint."
+            "Optional Galileo configuration sent to the Luna scorer invoke endpoint."
         ),
     )
     payload_field: LunaPayloadField = Field(

@@ -13,7 +13,17 @@ type JSONObject = dict[str, JSONValue]
 
 STEP_TYPE_TOOL = "tool"
 STEP_TYPE_LLM = "llm"
-BUILTIN_STEP_TYPES: tuple[str, str] = (STEP_TYPE_TOOL, STEP_TYPE_LLM)
+STEP_TYPE_RETRIEVER = "retriever"
+BUILTIN_STEP_TYPES: tuple[str, str, str] = (
+    STEP_TYPE_TOOL,
+    STEP_TYPE_LLM,
+    STEP_TYPE_RETRIEVER,
+)
+
+
+def _exclude_none(value: object) -> bool:
+    """Omit absent evidence fields while preserving the legacy Step shape."""
+    return value is None
 
 AGENT_NAME_MIN_LENGTH = 10
 AGENT_NAME_PATTERN = r"^[a-z0-9:_-]+$"
@@ -88,7 +98,7 @@ class StepSchema(BaseModel):
     type: str = Field(
         ...,
         min_length=1,
-        description="Step type for this schema (e.g., 'tool', 'llm')",
+        description="Step type for this schema (e.g., 'tool', 'llm', 'retriever')",
     )
     name: str = Field(..., description="Unique name for the step", min_length=1)
     description: str | None = Field(
@@ -139,6 +149,27 @@ class StepSchema(BaseModel):
         return v
 
 
+class DocumentEvidence(BaseModel):
+    """Provider-neutral document evidence associated with a runtime step."""
+
+    content: JSONValue = Field(..., description="Document content")
+    id: str | None = Field(default=None, description="Optional document identifier")
+    metadata: JSONObject | None = Field(
+        default=None, description="Optional document metadata"
+    )
+
+
+class ToolCallEvidence(BaseModel):
+    """A tool call selected or requested by a model, before execution."""
+
+    id: str | None = Field(default=None, description="Optional tool-call identifier")
+    name: str = Field(..., min_length=1, description="Tool name")
+    arguments: JSONValue = Field(..., description="Structured tool-call arguments")
+    metadata: JSONObject | None = Field(
+        default=None, description="Optional tool-call metadata"
+    )
+
+
 class Step(BaseModel):
     """Runtime payload for an agent step invocation."""
 
@@ -147,7 +178,7 @@ class Step(BaseModel):
     type: str = Field(
         ...,
         min_length=1,
-        description="Step type (e.g., 'tool', 'llm')",
+        description="Step type (e.g., 'tool', 'llm', 'retriever')",
     )
     name: str = Field(
         ..., min_length=1, description="Step name (tool name or model/chain id)"
@@ -167,6 +198,31 @@ class Step(BaseModel):
     )
     ground_truth: JSONValue | None = Field(
         None, description="Optional expected or reference output for this step"
+    )
+    documents: list[DocumentEvidence] | None = Field(
+        default=None,
+        exclude_if=_exclude_none,
+        description="Optional documents retrieved or otherwise supplied to this step",
+    )
+    tool_calls: list[ToolCallEvidence] | None = Field(
+        default=None,
+        exclude_if=_exclude_none,
+        description="Optional tool calls selected or requested by a model",
+    )
+    status_code: int | None = Field(
+        default=None,
+        exclude_if=_exclude_none,
+        description="Optional execution status code",
+    )
+    children: list[Step] | None = Field(
+        default=None,
+        exclude_if=_exclude_none,
+        description="Optional execution records owned by this record",
+    )
+    history: list[Step] | None = Field(
+        default=None,
+        exclude_if=_exclude_none,
+        description="Optional earlier execution records supplied as context",
     )
 
     @field_validator("type")

@@ -128,6 +128,25 @@ async def test_evaluate_controls_with_context(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_evaluate_controls_accepts_custom_provider_step_type(monkeypatch):
+    """Manual evaluation keeps provider-neutral custom step types extensible."""
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        await evaluation.evaluate_controls(
+            step_name="guardrail-event",
+            input={"event": "policy_check"},
+            step_type="guardrail_event",
+            stage="pre",
+            agent_name="test-bot",
+        )
+
+    step = mock_check.call_args.kwargs["step"]
+    assert step.type == "guardrail_event"
+
+
+@pytest.mark.asyncio
 async def test_evaluate_controls_preserves_explicit_tools_and_ground_truth(monkeypatch):
     """Explicit structured scorer context is preserved on the SDK Step."""
     # Given: a configured SDK and local evaluation boundary
@@ -153,6 +172,40 @@ async def test_evaluate_controls_preserves_explicit_tools_and_ground_truth(monke
     step = mock_check.call_args.kwargs["step"]
     assert step.tools == tools
     assert step.ground_truth == {"answer": "expected"}
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_preserves_execution_evidence(monkeypatch):
+    """All generic evidence reaches the existing local/server evaluation entry point."""
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    child = {
+        "type": "tool",
+        "name": "search",
+        "input": {"query": "question"},
+        "status": "success",
+    }
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        await evaluation.evaluate_controls(
+            step_name="answer",
+            input="question",
+            output="answer",
+            documents=[{"content": "reference", "id": "doc-1"}],
+            tool_calls=[{"name": "search", "arguments": {"query": "question"}}],
+            status_code=200,
+            children=[child],
+            history=[child],
+            stage="post",
+            agent_name="test-bot",
+        )
+
+    step = mock_check.call_args.kwargs["step"]
+    assert step.documents[0].content == "reference"
+    assert step.tool_calls[0].name == "search"
+    assert step.status_code == 200
+    assert step.children[0].name == "search"
+    assert step.history[0].name == "search"
 
 
 @pytest.mark.asyncio

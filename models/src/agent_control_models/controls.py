@@ -27,7 +27,8 @@ class ControlSelector(BaseModel):
         default="*",
         description=(
             "Path to data using dot notation. "
-            "Examples: 'input', 'output', 'context.user_id', 'name', 'type', '*'"
+            "Examples: 'input', 'output', 'documents', 'children.0.output', "
+            "'context.user_id', 'name', 'type', '*'"
         ),
     )
 
@@ -43,7 +44,19 @@ class ControlSelector(BaseModel):
             )
 
         # Valid root fields
-        valid_roots = {"input", "output", "name", "type", "context", "*"}
+        valid_roots = {
+            "input",
+            "output",
+            "documents",
+            "tool_calls",
+            "status_code",
+            "children",
+            "history",
+            "name",
+            "type",
+            "context",
+            "*",
+        }
         root = v.split(".")[0]
 
         if root not in valid_roots:
@@ -74,9 +87,9 @@ class ControlScope(BaseModel):
         default=None,
         description=(
             "Step types this control applies to (omit to apply to all types). "
-            "Built-in types are 'tool' and 'llm'."
+            "Built-in types are 'tool', 'llm', and 'retriever'."
         ),
-        examples=[["llm"], ["tool"], ["llm", "tool"]],
+        examples=[["llm"], ["tool"], ["retriever"], ["llm", "tool"]],
     )
     step_names: list[str] | None = Field(
         default=None,

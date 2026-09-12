@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 from agent_control_engine.selectors import select_data
-from agent_control_models import Step
+from agent_control_models import DocumentEvidence, Step, ToolCallEvidence
 
 
 @pytest.fixture
@@ -100,3 +100,32 @@ def test_list_selection():
 
     # Then: it should return the list exactly
     assert result == ["a", "b", "c"]
+
+
+def test_select_data_traverses_nested_step_evidence() -> None:
+    """Selectors can address fields inside evidence and nested record lists."""
+    nested = Step(
+        type="retriever",
+        name="search",
+        input="refunds",
+        output=[{"content": "nested"}],
+        documents=[DocumentEvidence(content="nested reference")],
+        tool_calls=[ToolCallEvidence(name="lookup", arguments={"id": "1"})],
+    )
+    step = Step(
+        type="trace",
+        name="trace",
+        input="question",
+        documents=[DocumentEvidence(content="root reference")],
+        tool_calls=[ToolCallEvidence(name="lookup", arguments={"id": "2"})],
+        status_code=207,
+        children=[nested],
+        history=[nested],
+    )
+
+    assert select_data(step, "documents.0.content") == "root reference"
+    assert select_data(step, "tool_calls.0.arguments.id") == "2"
+    assert select_data(step, "status_code") == 207
+    assert select_data(step, "children.0.documents.0.content") == "nested reference"
+    assert select_data(step, "history.0.tool_calls.0.arguments.id") == "1"
+    assert select_data(step, "children.1.output") is None

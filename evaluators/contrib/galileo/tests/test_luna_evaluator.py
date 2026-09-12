@@ -786,6 +786,179 @@ class TestGalileoLunaClient:
         }
 
     @pytest.mark.asyncio
+    async def test_client_serializes_expanded_evidence_to_public_contract(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+        from agent_control_models import DocumentEvidence, ToolCallEvidence
+
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content.decode())
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        child = Step(
+            type="retriever",
+            name="search",
+            input="refunds",
+            documents=[DocumentEvidence(id="doc-2", content="Nested reference")],
+        )
+        step = Step(
+            type="trace",
+            name="trace-1",
+            input="",
+            documents=[DocumentEvidence(id="doc-1", content="Root reference")],
+            tool_calls=[
+                ToolCallEvidence(id="call-1", name="weather", arguments={"city": "Boston"}),
+                ToolCallEvidence(id="call-2", name="raw", arguments='{"x":1}'),
+            ],
+            children=[child],
+            history=[child],
+        )
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        try:
+            await client.invoke(scorer_id="opaque-scorer", step=step)
+        finally:
+            await client.close()
+
+        assert captured["body"] == {
+            "scorer_id": "opaque-scorer",
+            "inputs": {
+                "query": "",
+                "response": "",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "function": {
+                            "name": "weather",
+                            "arguments": '{"city":"Boston"}',
+                        },
+                    },
+                    {
+                        "id": "call-2",
+                        "function": {"name": "raw", "arguments": '{"x":1}'},
+                    },
+                ],
+                "documents": [{"content": "Root reference", "metadata": {"document_id": "doc-1"}}],
+                "history": [
+                    {
+                        "type": "retriever",
+                        "name": "search",
+                        "input": "refunds",
+                        "documents": [
+                            {"content": "Nested reference", "metadata": {"document_id": "doc-2"}}
+                        ],
+                        "output": [
+                            {"content": "Nested reference", "metadata": {"document_id": "doc-2"}}
+                        ],
+                    }
+                ],
+            },
+            "record": {
+                "type": "trace",
+                "name": "trace-1",
+                "input": "",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "function": {
+                            "name": "weather",
+                            "arguments": '{"city":"Boston"}',
+                        },
+                    },
+                    {
+                        "id": "call-2",
+                        "function": {"name": "raw", "arguments": '{"x":1}'},
+                    },
+                ],
+                "children": [
+                    {
+                        "type": "retriever",
+                        "name": "search",
+                        "input": "refunds",
+                        "documents": [
+                            {"content": "Nested reference", "metadata": {"document_id": "doc-2"}}
+                        ],
+                        "output": [
+                            {"content": "Nested reference", "metadata": {"document_id": "doc-2"}}
+                        ],
+                    }
+                ],
+            },
+            "config": {"request_timeout_seconds": 8.0},
+        }
+
+    @pytest.mark.asyncio
+    async def test_client_rejects_missing_tool_call_id(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+        from agent_control_models import ToolCallEvidence
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        try:
+            with pytest.raises(ValueError, match="requires an id"):
+                await client.invoke(
+                    scorer_id="opaque-scorer",
+                    step=Step(
+                        type="llm",
+                        name="answer",
+                        input="question",
+                        tool_calls=[ToolCallEvidence(name="weather", arguments={})],
+                    ),
+                )
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_client_rejects_conflicting_document_id(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+        from agent_control_models import DocumentEvidence
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        try:
+            with pytest.raises(ValueError, match="conflicting id"):
+                await client.invoke(
+                    scorer_id="opaque-scorer",
+                    step=Step(
+                        type="retriever",
+                        name="search",
+                        input="question",
+                        documents=[
+                            DocumentEvidence(
+                                id="doc-1",
+                                content="reference",
+                                metadata={"document_id": "doc-2"},
+                            )
+                        ],
+                    ),
+                )
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_client_rejects_unsupported_nested_record_type(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        try:
+            with pytest.raises(ValueError, match="unsupported step type"):
+                await client.invoke(
+                    scorer_id="opaque-scorer",
+                    step=Step(
+                        type="trace",
+                        name="trace-1",
+                        input="",
+                        children=[Step(type="custom", name="custom", input="value")],
+                    ),
+                )
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
     async def test_client_omits_record_for_step_type_orbit_does_not_support(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
@@ -989,6 +1162,154 @@ class TestLunaEvaluator:
             config=None,
             timeout=10.0,
         )
+
+    @patch.dict(os.environ, LUNA_ENV)
+    @pytest.mark.asyncio
+    async def test_default_selector_keeps_retriever_output_structured_in_http_record(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+
+        captured: list[dict[str, object]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content.decode())
+            assert isinstance(body, dict)
+            captured.append(body)
+            return httpx.Response(200, json={"score": 0.8, "status": "success"})
+
+        evaluator = LunaEvaluator.from_dict(
+            {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
+        )
+        transport_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        step = Step(
+            type="retriever",
+            name="knowledge_search",
+            input="refunds",
+            output=[
+                {
+                    "id": "doc-1",
+                    "content": "Refunds are available for 30 days.",
+                    "metadata": {"score": 0.93},
+                }
+            ],
+            documents=[
+                {
+                    "id": "doc-1",
+                    "content": "Refunds are available for 30 days.",
+                    "metadata": {"score": 0.93},
+                }
+            ],
+        )
+
+        with patch.object(
+            type(evaluator._client), "_get_client", new_callable=AsyncMock
+        ) as get_client:
+            get_client.return_value = transport_client
+            result = await evaluator.evaluate_with_context(step.model_dump(mode="json"), step)
+            selected_documents = step.model_dump(mode="json")["documents"]
+            await evaluator.evaluate_with_context(selected_documents, step)
+
+        await transport_client.aclose()
+        assert result.matched is True
+        assert len(captured) == 2
+        body = captured[0]
+        assert body == {
+            "scorer_id": "scorer-123",
+            "inputs": {
+                "query": "refunds",
+                "response": (
+                    '[{"content": "Refunds are available for 30 days.", '
+                    '"id": "doc-1", "metadata": {"score": 0.93}}]'
+                ),
+                "documents": [
+                    {
+                        "content": "Refunds are available for 30 days.",
+                        "metadata": {"document_id": "doc-1", "score": 0.93},
+                    }
+                ],
+            },
+            "record": {
+                "type": "retriever",
+                "name": "knowledge_search",
+                "input": "refunds",
+                "output": [
+                    {
+                        "content": "Refunds are available for 30 days.",
+                        "metadata": {"document_id": "doc-1", "score": 0.93},
+                    }
+                ],
+            },
+            "config": {"request_timeout_seconds": 8.0},
+        }
+        selected_body = captured[1]
+        assert selected_body["inputs"]["query"] != body["record"]["input"]
+        assert selected_body["record"] == body["record"]
+
+    @pytest.mark.asyncio
+    async def test_retriever_output_only_is_adapted_to_structured_record(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content.decode())
+            return httpx.Response(200, json={"score": 0.8, "status": "success"})
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        try:
+            await client.invoke(
+                scorer_id="scorer-123",
+                input="refunds",
+                output=[
+                    {
+                        "id": "doc-1",
+                        "content": "Refunds are available for 30 days.",
+                        "metadata": {"score": 0.93},
+                    }
+                ],
+                step=Step(
+                    type="retriever",
+                    name="knowledge_search",
+                    input="refunds",
+                    output=[
+                        {
+                            "id": "doc-1",
+                            "content": "Refunds are available for 30 days.",
+                            "metadata": {"score": 0.93},
+                        }
+                    ],
+                ),
+            )
+        finally:
+            await client.close()
+
+        assert captured["body"] == {
+            "scorer_id": "scorer-123",
+            "inputs": {
+                "query": "refunds",
+                "response": [
+                    {
+                        "id": "doc-1",
+                        "content": "Refunds are available for 30 days.",
+                        "metadata": {"score": 0.93},
+                    }
+                ],
+            },
+            "record": {
+                "type": "retriever",
+                "name": "knowledge_search",
+                "input": "refunds",
+                "output": [
+                    {
+                        "content": "Refunds are available for 30 days.",
+                        "metadata": {"document_id": "doc-1", "score": 0.93},
+                    }
+                ],
+            },
+            "config": {"request_timeout_seconds": 8.0},
+        }
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio

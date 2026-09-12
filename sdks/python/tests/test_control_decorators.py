@@ -793,6 +793,19 @@ class TestStepName:
             # THEN: Step should still be detected as tool type
             assert captured_steps[0]["type"] == "tool"
 
+    def test_falsy_string_tool_marker_is_tool_at_runtime(self) -> None:
+        from agent_control.control_decorators import _create_evaluation_payload
+
+        def search_db(query: str) -> str:
+            return query
+
+        search_db.name = ""  # type: ignore[attr-defined]
+
+        payload = _create_evaluation_payload(search_db, ("refunds",), {})
+
+        assert payload["type"] == "tool"
+        assert payload["name"] == "search_db"
+
 
 class TestEvaluateSessionContext:
     """Tests for session context forwarding in the decorator evaluation path."""
@@ -1088,3 +1101,71 @@ class TestExceptionHandling:
             assert mock_logger.error.call_args[0][0] == "%s-execution control check failed: %s"
             assert mock_logger.error.call_args[0][1] == "Post"
             assert str(mock_logger.error.call_args[0][2]) == "Post-execution error"
+
+
+class TestRetrieverDecorator:
+    """Tests for explicit retriever evidence handling."""
+
+    @pytest.mark.asyncio
+    async def test_retriever_payloads_include_documents_on_post(
+        self, mock_agent, mock_safe_response
+    ):
+        from agent_control_models import DocumentEvidence
+
+        captured: list[tuple[dict[str, object], str]] = []
+
+        async def mock_evaluate(*args, **kwargs):
+            captured.append((args[1], args[2]))
+            return mock_safe_response
+
+        documents = [
+            DocumentEvidence(
+                id="doc-1",
+                content="Refunds are available for 30 days.",
+                metadata={"score": 0.93},
+            )
+        ]
+
+        with patch(
+            "agent_control.control_decorators._get_current_agent", return_value=mock_agent
+        ), patch(
+            "agent_control.control_decorators._evaluate", side_effect=mock_evaluate
+        ):
+
+            @control(step_type="retriever")
+            async def knowledge_search(query: str) -> list[DocumentEvidence]:
+                return documents
+
+            result = await knowledge_search("refunds")
+
+        assert result is documents
+        assert [stage for _, stage in captured] == ["pre", "post"]
+        pre_step, post_step = captured[0][0], captured[1][0]
+        assert pre_step["type"] == "retriever"
+        assert "documents" not in pre_step
+        assert post_step["type"] == "retriever"
+        assert post_step["documents"] == [
+            {
+                "id": "doc-1",
+                "content": "Refunds are available for 30 days.",
+                "metadata": {"score": 0.93},
+            }
+        ]
+
+    @pytest.mark.asyncio
+    async def test_retriever_rejects_incompatible_output(self, mock_agent, mock_safe_response):
+        async def mock_evaluate(*args, **kwargs):
+            return mock_safe_response
+
+        with patch(
+            "agent_control.control_decorators._get_current_agent", return_value=mock_agent
+        ), patch(
+            "agent_control.control_decorators._evaluate", side_effect=mock_evaluate
+        ):
+
+            @control(step_type="retriever")
+            async def knowledge_search(query: str) -> object:
+                return {"content": query}
+
+            with pytest.raises(ValueError, match="document collection"):
+                await knowledge_search("refunds")

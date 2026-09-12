@@ -35,10 +35,15 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from agent_control_models import Step, normalize_action
+from agent_control_models import DocumentEvidence, Step, normalize_action
 from agent_control_telemetry import get_trace_context_from_provider
 
 from agent_control import AgentControlClient
+from agent_control._control_registry import (
+    DecoratorStepType,
+    register,
+    resolve_step_name_and_type,
+)
 from agent_control._state import state
 from agent_control.evaluation import (
     _post_evaluation_request,
@@ -96,6 +101,7 @@ class ControlContext:
     span_id: str
     start_time: float
     step_name: str | None = None
+    step_type: DecoratorStepType | None = None
 
     # Stats (mutually exclusive: errors vs matches vs non_matches)
     total_executions: int = 0
@@ -126,13 +132,23 @@ class ControlContext:
     def pre_payload(self) -> dict[str, Any]:
         """Build payload for pre-execution check (supports tool call detection)."""
         return _create_evaluation_payload(
-            self.func, self.args, self.kwargs, output=None, step_name=self.step_name
+            self.func,
+            self.args,
+            self.kwargs,
+            output=None,
+            step_name=self.step_name,
+            step_type=self.step_type,
         )
 
     def post_payload(self, output: Any) -> dict[str, Any]:
         """Build payload for post-execution check (supports tool call detection)."""
         return _create_evaluation_payload(
-            self.func, self.args, self.kwargs, output=output, step_name=self.step_name
+            self.func,
+            self.args,
+            self.kwargs,
+            output=output,
+            step_name=self.step_name,
+            step_type=self.step_type,
         )
 
     def process_result(self, result: dict[str, Any], check_stage: str) -> None:
@@ -478,7 +494,8 @@ def _create_evaluation_payload(
     args: tuple,
     kwargs: dict,
     output: Any = None,
-    step_name: str | None = None
+    step_name: str | None = None,
+    step_type: DecoratorStepType | None = None,
 ) -> dict[str, Any]:
     """
     Create evaluation payload for server, detecting if it's a tool step or LLM step.
@@ -491,32 +508,18 @@ def _create_evaluation_payload(
         kwargs: Function keyword arguments
         output: Function output (None for pre-execution)
         step_name: Optional explicit step name to override auto-detection
+        step_type: Optional explicit step type. When omitted, existing tool
+                   marker detection and the llm default are preserved.
     """
     sig = inspect.signature(func)
     bound = sig.bind(*args, **kwargs)
     bound.apply_defaults()
 
-    # Determine step name priority: explicit step_name > tool_name > func.__name__
-    if step_name:
-        # Explicit step_name provided - use it
-        determined_name = step_name
-        # Try to detect if it's a tool based on attributes
-        is_tool = (
-            getattr(func, "name", None) is not None
-            or getattr(func, "tool_name", None) is not None
-        )
-        step_type = "tool" if is_tool else "llm"
-    else:
-        # Auto-detect: Check if function has tool_name from @tool decorator
-        tool_name = getattr(func, "name", None) or getattr(func, "tool_name", None)
-        if tool_name:
-            determined_name = tool_name
-            step_type = "tool"
-        else:
-            determined_name = func.__name__
-            step_type = "llm"
+    # Determine step name priority: explicit step_name > tool_name > func.__name__.
+    resolved_name, resolved_step_type = resolve_step_name_and_type(func, step_type)
+    determined_name = step_name or resolved_name
 
-    if step_type == "tool":
+    if resolved_step_type == "tool":
         # This is a tool step
         return {
             "type": "tool",
@@ -526,6 +529,37 @@ def _create_evaluation_payload(
                 None if output is None else str(output)
             ),
         }
+
+    if resolved_step_type == "retriever":
+        serialized_documents: list[dict[str, Any]] | None = None
+        if output is not None:
+            if not isinstance(output, list):
+                raise ValueError(
+                    "@control(step_type='retriever') functions must return a list "
+                    "document collection of DocumentEvidence values."
+                )
+            try:
+                serialized_documents = [
+                    DocumentEvidence.model_validate(document).model_dump(
+                        mode="json", exclude_none=True
+                    )
+                    for document in output
+                ]
+            except Exception as exc:
+                raise ValueError(
+                    "@control(step_type='retriever') returned an incompatible "
+                    f"document collection: {exc}"
+                ) from exc
+
+        payload: dict[str, Any] = {
+            "type": "retriever",
+            "name": determined_name,
+            "input": _extract_input_from_args(func, args, kwargs),
+            "output": serialized_documents,
+        }
+        if serialized_documents is not None:
+            payload["documents"] = serialized_documents
+        return payload
 
     # This is an LLM step
     input_data = _extract_input_from_args(func, args, kwargs)
@@ -699,6 +733,7 @@ async def _execute_with_control(
     kwargs: dict,
     is_async: bool,
     step_name: str | None = None,
+    step_type: DecoratorStepType | None = None,
 ) -> Any:
     """
     Core control execution logic for both async and sync functions.
@@ -751,6 +786,7 @@ async def _execute_with_control(
         span_id=span_id,
         start_time=time.perf_counter(),
         step_name=step_name,
+        step_type=step_type,
     )
     ctx.log_start()
 
@@ -772,7 +808,11 @@ async def _execute_with_control(
         ctx.log_end()
 
 
-def control(policy: str | None = None, step_name: str | None = None) -> Callable[[F], F]:
+def control(
+    policy: str | None = None,
+    step_name: str | None = None,
+    step_type: DecoratorStepType | None = None,
+) -> Callable[[F], F]:
     """
     Decorator to apply server-defined controls at this code location.
 
@@ -784,6 +824,9 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                 clarity in code when multiple policies exist.
         step_name: Optional custom name for this step. If not provided, uses
                    the function name.
+        step_type: Optional explicit step type. Supported values are ``llm``,
+                   ``tool``, and ``retriever``. Explicit values take precedence
+                   over existing tool markers.
 
     Returns:
         Decorated function
@@ -838,17 +881,24 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
     # The policy parameter is for documentation only - the server evaluates
     # controls associated with the agent via policy and direct links.
     _ = policy
+    if step_type not in (None, "llm", "tool", "retriever"):
+        raise ValueError(
+            "step_type must be one of 'llm', 'tool', or 'retriever' when provided."
+        )
 
     def decorator(func: F) -> F:
         # Register this function's step schema for auto-discovery by init()
-        from agent_control._control_registry import register
-
-        register(func, policy)
+        register(func, policy, step_type=step_type)
 
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await _execute_with_control(
-                func, args, kwargs, is_async=True, step_name=step_name
+                func,
+                args,
+                kwargs,
+                is_async=True,
+                step_name=step_name,
+                step_type=step_type,
             )
 
         # Copy over ALL attributes from the original function (important for LangChain tools)
@@ -862,7 +912,14 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             return asyncio.run(
-                _execute_with_control(func, args, kwargs, is_async=False, step_name=step_name)
+                _execute_with_control(
+                    func,
+                    args,
+                    kwargs,
+                    is_async=False,
+                    step_name=step_name,
+                    step_type=step_type,
+                )
             )
 
         if inspect.iscoroutinefunction(func):
