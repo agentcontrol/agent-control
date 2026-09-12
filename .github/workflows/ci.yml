@@ -234,6 +234,10 @@ jobs:
         run: make sdk-ts-build
 
       - name: Verify generated TypeScript client is current
+        # GitHub deliberately withholds repository secrets from fork pull requests.
+        # Keep every auth-free SDK check above running, and run regeneration when
+        # Speakeasy credentials are available on trusted branches.
+        if: env.SPEAKEASY_API_KEY != ''
         run: make sdk-ts-generate-check
 
       - name: Verify generated method naming conventions
