@@ -20,7 +20,9 @@ from starlette_exporter import PrometheusMiddleware, handle_metrics
 from . import __version__ as server_version
 from .auth import get_api_key_from_header
 from .bootstrap.out_of_box_controls import (
+    OUT_OF_BOX_CONTROL_TEMPLATES,
     default_out_of_box_namespace_key,
+    luna_out_of_box_control_templates,
     seed_out_of_box_controls,
 )
 from .config import observability_settings, settings
@@ -158,6 +160,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 session_factory=AsyncSessionLocal,
                 namespace_key=default_out_of_box_namespace_key(),
                 available_evaluators=set(available),
+                templates=(
+                    *OUT_OF_BOX_CONTROL_TEMPLATES,
+                    *luna_out_of_box_control_templates(
+                        input_toxicity_scorer_id=settings.luna_input_toxicity_scorer_id,
+                        output_toxicity_scorer_id=settings.luna_output_toxicity_scorer_id,
+                        input_tone_scorer_id=settings.luna_input_tone_scorer_id,
+                        output_tone_scorer_id=settings.luna_output_tone_scorer_id,
+                        input_sexism_scorer_id=settings.luna_input_sexism_scorer_id,
+                        output_sexism_scorer_id=settings.luna_output_sexism_scorer_id,
+                    ),
+                ),
             )
         if seed_result.created_count or seed_result.skipped_count:
             logger.info(
