@@ -53,6 +53,7 @@ from agent_control.observability import (
 )
 from agent_control.settings import get_settings
 from agent_control.tracing import _generate_span_id, get_current_trace_id, get_trace_and_span_ids
+from agent_control.validation import ensure_step_type
 
 logger = get_logger(__name__)
 
@@ -96,6 +97,7 @@ class ControlContext:
     span_id: str
     start_time: float
     step_name: str | None = None
+    step_type: str | None = None
 
     # Stats (mutually exclusive: errors vs matches vs non_matches)
     total_executions: int = 0
@@ -126,13 +128,23 @@ class ControlContext:
     def pre_payload(self) -> dict[str, Any]:
         """Build payload for pre-execution check (supports tool call detection)."""
         return _create_evaluation_payload(
-            self.func, self.args, self.kwargs, output=None, step_name=self.step_name
+            self.func,
+            self.args,
+            self.kwargs,
+            output=None,
+            step_name=self.step_name,
+            explicit_step_type=self.step_type,
         )
 
     def post_payload(self, output: Any) -> dict[str, Any]:
         """Build payload for post-execution check (supports tool call detection)."""
         return _create_evaluation_payload(
-            self.func, self.args, self.kwargs, output=output, step_name=self.step_name
+            self.func,
+            self.args,
+            self.kwargs,
+            output=output,
+            step_name=self.step_name,
+            explicit_step_type=self.step_type,
         )
 
     def process_result(self, result: dict[str, Any], check_stage: str) -> None:
@@ -478,7 +490,8 @@ def _create_evaluation_payload(
     args: tuple,
     kwargs: dict,
     output: Any = None,
-    step_name: str | None = None
+    step_name: str | None = None,
+    explicit_step_type: str | None = None,
 ) -> dict[str, Any]:
     """
     Create evaluation payload for server, detecting if it's a tool step or LLM step.
@@ -491,6 +504,7 @@ def _create_evaluation_payload(
         kwargs: Function keyword arguments
         output: Function output (None for pre-execution)
         step_name: Optional explicit step name to override auto-detection
+        explicit_step_type: Optional explicit step type to override inference
     """
     sig = inspect.signature(func)
     bound = sig.bind(*args, **kwargs)
@@ -505,21 +519,40 @@ def _create_evaluation_payload(
             getattr(func, "name", None) is not None
             or getattr(func, "tool_name", None) is not None
         )
-        step_type = "tool" if is_tool else "llm"
+        inferred_type = "tool" if is_tool else "llm"
     else:
         # Auto-detect: Check if function has tool_name from @tool decorator
         tool_name = getattr(func, "name", None) or getattr(func, "tool_name", None)
         if tool_name:
             determined_name = tool_name
-            step_type = "tool"
+            inferred_type = "tool"
         else:
             determined_name = func.__name__
-            step_type = "llm"
+            inferred_type = "llm"
+
+    step_type = (
+        ensure_step_type(explicit_step_type)
+        if explicit_step_type is not None
+        else inferred_type
+    )
+
+    if step_type not in ("llm", "tool"):
+        # Custom step types use the complete bound argument mapping. Unlike an
+        # LLM step, there is no generic convention for selecting one argument
+        # as the prompt/input for a retriever, trace, session, etc.
+        return {
+            "type": step_type,
+            "name": determined_name,
+            "input": dict(bound.arguments),
+            "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
+                None if output is None else str(output)
+            ),
+        }
 
     if step_type == "tool":
         # This is a tool step
         return {
-            "type": "tool",
+            "type": step_type,
             "name": determined_name,
             "input": dict(bound.arguments),
             "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
@@ -530,7 +563,7 @@ def _create_evaluation_payload(
     # This is an LLM step
     input_data = _extract_input_from_args(func, args, kwargs)
     return {
-        "type": "llm",
+        "type": step_type,
         "name": determined_name,
         "input": input_data,
         "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
@@ -699,6 +732,7 @@ async def _execute_with_control(
     kwargs: dict,
     is_async: bool,
     step_name: str | None = None,
+    step_type: str | None = None,
 ) -> Any:
     """
     Core control execution logic for both async and sync functions.
@@ -717,6 +751,7 @@ async def _execute_with_control(
         kwargs: Keyword arguments for the function
         is_async: Whether the wrapped function is async
         step_name: Optional explicit step name for control matching
+        step_type: Optional explicit step type for control matching
 
     Returns:
         The result of the wrapped function
@@ -751,6 +786,7 @@ async def _execute_with_control(
         span_id=span_id,
         start_time=time.perf_counter(),
         step_name=step_name,
+        step_type=step_type,
     )
     ctx.log_start()
 
@@ -772,7 +808,11 @@ async def _execute_with_control(
         ctx.log_end()
 
 
-def control(policy: str | None = None, step_name: str | None = None) -> Callable[[F], F]:
+def control(
+    policy: str | None = None,
+    step_name: str | None = None,
+    step_type: str | None = None,
+) -> Callable[[F], F]:
     """
     Decorator to apply server-defined controls at this code location.
 
@@ -784,6 +824,9 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
                 clarity in code when multiple policies exist.
         step_name: Optional custom name for this step. If not provided, uses
                    the function name.
+        step_type: Optional custom type for this step. If not provided, tool-like
+                   functions are classified as ``tool`` and other functions as
+                   ``llm``.
 
     Returns:
         Decorated function
@@ -835,6 +878,9 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
            POST /api/v1/agents/{agent_name}/policies/{policy_id}
            POST /api/v1/agents/{agent_name}/controls/{control_id}
     """
+    if step_type is not None:
+        step_type = ensure_step_type(step_type)
+
     # The policy parameter is for documentation only - the server evaluates
     # controls associated with the agent via policy and direct links.
     _ = policy
@@ -843,12 +889,17 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         # Register this function's step schema for auto-discovery by init()
         from agent_control._control_registry import register
 
-        register(func, policy)
+        register(func, policy=policy, step_type=step_type)
 
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             return await _execute_with_control(
-                func, args, kwargs, is_async=True, step_name=step_name
+                func,
+                args,
+                kwargs,
+                is_async=True,
+                step_name=step_name,
+                step_type=step_type,
             )
 
         # Copy over ALL attributes from the original function (important for LangChain tools)
@@ -862,7 +913,14 @@ def control(policy: str | None = None, step_name: str | None = None) -> Callable
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             return asyncio.run(
-                _execute_with_control(func, args, kwargs, is_async=False, step_name=step_name)
+                _execute_with_control(
+                    func,
+                    args,
+                    kwargs,
+                    is_async=False,
+                    step_name=step_name,
+                    step_type=step_type,
+                )
             )
 
         if inspect.iscoroutinefunction(func):

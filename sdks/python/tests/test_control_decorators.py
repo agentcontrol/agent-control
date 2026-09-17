@@ -190,6 +190,57 @@ class TestControl:
             result = await chat("Hello!")
             assert result == "Response to: Hello!"
 
+    @pytest.mark.asyncio
+    async def test_explicit_step_type_is_used_for_pre_and_post_payloads(
+        self, mock_agent, mock_safe_response
+    ):
+        """Explicit custom types reach both decorator evaluation stages."""
+        payloads = []
+
+        async def mock_evaluate(*args, **kwargs):
+            payloads.append(args[1])
+            return mock_safe_response
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+
+            @control(step_name="retrieve_documents", step_type=" retriever ")
+            async def retrieve(query: str, top_k: int, filters: dict[str, str]) -> str:
+                return query
+
+            await retrieve("hello", 5, {"language": "en"})
+
+        assert [payload["type"] for payload in payloads] == ["retriever", "retriever"]
+        assert payloads[0]["name"] == "retrieve_documents"
+        assert payloads[0]["input"] == {
+            "query": "hello",
+            "top_k": 5,
+            "filters": {"language": "en"},
+        }
+
+    def test_explicit_step_type_overrides_tool_inference(
+        self, mock_agent, mock_safe_response
+    ):
+        """An explicit LLM type wins even when function metadata looks like a tool."""
+        payloads = []
+
+        async def mock_evaluate(*args, **kwargs):
+            payloads.append(args[1])
+            return mock_safe_response
+
+        def search(query: str) -> str:
+            return query
+
+        search.name = "search"  # type: ignore[attr-defined]
+
+        with patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent), \
+             patch("agent_control.control_decorators._evaluate", side_effect=mock_evaluate):
+            guarded_search = control(step_type="llm")(search)
+            guarded_search("hello")
+
+        assert [payload["type"] for payload in payloads] == ["llm", "llm"]
+        assert payloads[0]["input"] == "hello"
+
 
 # =============================================================================
 # CONTROL NAME TESTS

@@ -53,7 +53,7 @@ async def _evaluate_and_enforce(
     context: dict[str, Any] | None = None,
     tools: list[dict[str, JSONValue]] | None = None,
     ground_truth: JSONValue | None = None,
-    step_type: Literal["tool", "llm"] = "llm",
+    step_type: str = "llm",
     stage: Literal["pre", "post"] = "pre",
 ) -> EvaluationResult:
     """Evaluate controls and enforce fail-closed blocking semantics."""

@@ -74,6 +74,40 @@ async def test_check_evaluation_returns_result_model():
 
 
 @pytest.mark.asyncio
+async def test_check_evaluation_sends_custom_step_type_to_server():
+    """The server path sends one generic Step inside EvaluationRequest."""
+
+    class DummyResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"is_safe": True, "confidence": 1.0}
+
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.post = AsyncMock(return_value=DummyResponse())
+
+    await evaluation.check_evaluation(
+        client=client,
+        agent_name="Agent-Example_01",
+        step={"type": "trace", "name": "trace-check", "input": "hello"},
+        stage="post",
+    )
+
+    request = client.http_client.post.await_args.kwargs["json"]
+    assert request["step"] == {
+        "type": "trace",
+        "name": "trace-check",
+        "input": "hello",
+        "output": None,
+        "context": None,
+        "tools": None,
+        "ground_truth": None,
+    }
+
+
+@pytest.mark.asyncio
 async def test_evaluate_controls_requires_server_url():
     """evaluate_controls should require server_url to be configured."""
     with patch("agent_control.state.server_url", None):
@@ -125,6 +159,45 @@ async def test_evaluate_controls_with_context(monkeypatch):
             )
 
     assert mock_check.call_args is not None
+
+
+@pytest.mark.parametrize("step_type", ["trace", "session"])
+@pytest.mark.asyncio
+async def test_evaluate_controls_accepts_custom_step_type(monkeypatch, step_type):
+    """Direct evaluation preserves custom types in the runtime Step."""
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        await evaluation.evaluate_controls(
+            step_name="trace_check",
+            step_type=step_type,
+            input="trace input",
+            output="trace output",
+            stage="post",
+            agent_name="test-bot",
+        )
+
+    step = mock_check.call_args.kwargs["step"]
+    assert step.type == step_type
+    assert step.name == "trace_check"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_rejects_empty_step_type(monkeypatch):
+    """Direct evaluation rejects empty custom types before evaluation."""
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        with pytest.raises(ValueError, match="non-empty string"):
+            await evaluation.evaluate_controls(
+                step_name="trace_check",
+                step_type="",
+                agent_name="test-bot",
+            )
+
+    mock_check.assert_not_called()
 
 
 @pytest.mark.asyncio

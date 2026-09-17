@@ -24,7 +24,7 @@ from .client import AgentControlClient
 from .evaluation_events import build_control_execution_events, enqueue_observability_events
 from .observability import is_observability_enabled
 from .tracing import get_trace_and_span_ids
-from .validation import ensure_agent_name
+from .validation import ensure_agent_name, ensure_step_type
 
 _RuntimePostEvaluation = Callable[..., Awaitable[httpx.Response]]
 
@@ -523,7 +523,7 @@ async def evaluate_controls(
     context: dict[str, Any] | None = None,
     tools: list[dict[str, JSONValue]] | None = None,
     ground_truth: JSONValue | None = None,
-    step_type: Literal["tool", "llm"] = "llm",
+    step_type: str = "llm",
     stage: Literal["pre", "post"] = "pre",
     agent_name: str,
     target_type: str | None = None,
@@ -541,6 +541,8 @@ async def evaluate_controls(
     the cached controls were fetched for the session target and would
     otherwise drive stale local-first evaluation.
     """
+    step_type = ensure_step_type(step_type)
+
     if state.server_url is None:
         raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
 

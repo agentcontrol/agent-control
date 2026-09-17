@@ -1086,6 +1086,41 @@ class TestSelectorStepScoping:
             pass
 
     @pytest.mark.asyncio
+    async def test_custom_step_type_filters_controls(self):
+        """Controls match custom step types without falling back to LLM."""
+        controls = [
+            make_control(
+                1,
+                "retriever-control",
+                "test-deny",
+                action="deny",
+                config_value="retriever",
+                step_types=["retriever"],
+            ),
+            make_control(
+                2,
+                "llm-control",
+                "test-deny",
+                action="deny",
+                config_value="llm",
+                step_types=["llm"],
+            ),
+        ]
+        engine = ControlEngine(controls)
+
+        result = await engine.process(
+            EvaluationRequest(
+                agent_name="00000000-0000-0000-0000-000000000001",
+                step=Step(type="retriever", name="retrieve", input="query"),
+                stage="pre",
+            )
+        )
+
+        assert [match.control_name for match in result.matches or []] == [
+            "retriever-control"
+        ]
+
+    @pytest.mark.asyncio
     async def test_step_names_filters_tasks(self):
         # Given: two controls scoped to different steps
         controls = [
