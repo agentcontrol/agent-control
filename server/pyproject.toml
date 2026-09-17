@@ -2,7 +2,7 @@
 name = "agent-control-server"
 version = "8.7.0"
 description = "Server for Agent Control - manage and evaluate controls for AI agents"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 # Note: agent-control-models, agent-control-engine, and agent-control-telemetry
 #       are bundled at build time
 # Note: agent-control-evaluators is a runtime dependency (NOT vendored) to avoid
