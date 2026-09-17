@@ -67,7 +67,7 @@ def map_applies_to(step_type: str) -> str:
         return "tool_call"
     if step_type == "llm":
         return "llm_call"
-    return step_type
+    return f"{step_type}_call"
 
 
 def _resolve_event_trace_context(

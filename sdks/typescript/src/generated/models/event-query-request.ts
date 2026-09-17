@@ -32,7 +32,7 @@ export type CheckStages = ClosedEnum<typeof CheckStages>;
  *     actions: Filter by actions (deny, steer, observe)
  *     matched: Filter by matched status
  *     check_stages: Filter by check stages (pre, post)
- *     applies_to: Filter by call type or custom step type
+ *     applies_to: Filter by call type or custom call type
  *     start_time: Filter events after this time
  *     end_time: Filter events before this time
  *     limit: Maximum number of events to return
@@ -48,7 +48,7 @@ export type EventQueryRequest = {
    */
   agentName?: string | null | undefined;
   /**
-   * Filter by call types or custom step types
+   * Filter by call types or custom call types
    */
   appliesTo?: Array<string> | null | undefined;
   /**

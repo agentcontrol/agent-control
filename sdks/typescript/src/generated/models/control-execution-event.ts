@@ -48,7 +48,7 @@ export type CheckStage = OpenEnum<typeof CheckStage>;
  *     control_id: Database ID of the control
  *     control_name: Name of the control (denormalized for queries)
  *     check_stage: "pre" (before execution) or "post" (after execution)
- *     applies_to: "llm_call", "tool_call", or a custom step type
+ *     applies_to: "llm_call", "tool_call", or a custom call type
  *     action: The action taken (deny, steer, observe)
  *     matched: Whether the control evaluator matched
  *     confidence: Confidence score from the evaluator (0.0-1.0)
@@ -66,7 +66,7 @@ export type ControlExecutionEvent = {
    */
   agentName: string;
   /**
-   * Type of call or custom step type
+   * Type of call or custom call type
    */
   appliesTo: string;
   /**

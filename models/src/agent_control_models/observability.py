@@ -46,7 +46,7 @@ class ControlExecutionEvent(BaseModel):
         control_id: Database ID of the control
         control_name: Name of the control (denormalized for queries)
         check_stage: "pre" (before execution) or "post" (after execution)
-        applies_to: "llm_call", "tool_call", or a custom step type
+        applies_to: "llm_call", "tool_call", or a custom step type with a "_call" suffix
         action: The action taken (deny, steer, observe)
         matched: Whether the control evaluator matched
         confidence: Confidence score from the evaluator (0.0-1.0)
@@ -91,7 +91,9 @@ class ControlExecutionEvent(BaseModel):
         ..., description="Check stage: 'pre' or 'post'"
     )
     applies_to: str = Field(
-        ..., min_length=1, description="Type of call or custom step type"
+        ...,
+        min_length=1,
+        description="Type of call or custom step type with a '_call' suffix",
     )
 
     # Result
@@ -278,7 +280,7 @@ class EventQueryRequest(BaseModel):
         actions: Filter by actions (deny, steer, observe)
         matched: Filter by matched status
         check_stages: Filter by check stages (pre, post)
-        applies_to: Filter by call type or custom step type
+        applies_to: Filter by call type or custom call type
         start_time: Filter events after this time
         end_time: Filter events before this time
         limit: Maximum number of events to return
@@ -311,7 +313,7 @@ class EventQueryRequest(BaseModel):
         default=None, description="Filter by check stages"
     )
     applies_to: list[str] | None = Field(
-        default=None, description="Filter by call types or custom step types"
+        default=None, description="Filter by call types or custom call types"
     )
     start_time: datetime | None = Field(
         default=None, description="Filter events after this time"

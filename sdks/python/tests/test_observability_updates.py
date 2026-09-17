@@ -51,15 +51,20 @@ class TestMapAppliesTo:
     def test_maps_llm_to_llm_call(self):
         assert map_applies_to("llm") == "llm_call"
 
-    def test_preserves_custom_step_type(self):
-        assert map_applies_to("retriever") == "retriever"
+    def test_maps_custom_step_type_to_call_type(self):
+        assert map_applies_to("retriever") == "retriever_call"
+        assert map_applies_to("trace") == "trace_call"
+        assert map_applies_to("session") == "session_call"
 
     def test_custom_step_type_round_trips_in_observability_query(self):
         from agent_control_models import EventQueryRequest
 
-        request = EventQueryRequest(applies_to=["retriever", "trace"])
+        request = EventQueryRequest(applies_to=["retriever_call", "trace_call"])
 
-        assert request.model_dump(mode="json")["applies_to"] == ["retriever", "trace"]
+        assert request.model_dump(mode="json")["applies_to"] == [
+            "retriever_call",
+            "trace_call",
+        ]
 
 
 class TestMergeResults:
@@ -271,8 +276,8 @@ class TestBuildControlExecutionEvents:
             "test-agent",
         )
 
-        assert events[0].applies_to == "retriever"
-        assert events[0].model_dump(mode="json")["applies_to"] == "retriever"
+        assert events[0].applies_to == "retriever_call"
+        assert events[0].model_dump(mode="json")["applies_to"] == "retriever_call"
 
     def test_uses_safe_selected_data_preview_as_event_input(self):
         response = self._make_response(

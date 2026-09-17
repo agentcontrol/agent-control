@@ -62,9 +62,9 @@ describe("generated client layout", () => {
 
   it("serializes custom observability step types", () => {
     const serialized = eventQueryRequestToJSON({
-      appliesTo: ["retriever", "trace"],
+      appliesTo: ["retriever_call", "trace_call"],
     });
 
-    expect(JSON.parse(serialized).applies_to).toEqual(["retriever", "trace"]);
+    expect(JSON.parse(serialized).applies_to).toEqual(["retriever_call", "trace_call"]);
   });
 });
