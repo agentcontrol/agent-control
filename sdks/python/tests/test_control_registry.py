@@ -67,6 +67,16 @@ class TestRegister:
         assert steps[0]["type"] == "tool"
         assert steps[0]["name"] == "search_db"
 
+    def test_register_explicit_custom_type(self) -> None:
+        """An explicit type overrides the default LLM inference."""
+
+        def retrieve(query: str) -> str:
+            ...
+
+        register(retrieve, step_type=" retriever ")
+
+        assert get_registered_steps()[0]["type"] == "retriever"
+
     def test_register_with_policy(self) -> None:
         # Given a typed function and an explicit policy value at registration time.
         def my_func(x: str) -> str:
@@ -285,6 +295,28 @@ class TestDecoratorRegistration:
         assert len(steps) == 1
         assert steps[0]["type"] == "tool"
         assert steps[0]["name"] == "lookup_tool"
+
+    def test_decorator_registers_explicit_custom_type(self) -> None:
+        """A decorator-supplied type is retained by auto-discovery."""
+        from agent_control.control_decorators import control
+
+        @control(step_type="retriever")
+        async def retrieve(query: str) -> str:
+            return query
+
+        steps = get_registered_steps()
+
+        assert steps[0]["type"] == "retriever"
+
+    @pytest.mark.parametrize("step_type", ["", "   ", 123])
+    def test_explicit_type_must_be_non_empty_string(self, step_type: object) -> None:
+        """Explicit registry types reject invalid values."""
+
+        def step(query: str) -> str:
+            ...
+
+        with pytest.raises(ValueError, match="non-empty string"):
+            register(step, step_type=step_type)  # type: ignore[arg-type]
 
     def test_stacked_decorators_deduplicate(self) -> None:
         """Stacking @control() twice on the same function deduplicates by name."""

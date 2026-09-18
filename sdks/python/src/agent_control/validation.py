@@ -20,3 +20,10 @@ def ensure_agent_name(value: str, field_name: str = "agent_name") -> str:
             f"{field_name} may only contain lowercase letters, digits, ':', '_' or '-'"
         )
     return normalized
+
+
+def ensure_step_type(value: str, field_name: str = "step_type") -> str:
+    """Return a normalized non-empty step type or raise ``ValueError``."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value.strip()

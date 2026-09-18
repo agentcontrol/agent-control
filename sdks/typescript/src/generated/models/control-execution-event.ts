@@ -17,20 +17,6 @@ import {
 import { SDKValidationError } from "./errors/sdk-validation-error.js";
 
 /**
- * Type of call: 'llm_call' or 'tool_call'
- */
-export const ControlExecutionEventAppliesTo = {
-  LlmCall: "llm_call",
-  ToolCall: "tool_call",
-} as const;
-/**
- * Type of call: 'llm_call' or 'tool_call'
- */
-export type ControlExecutionEventAppliesTo = OpenEnum<
-  typeof ControlExecutionEventAppliesTo
->;
-
-/**
  * Check stage: 'pre' or 'post'
  */
 export const CheckStage = {
@@ -62,7 +48,7 @@ export type CheckStage = OpenEnum<typeof CheckStage>;
  *     control_id: Database ID of the control
  *     control_name: Name of the control (denormalized for queries)
  *     check_stage: "pre" (before execution) or "post" (after execution)
- *     applies_to: "llm_call" or "tool_call"
+ *     applies_to: "llm_call", "tool_call", or a custom step type with a "_call" suffix
  *     action: The action taken (deny, steer, observe)
  *     matched: Whether the control evaluator matched
  *     confidence: Confidence score from the evaluator (0.0-1.0)
@@ -80,9 +66,9 @@ export type ControlExecutionEvent = {
    */
   agentName: string;
   /**
-   * Type of call: 'llm_call' or 'tool_call'
+   * Type of call or custom step type with a '_call' suffix
    */
-  appliesTo: ControlExecutionEventAppliesTo;
+  appliesTo: string;
   /**
    * Check stage: 'pre' or 'post'
    */
@@ -142,17 +128,6 @@ export type ControlExecutionEvent = {
 };
 
 /** @internal */
-export const ControlExecutionEventAppliesTo$inboundSchema: z.ZodMiniType<
-  ControlExecutionEventAppliesTo,
-  unknown
-> = openEnums.inboundSchema(ControlExecutionEventAppliesTo);
-/** @internal */
-export const ControlExecutionEventAppliesTo$outboundSchema: z.ZodMiniType<
-  string,
-  ControlExecutionEventAppliesTo
-> = openEnums.outboundSchema(ControlExecutionEventAppliesTo);
-
-/** @internal */
 export const CheckStage$inboundSchema: z.ZodMiniType<CheckStage, unknown> =
   openEnums.inboundSchema(CheckStage);
 /** @internal */
@@ -167,7 +142,7 @@ export const ControlExecutionEvent$inboundSchema: z.ZodMiniType<
   z.object({
     action: ActionDecision$inboundSchema,
     agent_name: types.string(),
-    applies_to: ControlExecutionEventAppliesTo$inboundSchema,
+    applies_to: types.string(),
     check_stage: CheckStage$inboundSchema,
     confidence: types.number(),
     control_execution_id: types.optional(types.string()),
@@ -229,7 +204,7 @@ export const ControlExecutionEvent$outboundSchema: z.ZodMiniType<
   z.object({
     action: ActionDecision$outboundSchema,
     agentName: z.string(),
-    appliesTo: ControlExecutionEventAppliesTo$outboundSchema,
+    appliesTo: z.string(),
     checkStage: CheckStage$outboundSchema,
     confidence: z.number(),
     controlExecutionId: z.optional(z.string()),

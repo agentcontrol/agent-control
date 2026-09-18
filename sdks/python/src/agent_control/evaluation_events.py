@@ -2,7 +2,6 @@
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Literal
 
 from agent_control_models import (
     ControlDefinition,
@@ -62,9 +61,13 @@ def observability_metadata(
     )
 
 
-def map_applies_to(step_type: str) -> Literal["llm_call", "tool_call"]:
+def map_applies_to(step_type: str) -> str:
     """Map Agent Control step types to observability applies_to values."""
-    return "tool_call" if step_type == "tool" else "llm_call"
+    if step_type == "tool":
+        return "tool_call"
+    if step_type == "llm":
+        return "llm_call"
+    return f"{step_type}_call"
 
 
 def _resolve_event_trace_context(

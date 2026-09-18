@@ -149,7 +149,7 @@ async def query_events(
     - actions: Filter by actions (deny, steer, observe)
     - matched: Filter by matched status
     - check_stages: Filter by check stage (pre, post)
-    - applies_to: Filter by call type (llm_call, tool_call)
+    - applies_to: Filter by call type or custom call type
     - start_time/end_time: Filter by time range
 
     Results are paginated with limit/offset.

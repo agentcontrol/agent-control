@@ -63,6 +63,31 @@ def test_evaluation_no_policy(client: TestClient):
     assert not resp.json()["matches"]
 
 
+def test_evaluation_accepts_custom_step_type(client: TestClient):
+    """The evaluation endpoint accepts custom Step.type values."""
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+
+    request = EvaluationRequest(
+        agent_name=agent_name,
+        step=Step(
+            type="retriever",
+            name="retrieve-documents",
+            input={"query": "anything"},
+        ),
+        stage="pre",
+    )
+
+    response = client.post("/api/v1/evaluation", json=request.model_dump(mode="json"))
+
+    assert response.status_code == 200
+    assert response.json()["is_safe"] is True
+    assert not response.json()["matches"]
+
+
 def test_evaluation_empty_policy(client: TestClient):
     """Test that an agent with an empty policy is safe."""
     # Given: an empty policy

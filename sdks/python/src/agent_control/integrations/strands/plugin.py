@@ -71,6 +71,9 @@ class AgentControlPlugin(Plugin):
 
     The Agent Control server is required for control distribution and policy assignment.
     Controls may specify execution="sdk" or execution="server".
+    Strands lifecycle events handled by this adapter are model and tool events,
+    so its internal step-type annotations intentionally remain limited to
+    ``llm`` and ``tool``. Custom types remain available through the core SDK APIs.
     """
 
     name = "agent-control-plugin"

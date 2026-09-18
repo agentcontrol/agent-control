@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { eventQueryRequestToJSON } from "../src/generated/models/event-query-request";
 import { stepToJSON } from "../src/generated/models/step";
 
 describe("generated client layout", () => {
@@ -57,5 +58,13 @@ describe("generated client layout", () => {
         },
       ],
     });
+  });
+
+  it("serializes custom observability step types", () => {
+    const serialized = eventQueryRequestToJSON({
+      appliesTo: ["retriever_call", "trace_call"],
+    });
+
+    expect(JSON.parse(serialized).applies_to).toEqual(["retriever_call", "trace_call"]);
   });
 });

@@ -51,6 +51,21 @@ class TestMapAppliesTo:
     def test_maps_llm_to_llm_call(self):
         assert map_applies_to("llm") == "llm_call"
 
+    def test_maps_custom_step_type_to_call_type(self):
+        assert map_applies_to("retriever") == "retriever_call"
+        assert map_applies_to("trace") == "trace_call"
+        assert map_applies_to("session") == "session_call"
+
+    def test_custom_step_type_round_trips_in_observability_query(self):
+        from agent_control_models import EventQueryRequest
+
+        request = EventQueryRequest(applies_to=["retriever_call", "trace_call"])
+
+        assert request.model_dump(mode="json")["applies_to"] == [
+            "retriever_call",
+            "trace_call",
+        ]
+
 
 class TestMergeResults:
     def _make_response(self, **kwargs):
@@ -237,6 +252,32 @@ class TestBuildControlExecutionEvents:
         assert event.agent_name == "test-agent"
         assert event.evaluator_name == "regex"
         assert event.selector_path == "input"
+
+    def test_builds_custom_type_event_without_llm_classification(self):
+        response = self._make_response(matches=[self._make_match(1, "ctrl-1")])
+        request = self._make_request(step_type="retriever")
+        control_lookup = {
+            1: self._make_control(
+                1,
+                "ctrl-1",
+                {
+                    "evaluator": {"name": "regex", "config": {"pattern": "test"}},
+                    "selector": {"path": "input"},
+                },
+            ).control
+        }
+
+        events = build_control_execution_events(
+            response,
+            request,
+            control_lookup,
+            "trace123",
+            "span456",
+            "test-agent",
+        )
+
+        assert events[0].applies_to == "retriever_call"
+        assert events[0].model_dump(mode="json")["applies_to"] == "retriever_call"
 
     def test_uses_safe_selected_data_preview_as_event_input(self):
         response = self._make_response(

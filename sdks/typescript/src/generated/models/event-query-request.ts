@@ -10,12 +10,6 @@ import {
   ActionDecision$outboundSchema,
 } from "./action-decision.js";
 
-export const AppliesTo = {
-  LlmCall: "llm_call",
-  ToolCall: "tool_call",
-} as const;
-export type AppliesTo = ClosedEnum<typeof AppliesTo>;
-
 export const CheckStages = {
   Pre: "pre",
   Post: "post",
@@ -38,7 +32,7 @@ export type CheckStages = ClosedEnum<typeof CheckStages>;
  *     actions: Filter by actions (deny, steer, observe)
  *     matched: Filter by matched status
  *     check_stages: Filter by check stages (pre, post)
- *     applies_to: Filter by call type (llm_call, tool_call)
+ *     applies_to: Filter by call type or custom call type
  *     start_time: Filter events after this time
  *     end_time: Filter events before this time
  *     limit: Maximum number of events to return
@@ -54,9 +48,9 @@ export type EventQueryRequest = {
    */
   agentName?: string | null | undefined;
   /**
-   * Filter by call types
+   * Filter by call types or custom call types
    */
-  appliesTo?: Array<AppliesTo> | null | undefined;
+  appliesTo?: Array<string> | null | undefined;
   /**
    * Filter by check stages
    */
@@ -100,11 +94,6 @@ export type EventQueryRequest = {
 };
 
 /** @internal */
-export const AppliesTo$outboundSchema: z.ZodMiniEnum<typeof AppliesTo> = z.enum(
-  AppliesTo,
-);
-
-/** @internal */
 export const CheckStages$outboundSchema: z.ZodMiniEnum<typeof CheckStages> = z
   .enum(CheckStages);
 
@@ -133,7 +122,7 @@ export const EventQueryRequest$outboundSchema: z.ZodMiniType<
   z.object({
     actions: z.optional(z.nullable(z.array(ActionDecision$outboundSchema))),
     agentName: z.optional(z.nullable(z.string())),
-    appliesTo: z.optional(z.nullable(z.array(AppliesTo$outboundSchema))),
+    appliesTo: z.optional(z.nullable(z.array(z.string()))),
     checkStages: z.optional(z.nullable(z.array(CheckStages$outboundSchema))),
     controlExecutionId: z.optional(z.nullable(z.string())),
     controlIds: z.optional(z.nullable(z.array(z.int()))),

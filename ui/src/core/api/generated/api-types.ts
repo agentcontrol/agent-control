@@ -748,7 +748,7 @@ export interface paths {
      *     - actions: Filter by actions (deny, steer, observe)
      *     - matched: Filter by matched status
      *     - check_stages: Filter by check stage (pre, post)
-     *     - applies_to: Filter by call type (llm_call, tool_call)
+     *     - applies_to: Filter by call type or custom call type
      *     - start_time/end_time: Filter by time range
      *
      *     Results are paginated with limit/offset.
@@ -1526,7 +1526,7 @@ export interface components {
      *         control_id: Database ID of the control
      *         control_name: Name of the control (denormalized for queries)
      *         check_stage: "pre" (before execution) or "post" (after execution)
-     *         applies_to: "llm_call" or "tool_call"
+     *         applies_to: "llm_call", "tool_call", or a custom call type
      *         action: The action taken (deny, steer, observe)
      *         matched: Whether the control evaluator matched
      *         confidence: Confidence score from the evaluator (0.0-1.0)
@@ -1564,10 +1564,9 @@ export interface components {
       agent_name: string;
       /**
        * Applies To
-       * @description Type of call: 'llm_call' or 'tool_call'
-       * @enum {string}
+       * @description Type of call or custom call type
        */
-      applies_to: 'llm_call' | 'tool_call';
+      applies_to: string;
       /**
        * Check Stage
        * @description Check stage: 'pre' or 'post'
@@ -2295,7 +2294,7 @@ export interface components {
      *         actions: Filter by actions (deny, steer, observe)
      *         matched: Filter by matched status
      *         check_stages: Filter by check stages (pre, post)
-     *         applies_to: Filter by call type (llm_call, tool_call)
+     *         applies_to: Filter by call type or custom call type
      *         start_time: Filter events after this time
      *         end_time: Filter events before this time
      *         limit: Maximum number of events to return
@@ -2326,9 +2325,9 @@ export interface components {
       agent_name?: string | null;
       /**
        * Applies To
-       * @description Filter by call types
+       * @description Filter by call types or custom call types
        */
-      applies_to?: ('llm_call' | 'tool_call')[] | null;
+      applies_to?: string[] | null;
       /**
        * Check Stages
        * @description Filter by check stages

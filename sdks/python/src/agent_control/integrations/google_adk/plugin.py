@@ -58,7 +58,12 @@ _SYNC_TIMEOUT_SECONDS = 30
 
 
 class AgentControlPlugin(BasePlugin):
-    """Google ADK plugin that enforces Agent Control across model and tool hooks."""
+    """Google ADK plugin that enforces Agent Control across model and tool hooks.
+
+    Google ADK lifecycle callbacks expose model and tool operations only, so
+    this adapter intentionally uses the built-in ``llm`` and ``tool`` step
+    types. Custom step types remain available through the core SDK APIs.
+    """
 
     name = "agent-control-google-adk"
 
