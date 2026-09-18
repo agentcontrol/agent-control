@@ -174,23 +174,6 @@ def _ensure_target_principal_matches_namespace(
     )
 
 
-async def _authorize_existing_agent_overwrite(
-    request: Request,
-    principal: Principal,
-) -> None:
-    update_principal = await get_authorizer(Operation.AGENTS_UPDATE).authorize(
-        request,
-        Operation.AGENTS_UPDATE,
-    )
-    if update_principal.namespace_key == principal.namespace_key:
-        return
-    raise ForbiddenError(
-        error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-        detail="Update authorization resolved to a different namespace.",
-        hint="Ensure the credential is scoped to the requested agent namespace.",
-    )
-
-
 # =============================================================================
 # List Agents Models
 # =============================================================================
@@ -549,7 +532,6 @@ async def list_agents(
 )
 async def init_agent(
     request: InitAgentRequest,
-    http_request: Request,
     db: AsyncSession = Depends(get_async_db),
     principal: Principal = Depends(require_operation(Operation.AGENTS_CREATE)),
     target_principal: Principal | None = Depends(_init_agent_target_principal),
@@ -681,9 +663,6 @@ async def init_agent(
             target_id=request.target_id,
         )
         return InitAgentResponse(created=created, controls=controls)
-
-    if request.force_replace or request.conflict_mode == ConflictMode.OVERWRITE:
-        await _authorize_existing_agent_overwrite(http_request, principal)
 
     # Parse existing data via AgentData Pydantic model
     try:
@@ -911,13 +890,6 @@ async def init_agent(
                 evaluators_changed = True
 
         data_model.evaluators = new_evaluators
-
-    if (
-        not request.force_replace
-        and request.conflict_mode != ConflictMode.OVERWRITE
-        and (steps_changed or evaluators_changed or metadata_changed)
-    ):
-        await _authorize_existing_agent_overwrite(http_request, principal)
 
     if steps_changed or evaluators_changed or metadata_changed or force_write:
         existing.data = data_model.model_dump(mode="json")

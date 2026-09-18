@@ -230,7 +230,7 @@ class TestAdminWriteEndpointAuthorization:
         body = response.json()
         assert body["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
 
-    def test_non_admin_key_can_init_agent_and_fetch_controls(
+    def test_non_admin_key_can_register_refresh_agent_and_fetch_controls(
         self, non_admin_client: TestClient
     ) -> None:
         agent_name = f"runtime-agent-{uuid.uuid4().hex[:8]}"
@@ -253,6 +253,32 @@ class TestAdminWriteEndpointAuthorization:
 
         init_response = non_admin_client.post("/api/v1/agents/initAgent", json=init_payload)
         assert init_response.status_code == 200
+        assert init_response.json()["created"] is True
+
+        updated_payload = {
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "Updated runtime agent",
+                "agent_version": "2.0",
+            },
+            "steps": [
+                {
+                    "type": "tool",
+                    "name": "tool_b",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                }
+            ],
+            "evaluators": [],
+            "conflict_mode": "overwrite",
+        }
+        refresh_response = non_admin_client.post(
+            "/api/v1/agents/initAgent",
+            json=updated_payload,
+        )
+        assert refresh_response.status_code == 200
+        assert refresh_response.json()["created"] is False
+        assert refresh_response.json()["overwrite_applied"] is True
 
         controls_response = non_admin_client.get(f"/api/v1/agents/{agent_name}/controls")
         assert controls_response.status_code == 200
