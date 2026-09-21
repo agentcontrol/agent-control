@@ -44,7 +44,7 @@ export type ListControlsApiV1ControlsGetRequest = {
    */
   tag?: string | null | undefined;
   /**
-   * When true, include direct agent associations, policy associations, and target bindings for each listed control.
+   * When true, include direct agent associations, policy associations, and, when target filters are supplied, target bindings for each listed control.
    */
   includeAttachments?: boolean | undefined;
   /**

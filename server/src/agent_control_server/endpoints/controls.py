@@ -47,7 +47,6 @@ from ..db import get_async_db
 from ..errors import (
     APIError,
     APIValidationError,
-    AuthenticationError,
     ConflictError,
     DatabaseError,
     ForbiddenError,
@@ -143,19 +142,18 @@ async def _clone_and_bind_context(request: Request) -> dict[str, Any]:
     }
 
 
-def _attachment_target_context(request: Request) -> dict[str, str]:
-    context: dict[str, str] = {}
+def _attachment_target_context(request: Request) -> dict[str, str] | None:
+    """Return target context only when both attachment identifiers are valid."""
     target_type = request.query_params.get("attachment_target_type")
     target_id = request.query_params.get("attachment_target_id")
-    if target_type is not None:
-        if not _is_target_context_value(target_type):
-            return {}
-        context["target_type"] = target_type
-    if target_id is not None:
-        if not _is_target_context_value(target_id):
-            return {}
-        context["target_id"] = target_id
-    return context
+    if (
+        target_type is None
+        or target_id is None
+        or not _is_target_context_value(target_type)
+        or not _is_target_context_value(target_id)
+    ):
+        return None
+    return {"target_type": target_type, "target_id": target_id}
 
 
 async def _optional_attachment_target_principal(request: Request) -> Principal | None:
@@ -165,20 +163,13 @@ async def _optional_attachment_target_principal(request: Request) -> Principal |
     if include_attachments.lower() not in _TRUE_QUERY_VALUES:
         return None
     target_context = _attachment_target_context(request)
-    try:
-        return await get_authorizer(Operation.CONTROL_BINDINGS_READ).authorize(
-            request,
-            Operation.CONTROL_BINDINGS_READ,
-            target_context,
-        )
-    except (AuthenticationError, ForbiddenError, NotFoundError):
-        if target_context:
-            raise
+    if target_context is None:
         return None
-    except APIError:
-        if target_context:
-            raise
-        return None
+    return await get_authorizer(Operation.CONTROL_BINDINGS_READ).authorize(
+        request,
+        Operation.CONTROL_BINDINGS_READ,
+        target_context,
+    )
 
 
 def _generated_clone_name(source_id: int, source_name: str) -> str:
@@ -235,6 +226,31 @@ def _validate_attachment_filters(
     attachment_target_id: str | None,
 ) -> None:
     if include_attachments:
+        if (attachment_target_type is None) != (attachment_target_id is None):
+            raise APIValidationError(
+                error_code=ErrorCode.VALIDATION_ERROR,
+                detail="Attachment target filters must be supplied together.",
+                resource="Control",
+                hint=(
+                    "Set both attachment_target_type and attachment_target_id, "
+                    "or remove both filters."
+                ),
+                errors=[
+                    ValidationErrorItem(
+                        resource="Control",
+                        field=(
+                            "attachment_target_type"
+                            if attachment_target_type is None
+                            else "attachment_target_id"
+                        ),
+                        code="missing_required_parameter",
+                        message=(
+                            "Set attachment_target_type and attachment_target_id "
+                            "together."
+                        ),
+                    )
+                ],
+            )
         return
     if attachment_target_type is None and attachment_target_id is None:
         return
@@ -1157,7 +1173,8 @@ async def list_controls(
         False,
         description=(
             "When true, include direct agent associations, policy associations, "
-            "and target bindings for each listed control."
+            "and, when target filters are supplied, target bindings for each "
+            "listed control."
         ),
     ),
     attachment_target_type: str | None = Query(
