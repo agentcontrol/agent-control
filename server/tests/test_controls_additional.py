@@ -11,11 +11,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from agent_control_evaluators import RegexEvaluatorConfig
 from agent_control_models import ConditionNode
-from agent_control_models.errors import ErrorCode, ErrorReason
+from agent_control_models.errors import ErrorCode
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.db import get_async_db
 from agent_control_server.endpoints import controls as controls_module
-from agent_control_server.errors import APIError, BadRequestError, ForbiddenError
+from agent_control_server.errors import BadRequestError, ForbiddenError
 from agent_control_server.main import app
 from agent_control_server.models import (
     DEFAULT_NAMESPACE_KEY,
@@ -1355,20 +1355,18 @@ def test_list_controls_expands_filtered_control_attachments(
     }
 
 
-def test_list_controls_caps_inline_target_attachments(
+def test_list_controls_omits_target_attachments_without_filter(
     client: TestClient,
 ) -> None:
     control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
     _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
-    binding_ids = [
+    for index in range(25):
         _create_target_binding(
             client,
             control_id=control_id,
             target_type="log_stream",
             target_id=f"ls-{index}",
         )
-        for index in range(25)
-    ]
 
     resp = client.get(
         "/api/v1/controls",
@@ -1380,15 +1378,12 @@ def test_list_controls_caps_inline_target_attachments(
 
     assert resp.status_code == 200, resp.text
     attachments = resp.json()["controls"][0]["attachments"]
-    assert len(attachments["targets"]) == 20
-    assert attachments["targets_total"] == 25
-    assert attachments["targets_truncated"] is True
-    assert [target["binding_id"] for target in attachments["targets"]] == list(
-        reversed(binding_ids[-20:])
-    )
+    assert attachments["targets"] == []
+    assert attachments["targets_total"] == 0
+    assert attachments["targets_truncated"] is False
 
 
-def test_list_controls_omits_targets_without_binding_read_authorization(
+def test_list_controls_skips_target_authorization_without_filter(
     client: TestClient,
 ) -> None:
     control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
@@ -1435,59 +1430,7 @@ def test_list_controls_omits_targets_without_binding_read_authorization(
         "targets_total": 0,
         "targets_truncated": False,
     }
-    assert (Operation.CONTROL_BINDINGS_READ, None) in calls
-
-
-def test_list_controls_omits_targets_when_broad_binding_read_upstream_rejects(
-    client: TestClient,
-) -> None:
-    control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
-    _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
-    _create_target_binding(
-        client,
-        control_id=control_id,
-        target_type="log_stream",
-        target_id="ls-prod",
-    )
-    calls: list[tuple[Operation, dict[str, Any] | None]] = []
-
-    class BindingReadRejectAuthorizer:
-        async def authorize(
-            self,
-            request: Any,
-            operation: Operation,
-            context: dict[str, Any] | None = None,
-        ) -> Principal:
-            calls.append((operation, context))
-            if operation == Operation.CONTROL_BINDINGS_READ:
-                raise APIError(
-                    status_code=502,
-                    error_code=ErrorCode.AUTH_UPSTREAM_REJECTED,
-                    reason=ErrorReason.INTERNAL_ERROR,
-                    detail="Authorization service rejected the authorization check.",
-                )
-            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
-
-    set_authorizer(BindingReadRejectAuthorizer())
-
-    resp = client.get(
-        "/api/v1/controls",
-        params={
-            "name": control_name,
-            "include_attachments": "true",
-        },
-    )
-
-    assert resp.status_code == 200, resp.text
-    controls = resp.json()["controls"]
-    assert controls[0]["attachments"] == {
-        "agents": [],
-        "policies": [],
-        "targets": [],
-        "targets_total": 0,
-        "targets_truncated": False,
-    }
-    assert (Operation.CONTROL_BINDINGS_READ, None) in calls
+    assert not any(operation == Operation.CONTROL_BINDINGS_READ for operation, _ in calls)
 
 
 @pytest.mark.parametrize(
@@ -1501,14 +1444,6 @@ def test_list_controls_omits_targets_when_broad_binding_read_upstream_rejects(
                 "attachment_target_id": "ls-prod",
             },
             {"target_type": "log_stream", "target_id": "ls-prod"},
-        ),
-        (
-            {"include_attachments": "true", "attachment_target_type": "log_stream"},
-            None,
-        ),
-        (
-            {"include_attachments": "true", "attachment_target_id": "ls-prod"},
-            None,
         ),
     ],
 )
@@ -1537,7 +1472,42 @@ def test_list_controls_builds_complete_attachment_auth_context(
     binding_contexts = [
         context for operation, context in calls if operation == Operation.CONTROL_BINDINGS_READ
     ]
-    assert binding_contexts == [expected_context]
+    if expected_context is None:
+        assert binding_contexts == []
+    else:
+        assert binding_contexts == [expected_context]
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"include_attachments": "true", "attachment_target_type": "log_stream"},
+        {"include_attachments": "true", "attachment_target_id": "ls-prod"},
+    ],
+)
+def test_list_controls_rejects_incomplete_attachment_filters_without_auth_call(
+    client: TestClient,
+    params: dict[str, str],
+) -> None:
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class RecordingAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(RecordingAuthorizer())
+
+    resp = client.get("/api/v1/controls", params=params)
+
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error_code"] == "VALIDATION_ERROR"
+    assert not any(operation == Operation.CONTROL_BINDINGS_READ for operation, _ in calls)
 
 
 def test_list_controls_rejects_target_filter_without_binding_read_authorization(
@@ -1588,11 +1558,13 @@ def test_list_controls_rejects_target_filter_without_binding_read_authorization(
     ) in calls
 
 
-def test_list_controls_rejects_attachment_namespace_mismatch(
+def test_list_controls_does_not_require_target_authorization_without_filter(
     client: TestClient,
 ) -> None:
     control_id, control_name = _create_control(client, name=f"Attachments-{uuid.uuid4()}")
     _set_control_data(client, control_id, deepcopy(VALID_CONTROL_PAYLOAD))
+
+    calls: list[Operation] = []
 
     class MismatchedBindingReadAuthorizer:
         async def authorize(
@@ -1601,6 +1573,7 @@ def test_list_controls_rejects_attachment_namespace_mismatch(
             operation: Operation,
             context: dict[str, Any] | None = None,
         ) -> Principal:
+            calls.append(operation)
             namespace_key = (
                 "other-namespace"
                 if operation == Operation.CONTROL_BINDINGS_READ
@@ -1618,8 +1591,9 @@ def test_list_controls_rejects_attachment_namespace_mismatch(
         },
     )
 
-    assert resp.status_code == 403
-    assert resp.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["controls"][0]["attachments"]["targets"] == []
+    assert Operation.CONTROL_BINDINGS_READ not in calls
 
 
 def test_list_controls_rejects_attachment_filters_without_expansion(
