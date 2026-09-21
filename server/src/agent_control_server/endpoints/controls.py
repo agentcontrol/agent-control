@@ -143,19 +143,18 @@ async def _clone_and_bind_context(request: Request) -> dict[str, Any]:
     }
 
 
-def _attachment_target_context(request: Request) -> dict[str, str]:
-    context: dict[str, str] = {}
+def _attachment_target_context(request: Request) -> dict[str, str] | None:
+    """Return target context only when both attachment identifiers are valid."""
     target_type = request.query_params.get("attachment_target_type")
     target_id = request.query_params.get("attachment_target_id")
-    if target_type is not None:
-        if not _is_target_context_value(target_type):
-            return {}
-        context["target_type"] = target_type
-    if target_id is not None:
-        if not _is_target_context_value(target_id):
-            return {}
-        context["target_id"] = target_id
-    return context
+    if (
+        target_type is None
+        or target_id is None
+        or not _is_target_context_value(target_type)
+        or not _is_target_context_value(target_id)
+    ):
+        return None
+    return {"target_type": target_type, "target_id": target_id}
 
 
 async def _optional_attachment_target_principal(request: Request) -> Principal | None:

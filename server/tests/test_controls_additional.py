@@ -1435,7 +1435,7 @@ def test_list_controls_omits_targets_without_binding_read_authorization(
         "targets_total": 0,
         "targets_truncated": False,
     }
-    assert (Operation.CONTROL_BINDINGS_READ, {}) in calls
+    assert (Operation.CONTROL_BINDINGS_READ, None) in calls
 
 
 def test_list_controls_omits_targets_when_broad_binding_read_upstream_rejects(
@@ -1487,7 +1487,57 @@ def test_list_controls_omits_targets_when_broad_binding_read_upstream_rejects(
         "targets_total": 0,
         "targets_truncated": False,
     }
-    assert (Operation.CONTROL_BINDINGS_READ, {}) in calls
+    assert (Operation.CONTROL_BINDINGS_READ, None) in calls
+
+
+@pytest.mark.parametrize(
+    ("params", "expected_context"),
+    [
+        ({"include_attachments": "true"}, None),
+        (
+            {
+                "include_attachments": "true",
+                "attachment_target_type": "log_stream",
+                "attachment_target_id": "ls-prod",
+            },
+            {"target_type": "log_stream", "target_id": "ls-prod"},
+        ),
+        (
+            {"include_attachments": "true", "attachment_target_type": "log_stream"},
+            None,
+        ),
+        (
+            {"include_attachments": "true", "attachment_target_id": "ls-prod"},
+            None,
+        ),
+    ],
+)
+def test_list_controls_builds_complete_attachment_auth_context(
+    client: TestClient,
+    params: dict[str, str],
+    expected_context: dict[str, str] | None,
+) -> None:
+    calls: list[tuple[Operation, dict[str, Any] | None]] = []
+
+    class RecordingAuthorizer:
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            calls.append((operation, context))
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY, is_admin=True)
+
+    set_authorizer(RecordingAuthorizer())
+
+    resp = client.get("/api/v1/controls", params=params)
+
+    assert resp.status_code == 200, resp.text
+    binding_contexts = [
+        context for operation, context in calls if operation == Operation.CONTROL_BINDINGS_READ
+    ]
+    assert binding_contexts == [expected_context]
 
 
 def test_list_controls_rejects_target_filter_without_binding_read_authorization(
