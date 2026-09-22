@@ -230,6 +230,55 @@ class TestAdminWriteEndpointAuthorization:
         body = response.json()
         assert body["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
 
+    @pytest.mark.parametrize("method", ["POST", "DELETE"])
+    def test_direct_agent_control_mutations_remain_agent_updates(
+        self,
+        app: object,
+        method: str,
+    ) -> None:
+        # Given: an authorizer that records the operation declared by the route.
+        authorizer = _RecordingAuthorizer()
+        set_authorizer(authorizer)
+        client = TestClient(app, raise_server_exceptions=True)
+
+        # When: a legacy direct control attach/detach route is requested.
+        response = client.request(
+            method,
+            "/api/v1/agents/missing-agent/controls/1",
+        )
+
+        # Then: the route remains an explicit agent-management operation.
+        assert response.status_code == 404
+        assert authorizer.calls == [(Operation.AGENTS_UPDATE, None)]
+
+    def test_non_admin_key_can_repeat_unchanged_agent_registration(
+        self,
+        non_admin_client: TestClient,
+    ) -> None:
+        # Given: an existing agent registered through the SDK-default overwrite mode.
+        agent_name = f"runtime-agent-{uuid.uuid4().hex[:8]}"
+        payload = {
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "Runtime agent",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+            "evaluators": [],
+            "conflict_mode": "overwrite",
+        }
+        first_response = non_admin_client.post("/api/v1/agents/initAgent", json=payload)
+        assert first_response.status_code == 200
+        assert first_response.json()["created"] is True
+
+        # When: the same registration is repeated after a runtime restart.
+        repeat_response = non_admin_client.post("/api/v1/agents/initAgent", json=payload)
+
+        # Then: the no-op refresh succeeds without management authorization.
+        assert repeat_response.status_code == 200
+        assert repeat_response.json()["created"] is False
+        assert repeat_response.json()["overwrite_applied"] is False
+
     def test_non_admin_key_can_register_refresh_agent_and_fetch_controls(
         self, non_admin_client: TestClient
     ) -> None:
@@ -280,9 +329,44 @@ class TestAdminWriteEndpointAuthorization:
         assert refresh_response.json()["created"] is False
         assert refresh_response.json()["overwrite_applied"] is True
 
+        details_response = non_admin_client.get(f"/api/v1/agents/{agent_name}")
+        assert details_response.status_code == 200
+        details = details_response.json()
+        assert details["agent"]["agent_description"] == "Updated runtime agent"
+        assert details["agent"]["agent_version"] == "2.0"
+        assert {step["name"] for step in details["steps"]} == {"tool_b"}
+
         controls_response = non_admin_client.get(f"/api/v1/agents/{agent_name}/controls")
         assert controls_response.status_code == 200
         assert controls_response.json()["controls"] == []
+
+    def test_non_admin_key_cannot_force_replace_existing_agent(
+        self,
+        non_admin_client: TestClient,
+    ) -> None:
+        # Given: an existing registration owned by the non-admin namespace.
+        agent_name = f"runtime-agent-{uuid.uuid4().hex[:8]}"
+        payload = {
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "Runtime agent",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+            "evaluators": [],
+        }
+        first_response = non_admin_client.post("/api/v1/agents/initAgent", json=payload)
+        assert first_response.status_code == 200
+
+        # When: the caller requests exceptional existing-row recovery.
+        force_response = non_admin_client.post(
+            "/api/v1/agents/initAgent",
+            json={**payload, "force_replace": True},
+        )
+
+        # Then: agent-management authorization is still required.
+        assert force_response.status_code == 403
+        assert force_response.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
 
     def test_admin_key_allowed_on_representative_mutations(self, admin_client: TestClient) -> None:
         control_name = f"control-authz-{uuid.uuid4().hex[:8]}"

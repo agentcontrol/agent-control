@@ -28,9 +28,7 @@ class HeaderNamespaceAuthorizer:
     ) -> Principal:
         del context
         scopes = (
-            (Operation.RUNTIME_USE.value,)
-            if operation is Operation.RUNTIME_TOKEN_EXCHANGE
-            else ()
+            (Operation.RUNTIME_USE.value,) if operation is Operation.RUNTIME_TOKEN_EXCHANGE else ()
         )
         return Principal(
             namespace_key=request.headers.get("X-Test-Namespace", "default"),
@@ -127,6 +125,41 @@ def test_principal_namespace_scopes_management_and_runtime(app: FastAPI) -> None
     eval_b = ns_b.post("/api/v1/evaluation", json=_evaluation_payload(agent_name))
     assert eval_b.status_code == 200, eval_b.text
     assert eval_b.json()["is_safe"] is True
+
+
+def test_init_agent_overwrite_only_updates_the_principal_namespace(app: FastAPI) -> None:
+    # Given: the same agent name is registered independently in two namespaces.
+    set_authorizer(HeaderNamespaceAuthorizer())
+    ns_a = _client(app, "ns-a")
+    ns_b = _client(app, "ns-b")
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    payload_a = _agent_payload(agent_name)
+    payload_b = _agent_payload(agent_name)
+    payload_a["agent"]["agent_description"] = "namespace a"
+    payload_b["agent"]["agent_description"] = "namespace b"
+
+    assert ns_a.post("/api/v1/agents/initAgent", json=payload_a).status_code == 200
+    assert ns_b.post("/api/v1/agents/initAgent", json=payload_b).status_code == 200
+
+    # When: namespace A refreshes its registration using overwrite mode.
+    updated_payload_a = _agent_payload(agent_name)
+    updated_payload_a["agent"]["agent_description"] = "namespace a updated"
+    updated_payload_a["agent"]["agent_version"] = "2.0"
+    updated_payload_a["conflict_mode"] = "overwrite"
+    update_response = ns_a.post("/api/v1/agents/initAgent", json=updated_payload_a)
+
+    # Then: only namespace A's registration changes.
+    assert update_response.status_code == 200
+    details_response_a = ns_a.get(f"/api/v1/agents/{agent_name}")
+    details_response_b = ns_b.get(f"/api/v1/agents/{agent_name}")
+    assert details_response_a.status_code == 200
+    assert details_response_b.status_code == 200
+    details_a = details_response_a.json()
+    details_b = details_response_b.json()
+    assert details_a["agent"]["agent_description"] == "namespace a updated"
+    assert details_a["agent"]["agent_version"] == "2.0"
+    assert details_b["agent"]["agent_description"] == "namespace b"
+    assert details_b["agent"]["agent_version"] == "1.0"
 
 
 def test_principal_namespace_scopes_cross_namespace_writes(app: FastAPI) -> None:

@@ -33,7 +33,23 @@ class CreateOnlyAuthorizer:
                 error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
                 detail="update denied",
             )
-        return Principal(namespace_key="default", is_admin=True)
+        return Principal(namespace_key="default", is_admin=False)
+
+
+class MismatchedUpdateNamespaceAuthorizer:
+    def __init__(self) -> None:
+        self.operations: list[Operation] = []
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request, context
+        self.operations.append(operation)
+        namespace_key = "other" if operation is Operation.AGENTS_UPDATE else "default"
+        return Principal(namespace_key=namespace_key, is_admin=False)
 
 
 def _init_payload(
@@ -218,10 +234,10 @@ def test_init_agent_overwrite_existing_agent_uses_create_auth(
     assert authorizer.operations == [Operation.AGENTS_CREATE]
 
 
-def test_init_agent_force_replace_existing_agent_uses_create_auth(
+def test_init_agent_force_replace_existing_agent_requires_update_auth(
     client: TestClient,
 ) -> None:
-    # Given: an existing agent and a principal that may register but not update agents.
+    # Given: an existing agent and a principal that may register but not manage agents.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     create_resp = client.post(
         "/api/v1/agents/initAgent",
@@ -245,10 +261,48 @@ def test_init_agent_force_replace_existing_agent_uses_create_auth(
         },
     )
 
-    # Then: registration succeeds without requesting the agent management operation.
-    assert force_resp.status_code == 200
-    assert force_resp.json()["created"] is False
-    assert authorizer.operations == [Operation.AGENTS_CREATE]
+    # Then: exceptional recovery remains protected by agent-management authorization.
+    assert force_resp.status_code == 403
+    assert authorizer.operations == [
+        Operation.AGENTS_CREATE,
+        Operation.AGENTS_UPDATE,
+    ]
+
+
+def test_init_agent_force_replace_rejects_update_namespace_mismatch(
+    client: TestClient,
+) -> None:
+    # Given: an existing registration and update authorization for another namespace.
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    original_payload = _init_payload(agent_name=agent_name, agent_description="original")
+    create_resp = client.post("/api/v1/agents/initAgent", json=original_payload)
+    assert create_resp.status_code == 200
+
+    authorizer = MismatchedUpdateNamespaceAuthorizer()
+    set_authorizer(authorizer)
+
+    # When: exceptional recovery is requested with mismatched authorization grants.
+    force_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            **_init_payload(agent_name=agent_name, agent_description="replacement"),
+            "force_replace": True,
+        },
+    )
+
+    # Then: the request fails closed before stored registration data changes.
+    assert force_resp.status_code == 403
+    assert force_resp.json()["detail"] == (
+        "Update authorization resolved to a different namespace."
+    )
+    assert authorizer.operations == [
+        Operation.AGENTS_CREATE,
+        Operation.AGENTS_UPDATE,
+    ]
+
+    details_resp = client.get(f"/api/v1/agents/{agent_name}")
+    assert details_resp.status_code == 200
+    assert details_resp.json()["agent"]["agent_description"] == "original"
 
 
 def test_init_agent_strict_existing_agent_mutation_uses_create_auth(
@@ -285,6 +339,10 @@ def test_init_agent_strict_existing_agent_mutation_uses_create_auth(
     assert strict_resp.status_code == 200
     assert strict_resp.json()["created"] is False
     assert authorizer.operations == [Operation.AGENTS_CREATE]
+
+    details_resp = client.get(f"/api/v1/agents/{agent_name}")
+    assert details_resp.status_code == 200
+    assert {step["name"] for step in details_resp.json()["steps"]} == {"new-tool"}
 
 
 def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
