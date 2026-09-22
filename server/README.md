@@ -57,3 +57,19 @@ psycopg's bundled binary package.
 Server configuration is driven by environment variables (database, auth, observability, evaluators). For the full list and examples, see the docs.
 
 Full guide: https://docs.agentcontrol.dev/components/server
+
+## Authorization operation compatibility
+
+Custom and HTTP upstream authorizers must recognize every operation emitted by the server. The
+agent mutation routes use these dedicated wire operations:
+
+- `agents.recover` for `force_replace=true` on an existing agent
+- `agent_control_associations.write` for adding or removing a direct agent-control association
+- `agent_policy_associations.write` for adding, setting, removing, or clearing agent-policy
+  associations
+
+Normal registration overwrite/strict mutations and `PATCH /agents/{agent_name}` continue to use
+`agents.update`. The built-in header provider requires admin credentials for all four mutation
+operations. When upgrading a deployment with an HTTP authorization upstream, add support for the
+new operation values upstream before deploying this server version; unrecognized operations fail
+closed and will interrupt the affected requests.

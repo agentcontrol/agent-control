@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -75,6 +76,36 @@ def test_default_operation_access_covers_every_operation():
     """Every Operation member must declare a default access level."""
     missing = [op for op in Operation if op not in DEFAULT_OPERATION_ACCESS]
     assert not missing, f"Operations missing default access mapping: {missing}"
+
+
+@pytest.mark.parametrize(
+    ("operation", "wire_value"),
+    [
+        (Operation.AGENTS_RECOVER, "agents.recover"),
+        (
+            Operation.AGENT_CONTROL_ASSOCIATIONS_WRITE,
+            "agent_control_associations.write",
+        ),
+        (
+            Operation.AGENT_POLICY_ASSOCIATIONS_WRITE,
+            "agent_policy_associations.write",
+        ),
+    ],
+)
+def test_agent_mutation_operations_are_admin_only(
+    operation: Operation,
+    wire_value: str,
+) -> None:
+    """Agent recovery and association writes have stable admin-only wire operations."""
+    # Given: a newly split agent mutation operation
+
+    # When: reading its wire value and default HeaderAuth access level
+    serialized_operation = operation.value
+    access_level = DEFAULT_OPERATION_ACCESS[operation]
+
+    # Then: the contract uses the expected wire value and preserves admin-only access
+    assert serialized_operation == wire_value
+    assert access_level is AccessLevel.ADMIN
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +308,41 @@ async def test_http_upstream_returns_principal_on_200():
     assert principal == Principal(namespace_key="org-7", is_admin=True, caller_id="user-42")
     assert captured["url"] == "https://upstream.example/check"
     assert captured["headers"]["x-api-key"] == "caller-key"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation", "wire_value"),
+    [
+        (Operation.AGENTS_RECOVER, "agents.recover"),
+        (
+            Operation.AGENT_CONTROL_ASSOCIATIONS_WRITE,
+            "agent_control_associations.write",
+        ),
+        (
+            Operation.AGENT_POLICY_ASSOCIATIONS_WRITE,
+            "agent_policy_associations.write",
+        ),
+    ],
+)
+async def test_http_upstream_serializes_agent_mutation_operation_without_context(
+    operation: Operation,
+    wire_value: str,
+) -> None:
+    # Given: an HTTP upstream provider recording the authorization payload
+    captured: dict[str, Any] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"namespace_key": "ns"})
+
+    provider = _build_upstream(factory)
+
+    # When: authorizing a split agent mutation without route context
+    await provider.authorize(_build_request(), operation)
+
+    # Then: the new wire value is sent and the optional context field is omitted
+    assert captured["payload"] == {"operation": wire_value}
 
 
 @pytest.mark.asyncio
