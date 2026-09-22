@@ -1,3 +1,13 @@
+## [3.3.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.2.0...ts-sdk-v3.3.0) (2026-09-22)
+
+### Features
+
+* **sdk:** add step_type as input parameter to the control decorator and evaluate_controls function ([#262](https://github.com/agentcontrol/agent-control/issues/262)) ([9d12df0](https://github.com/agentcontrol/agent-control/commit/9d12df09b680f01f34a48d46de0ad81fbd823ab1))
+
+### Bug Fixes
+
+* **sdk:** the 502 in api ([#265](https://github.com/agentcontrol/agent-control/issues/265)) ([806eb68](https://github.com/agentcontrol/agent-control/commit/806eb68b31d0ed17edd5cb6cb4632a04a1a1651f)), closes [#51954](https://github.com/agentcontrol/agent-control/issues/51954)
+
 ## [3.2.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.1.0...ts-sdk-v3.2.0) (2026-09-09)
 
 ### Features
