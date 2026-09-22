@@ -17,6 +17,9 @@ from .utils import VALID_CONTROL_PAYLOAD
 
 
 class CreateOnlyAuthorizer:
+    def __init__(self) -> None:
+        self.operations: list[Operation] = []
+
     async def authorize(
         self,
         request: Request,
@@ -24,12 +27,29 @@ class CreateOnlyAuthorizer:
         context: dict[str, Any] | None = None,
     ) -> Principal:
         del request, context
+        self.operations.append(operation)
         if operation is Operation.AGENTS_UPDATE:
             raise ForbiddenError(
                 error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
                 detail="update denied",
             )
-        return Principal(namespace_key="default", is_admin=True)
+        return Principal(namespace_key="default", is_admin=False)
+
+
+class MismatchedUpdateNamespaceAuthorizer:
+    def __init__(self) -> None:
+        self.operations: list[Operation] = []
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request, context
+        self.operations.append(operation)
+        namespace_key = "other" if operation is Operation.AGENTS_UPDATE else "default"
+        return Principal(namespace_key=namespace_key, is_admin=False)
 
 
 def _init_payload(
@@ -174,9 +194,10 @@ def test_init_agent_overwrite_replaces_steps_and_evaluators(client: TestClient) 
     assert {evaluator["name"] for evaluator in get_data["evaluators"]} == {"eval-a", "eval-c"}
 
 
-def test_init_agent_overwrite_existing_agent_requires_update_auth(
+def test_init_agent_overwrite_existing_agent_uses_create_auth(
     client: TestClient,
 ) -> None:
+    # Given: an existing agent and a principal that may register but not update agents.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     create_resp = client.post(
         "/api/v1/agents/initAgent",
@@ -184,18 +205,39 @@ def test_init_agent_overwrite_existing_agent_requires_update_auth(
     )
     assert create_resp.status_code == 200
 
-    set_authorizer(CreateOnlyAuthorizer())
+    authorizer = CreateOnlyAuthorizer()
+    set_authorizer(authorizer)
+
+    # When: the registration is refreshed using the SDK's default overwrite mode.
     overwrite_resp = client.post(
         "/api/v1/agents/initAgent",
-        json=_init_payload(agent_name=agent_name, conflict_mode="overwrite"),
+        json=_init_payload(
+            agent_name=agent_name,
+            agent_description="updated",
+            agent_version="2.0",
+            steps=[
+                {
+                    "type": "tool",
+                    "name": "new-tool",
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                }
+            ],
+            conflict_mode="overwrite",
+        ),
     )
 
-    assert overwrite_resp.status_code == 403
+    # Then: registration succeeds without requesting the agent management operation.
+    assert overwrite_resp.status_code == 200
+    assert overwrite_resp.json()["created"] is False
+    assert overwrite_resp.json()["overwrite_applied"] is True
+    assert authorizer.operations == [Operation.AGENTS_CREATE]
 
 
 def test_init_agent_force_replace_existing_agent_requires_update_auth(
     client: TestClient,
 ) -> None:
+    # Given: an existing agent and a principal that may register but not manage agents.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     create_resp = client.post(
         "/api/v1/agents/initAgent",
@@ -203,18 +245,70 @@ def test_init_agent_force_replace_existing_agent_requires_update_auth(
     )
     assert create_resp.status_code == 200
 
-    set_authorizer(CreateOnlyAuthorizer())
+    authorizer = CreateOnlyAuthorizer()
+    set_authorizer(authorizer)
+
+    # When: the existing registration is force-replaced.
     force_resp = client.post(
         "/api/v1/agents/initAgent",
-        json={**_init_payload(agent_name=agent_name), "force_replace": True},
+        json={
+            **_init_payload(
+                agent_name=agent_name,
+                agent_description="force-replaced",
+                agent_version="2.0",
+            ),
+            "force_replace": True,
+        },
     )
 
+    # Then: exceptional recovery remains protected by agent-management authorization.
     assert force_resp.status_code == 403
+    assert authorizer.operations == [
+        Operation.AGENTS_CREATE,
+        Operation.AGENTS_UPDATE,
+    ]
 
 
-def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
+def test_init_agent_force_replace_rejects_update_namespace_mismatch(
     client: TestClient,
 ) -> None:
+    # Given: an existing registration and update authorization for another namespace.
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    original_payload = _init_payload(agent_name=agent_name, agent_description="original")
+    create_resp = client.post("/api/v1/agents/initAgent", json=original_payload)
+    assert create_resp.status_code == 200
+
+    authorizer = MismatchedUpdateNamespaceAuthorizer()
+    set_authorizer(authorizer)
+
+    # When: exceptional recovery is requested with mismatched authorization grants.
+    force_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={
+            **_init_payload(agent_name=agent_name, agent_description="replacement"),
+            "force_replace": True,
+        },
+    )
+
+    # Then: the request fails closed before stored registration data changes.
+    assert force_resp.status_code == 403
+    assert force_resp.json()["detail"] == (
+        "Update authorization resolved to a different namespace."
+    )
+    assert authorizer.operations == [
+        Operation.AGENTS_CREATE,
+        Operation.AGENTS_UPDATE,
+    ]
+
+    details_resp = client.get(f"/api/v1/agents/{agent_name}")
+    assert details_resp.status_code == 200
+    assert details_resp.json()["agent"]["agent_description"] == "original"
+
+
+def test_init_agent_strict_existing_agent_mutation_uses_create_auth(
+    client: TestClient,
+) -> None:
+    # Given: an existing agent and a principal that may register but not update agents.
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
     create_resp = client.post(
         "/api/v1/agents/initAgent",
@@ -222,7 +316,10 @@ def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
     )
     assert create_resp.status_code == 200
 
-    set_authorizer(CreateOnlyAuthorizer())
+    authorizer = CreateOnlyAuthorizer()
+    set_authorizer(authorizer)
+
+    # When: strict registration adds a compatible step.
     strict_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
@@ -238,7 +335,14 @@ def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
         ),
     )
 
-    assert strict_resp.status_code == 403
+    # Then: registration succeeds without requesting the agent management operation.
+    assert strict_resp.status_code == 200
+    assert strict_resp.json()["created"] is False
+    assert authorizer.operations == [Operation.AGENTS_CREATE]
+
+    details_resp = client.get(f"/api/v1/agents/{agent_name}")
+    assert details_resp.status_code == 200
+    assert {step["name"] for step in details_resp.json()["steps"]} == {"new-tool"}
 
 
 def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
@@ -369,6 +473,8 @@ def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> No
     assert first_resp.status_code == 200
 
     # When: initAgent is called in overwrite mode with no effective registration changes.
+    authorizer = CreateOnlyAuthorizer()
+    set_authorizer(authorizer)
     second_payload = dict(payload)
     second_payload["conflict_mode"] = "overwrite"
     second_resp = client.post("/api/v1/agents/initAgent", json=second_payload)
@@ -387,3 +493,4 @@ def test_init_agent_overwrite_noop_reports_not_applied(client: TestClient) -> No
         "evaluators_removed": [],
         "evaluator_removals": [],
     }
+    assert authorizer.operations == [Operation.AGENTS_CREATE]

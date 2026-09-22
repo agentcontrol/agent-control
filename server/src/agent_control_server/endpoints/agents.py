@@ -174,10 +174,11 @@ def _ensure_target_principal_matches_namespace(
     )
 
 
-async def _authorize_existing_agent_overwrite(
+async def _authorize_force_replace(
     request: Request,
     principal: Principal,
 ) -> None:
+    """Require agent-management authorization for existing-row recovery."""
     update_principal = await get_authorizer(Operation.AGENTS_UPDATE).authorize(
         request,
         Operation.AGENTS_UPDATE,
@@ -682,8 +683,8 @@ async def init_agent(
         )
         return InitAgentResponse(created=created, controls=controls)
 
-    if request.force_replace or request.conflict_mode == ConflictMode.OVERWRITE:
-        await _authorize_existing_agent_overwrite(http_request, principal)
+    if request.force_replace:
+        await _authorize_force_replace(http_request, principal)
 
     # Parse existing data via AgentData Pydantic model
     try:
@@ -911,13 +912,6 @@ async def init_agent(
                 evaluators_changed = True
 
         data_model.evaluators = new_evaluators
-
-    if (
-        not request.force_replace
-        and request.conflict_mode != ConflictMode.OVERWRITE
-        and (steps_changed or evaluators_changed or metadata_changed)
-    ):
-        await _authorize_existing_agent_overwrite(http_request, principal)
 
     if steps_changed or evaluators_changed or metadata_changed or force_write:
         existing.data = data_model.model_dump(mode="json")
