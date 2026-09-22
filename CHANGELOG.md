@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v8.8.0 (2026-09-22)
+
+### Bug Fixes
+
+- **sdk**: The 502 in api ([#265](https://github.com/agentcontrol/agent-control/pull/265),
+  [`806eb68`](https://github.com/agentcontrol/agent-control/commit/806eb68b31d0ed17edd5cb6cb4632a04a1a1651f))
+
+### Chores
+
+- **release**: Ts sdk v3.2.0 [skip ci]
+  ([`bd90753`](https://github.com/agentcontrol/agent-control/commit/bd90753a900f446f92bc82694f90823ed11acf64))
+
+### Features
+
+- **sdk**: Add step_type as input parameter to the control decorator and evaluate_controls function
+  ([#262](https://github.com/agentcontrol/agent-control/pull/262),
+  [`9d12df0`](https://github.com/agentcontrol/agent-control/commit/9d12df09b680f01f34a48d46de0ad81fbd823ab1))
+
+
 ## v8.7.0 (2026-09-08)
 
 ### Features
