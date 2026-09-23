@@ -30,6 +30,15 @@ from agent_control_evaluator_galileo.luna import (
     ScorerInvokeRequest,
     ScorerInvokeResponse,
 )
+from agent_control_evaluator_galileo.records import (
+    GalileoRecord,
+    RecordFactoryError,
+    UnsupportedStepTypeError,
+    build_galileo_record,
+    build_record,
+    record_from_scorer_invoke_record,
+    record_from_step,
+)
 
 __all__ = [
     "GalileoLunaClient",
@@ -41,4 +50,11 @@ __all__ = [
     "LunaEvaluatorConfig",
     "LunaOperator",
     "LUNA_AVAILABLE",
+    "GalileoRecord",
+    "RecordFactoryError",
+    "UnsupportedStepTypeError",
+    "build_galileo_record",
+    "build_record",
+    "record_from_scorer_invoke_record",
+    "record_from_step",
 ]
