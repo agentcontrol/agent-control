@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from agent_control_evaluator_galileo.records import (
@@ -356,6 +357,57 @@ def test_public_model_dump_preserves_canonical_fields() -> None:
     assert rebuilt_session.redacted_input[0].content == "redacted input"
     assert rebuilt_session.redacted_output[0].content == "redacted output"
     assert rebuilt_session.metrics.duration_ns == 7
+
+
+def test_trace_public_content_parts_are_not_reserialized() -> None:
+    source = Trace(
+        input=[{"type": "text", "text": "input"}],
+        output=[{"type": "text", "text": "output"}],
+        redacted_input=[{"type": "text", "text": "redacted input"}],
+        redacted_output=[{"type": "text", "text": "redacted output"}],
+        spans=[],
+    )
+
+    rebuilt = record_from_scorer_invoke_record(
+        _RecordPayload(**source.model_dump(mode="json", exclude_none=True))
+    )
+
+    assert isinstance(rebuilt, Trace)
+    assert rebuilt.model_dump(mode="json", exclude_none=True) == source.model_dump(
+        mode="json", exclude_none=True
+    )
+
+    file_source = Trace(
+        input=[{"type": "file", "file_id": str(uuid4())}],
+        output=[{"type": "file", "file_id": str(uuid4())}],
+        spans=[],
+    )
+    file_rebuilt = record_from_scorer_invoke_record(
+        _RecordPayload(**file_source.model_dump(mode="json", exclude_none=True))
+    )
+    assert isinstance(file_rebuilt, Trace)
+    assert file_rebuilt.model_dump(mode="json", exclude_none=True) == file_source.model_dump(
+        mode="json", exclude_none=True
+    )
+
+
+def test_malformed_trace_content_parts_follow_sdk_serialization() -> None:
+    scalar_item = record_from_scorer_invoke_record(
+        _RecordPayload(type="trace", input="input", output=[1], spans=[])
+    )
+    invalid_file = record_from_scorer_invoke_record(
+        _RecordPayload(
+            type="trace",
+            input="input",
+            output=[{"type": "file", "file_id": "not-a-uuid"}],
+            spans=[],
+        )
+    )
+
+    assert isinstance(scalar_item, Trace)
+    assert isinstance(invalid_file, Trace)
+    assert scalar_item.output == serialize_to_str([1])
+    assert invalid_file.output == serialize_to_str([{"type": "file", "file_id": "not-a-uuid"}])
 
 
 def test_nested_record_errors_and_existing_models_are_explicit() -> None:

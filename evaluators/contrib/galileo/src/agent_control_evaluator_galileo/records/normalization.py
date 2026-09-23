@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
+from uuid import UUID
 
 from splunk_ao import Document, Message, SplunkAOLogger  # type: ignore[import-untyped]
 from splunk_ao.utils.retrievers import convert_to_documents  # type: ignore[import-untyped]
@@ -97,6 +98,8 @@ def string_metadata(value: Any) -> dict[str, str]:
 
 def trace_input_value(value: Any) -> Any:
     """Delegate trace-input coercion to the SDK logger implementation."""
+    if _is_public_trace_content_parts(value):
+        return value
     return _public_content_blocks(SplunkAOLogger._coerce_trace_input("input", value))
 
 
@@ -104,7 +107,28 @@ def trace_output_value(value: Any) -> Any:
     """Delegate trace-output coercion to the SDK logger implementation."""
     if value is None:
         return None
+    if _is_public_trace_content_parts(value):
+        return value
     return _public_content_blocks(SplunkAOLogger._coerce_output(value))
+
+
+def _is_public_trace_content_parts(value: Any) -> bool:
+    """Recognize content parts already emitted by a public ``Trace`` dump."""
+    if not isinstance(value, list):
+        return False
+    for item in value:
+        if not isinstance(item, Mapping):
+            return False
+        if item.get("type") == "text" and isinstance(item.get("text"), str):
+            continue
+        if item.get("type") == "file":
+            try:
+                if UUID(str(item["file_id"])).version == 4:
+                    continue
+            except (KeyError, ValueError, AttributeError):
+                pass
+        return False
+    return True
 
 
 def _public_content_blocks(value: Any) -> Any:
