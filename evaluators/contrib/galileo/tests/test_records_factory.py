@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 from agent_control_evaluator_galileo.records import (
@@ -263,6 +264,100 @@ def test_nested_trace_and_session_records_are_preserved() -> None:
     assert session.traces[0].spans[0].name == "search"
 
 
+def test_public_model_dump_preserves_canonical_fields() -> None:
+    created_at = datetime(2024, 1, 1, tzinfo=UTC)
+    llm_source = LlmSpan(
+        input=[{"role": "user", "content": "question"}],
+        output="answer",
+        redacted_input=[{"role": "user", "content": "redacted question"}],
+        redacted_output={"role": "assistant", "content": "redacted answer"},
+        created_at=created_at,
+        metrics={"duration_ns": 3},
+        events=[{"type": "reasoning"}],
+        model="model",
+        temperature=0.2,
+        finish_reason="stop",
+    )
+    tool_source = ToolSpan(
+        input="input",
+        output="output",
+        redacted_input="redacted input",
+        redacted_output="redacted output",
+        created_at=created_at,
+        metrics={"duration_ns": 4},
+        tool_call_id="call-1",
+    )
+    retriever_source = RetrieverSpan(
+        input="query",
+        output=[{"content": "document"}],
+        redacted_input="redacted query",
+        redacted_output=[{"content": "redacted document"}],
+        created_at=created_at,
+        metrics={"duration_ns": 5},
+    )
+    trace_source = Trace(
+        input="input",
+        output="output",
+        redacted_input="redacted input",
+        redacted_output="redacted output",
+        created_at=created_at,
+        metrics={"duration_ns": 6},
+        spans=[],
+    )
+    session_source = Session(
+        input=[{"role": "user", "content": "input"}],
+        output=[{"content": "output"}],
+        redacted_input=[{"role": "user", "content": "redacted input"}],
+        redacted_output=[{"content": "redacted output"}],
+        created_at=created_at,
+        metrics={"duration_ns": 7},
+        traces=[],
+    )
+
+    rebuilt_llm = record_from_scorer_invoke_record(
+        _RecordPayload(**llm_source.model_dump(mode="json", exclude_none=True))
+    )
+    rebuilt_tool = record_from_scorer_invoke_record(
+        _RecordPayload(**tool_source.model_dump(mode="json", exclude_none=True))
+    )
+    rebuilt_retriever = record_from_scorer_invoke_record(
+        _RecordPayload(**retriever_source.model_dump(mode="json", exclude_none=True))
+    )
+    rebuilt_trace = record_from_scorer_invoke_record(
+        _RecordPayload(**trace_source.model_dump(mode="json", exclude_none=True))
+    )
+    rebuilt_session = record_from_scorer_invoke_record(
+        _RecordPayload(**session_source.model_dump(mode="json", exclude_none=True))
+    )
+
+    assert isinstance(rebuilt_llm, LlmSpan)
+    assert rebuilt_llm.redacted_input[0].content == "redacted question"
+    assert rebuilt_llm.redacted_output.content == "redacted answer"
+    assert rebuilt_llm.created_at == created_at
+    assert rebuilt_llm.metrics.duration_ns == 3
+    assert rebuilt_llm.events == llm_source.events
+    assert rebuilt_llm.model == "model"
+    assert rebuilt_llm.temperature == 0.2
+    assert rebuilt_llm.finish_reason == "stop"
+    assert isinstance(rebuilt_tool, ToolSpan)
+    assert rebuilt_tool.redacted_input == "redacted input"
+    assert rebuilt_tool.redacted_output == "redacted output"
+    assert rebuilt_tool.metrics.duration_ns == 4
+    assert rebuilt_tool.tool_call_id == "call-1"
+    assert isinstance(rebuilt_retriever, RetrieverSpan)
+    assert rebuilt_retriever.redacted_input == "redacted query"
+    assert rebuilt_retriever.redacted_output[0].content == "redacted document"
+    assert rebuilt_retriever.metrics.duration_ns == 5
+    assert isinstance(rebuilt_trace, Trace)
+    assert rebuilt_trace.redacted_input == "redacted input"
+    assert rebuilt_trace.redacted_output == "redacted output"
+    assert rebuilt_trace.metrics.duration_ns == 6
+    assert isinstance(rebuilt_session, Session)
+    assert rebuilt_session.redacted_input[0].content == "redacted input"
+    assert rebuilt_session.redacted_output[0].content == "redacted output"
+    assert rebuilt_session.metrics.duration_ns == 7
+
+
 def test_nested_record_errors_and_existing_models_are_explicit() -> None:
     from agent_control_evaluator_galileo.records.factory import _record_from_mapping
 
@@ -376,15 +471,53 @@ def test_trace_and_session_envelopes_are_supported() -> None:
             context={"session": {"name": "inner", "input": "question", "traces": []}},
         )
     )
+    selected_trace = record_from_step(
+        Step(
+            type="trace",
+            name="outer",
+            input="ignored",
+            context={
+                "trace": {
+                    "name": "inner",
+                    "input": "wrapped input",
+                    "output": "wrapped output",
+                    "spans": [],
+                }
+            },
+        ),
+        selected_data={"input": "selected input", "output": "selected output"},
+    )
+    selected_session = record_from_step(
+        Step(
+            type="session",
+            name="outer",
+            input="ignored",
+            context={
+                "session": {
+                    "name": "inner",
+                    "input": "wrapped input",
+                    "output": "wrapped output",
+                    "traces": [],
+                }
+            },
+        ),
+        selected_data={"input": "selected input", "output": "selected output"},
+    )
 
     assert isinstance(trace, Trace)
     assert isinstance(session, Session)
     assert isinstance(wrapped_trace, Trace)
     assert isinstance(wrapped_session, Session)
+    assert isinstance(selected_trace, Trace)
+    assert isinstance(selected_session, Session)
     assert trace.input == "question"
     assert session.input == "question"
     assert wrapped_trace.name == "inner"
     assert wrapped_session.name == "inner"
+    assert selected_trace.input == "selected input"
+    assert selected_trace.output == "selected output"
+    assert selected_session.input == "selected input"
+    assert selected_session.output == "selected output"
 
 
 def test_trace_missing_output_stays_none() -> None:

@@ -118,6 +118,8 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
         "status_code",
         "external_id",
         "step_number",
+        "created_at",
+        "metrics",
         "dataset_input",
         "dataset_output",
         "dataset_metadata",
@@ -141,6 +143,13 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
         }
         if raw.get("tools") is not None:
             kwargs["tools"] = raw["tools"]
+        for field in ("events", "model", "temperature", "finish_reason"):
+            if raw.get(field) is not None:
+                kwargs[field] = raw[field]
+        if raw.get("redacted_input") is not None:
+            kwargs["redacted_input"] = message_value(raw["redacted_input"])
+        if raw.get("redacted_output") is not None:
+            kwargs["redacted_output"] = message_value(raw["redacted_output"], output=True)
         return LlmSpan(**kwargs)
     if record_type == "tool":
         kwargs = {
@@ -150,10 +159,18 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
         }
         if raw.get("tool_call_id") is not None:
             kwargs["tool_call_id"] = str(raw["tool_call_id"])
+        if raw.get("redacted_input") is not None:
+            kwargs["redacted_input"] = tool_value(raw["redacted_input"])
+        if raw.get("redacted_output") is not None:
+            kwargs["redacted_output"] = tool_value(raw["redacted_output"])
         kwargs["spans"] = [_nested_span(item) for item in _span_payloads(raw, context)]
         return ToolSpan(**kwargs)
     if record_type == "retriever":
         kwargs = {**common, "input": text_value(input_value), "output": documents(output_value)}
+        if raw.get("redacted_input") is not None:
+            kwargs["redacted_input"] = text_value(raw["redacted_input"])
+        if raw.get("redacted_output") is not None:
+            kwargs["redacted_output"] = documents(raw["redacted_output"])
         kwargs["spans"] = [_nested_span(item) for item in _span_payloads(raw, context)]
         return RetrieverSpan(**kwargs)
     if record_type == "trace":
@@ -166,6 +183,10 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
             "output": trace_output_value(output_value),
             "spans": [_nested_span(item) for item in spans],
         }
+        if raw.get("redacted_input") is not None:
+            trace_kwargs["redacted_input"] = trace_input_value(raw["redacted_input"])
+        if raw.get("redacted_output") is not None:
+            trace_kwargs["redacted_output"] = trace_output_value(raw["redacted_output"])
         return Trace(
             **trace_kwargs,
         )
@@ -182,6 +203,10 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
         "output": session_value(output_value),
         "traces": cast(list[Trace], nested_traces),
     }
+    if raw.get("redacted_input") is not None:
+        session_kwargs["redacted_input"] = session_value(raw["redacted_input"])
+    if raw.get("redacted_output") is not None:
+        session_kwargs["redacted_output"] = session_value(raw["redacted_output"])
     return Session(
         **session_kwargs,
     )
@@ -267,6 +292,10 @@ def record_from_step(
         source.update(context["trace"])
     if record_type == "session" and isinstance(context.get("session"), Mapping):
         source.update(context["session"])
+    if selected_input is not _MISSING and selected_input is not None:
+        source["input"] = input_value
+    if selected_output is not _MISSING and selected_output is not None:
+        source["output"] = output_value
     if step.ground_truth is not None:
         source["dataset_output"] = step.ground_truth
     source["metadata"] = context.get("metadata")
