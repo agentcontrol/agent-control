@@ -8,14 +8,31 @@ import pytest
 from agent_control_evaluator_galileo.records import (
     RecordFactoryError,
     UnsupportedStepTypeError,
+    build_galileo_record,
     build_record,
     record_from_scorer_invoke_record,
     record_from_step,
 )
 from agent_control_models import Step
+from pydantic import BaseModel, ConfigDict
 from splunk_ao import Document, LlmSpan, Message, RetrieverSpan, Session, ToolSpan, Trace
 from splunk_ao.utils.retrievers import convert_to_documents
 from splunk_ao.utils.serialization import serialize_to_str
+
+
+class _RecordPayload(BaseModel):
+    """Flexible Pydantic boundary model used to exercise the adapter contract."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
+
+    type: str
+    name: str | None = None
+    input: object | None = None
+    output: object | None = None
+    context: object | None = None
+    spans: object | None = None
+    traces: object | None = None
+    tool_call_id: object | None = None
 
 
 def test_required_splunk_ao_public_exports_are_importable() -> None:
@@ -84,6 +101,21 @@ def test_llm_tuple_output_uses_the_same_sdk_serializer() -> None:
     assert isinstance(record, LlmSpan)
     assert record.output.content == serialize_to_str(output)
     assert json.loads(record.output.content) == list(output)
+
+
+def test_selected_mapping_and_output_payload_are_preserved() -> None:
+    step = Step(type="llm", name="answer", input="base input", output="base output")
+
+    selected_record = build_record(
+        {"input": "selected input", "output": "selected output"}, step
+    )
+    output_record = build_record("selected output", step, payload_field="output")
+
+    assert isinstance(selected_record, LlmSpan)
+    assert isinstance(output_record, LlmSpan)
+    assert selected_record.input[0].content == "selected input"
+    assert selected_record.output.content == "selected output"
+    assert output_record.output.content == "selected output"
 
 
 def test_tool_values_are_json_strings_and_missing_output_stays_missing() -> None:
@@ -174,6 +206,27 @@ def test_retriever_accepts_the_public_splunk_ao_document_model() -> None:
     assert record.output[0].metadata == {"source": "kb"}
 
 
+def test_public_document_metadata_variants_are_supported() -> None:
+    document_without_metadata = Document(content="plain")
+    document_with_model_metadata = Document.from_dict(
+        {"content": "model metadata", "metadata": {"source": "kb"}}
+    )
+
+    record = record_from_scorer_invoke_record(
+        _RecordPayload(
+            type="retriever",
+            input="question",
+            output=[document_without_metadata, document_with_model_metadata],
+        )
+    )
+
+    assert isinstance(record, RetrieverSpan)
+    assert [document.model_dump() for document in record.output] == [
+        {"content": "plain", "metadata": {}},
+        {"content": "model metadata", "metadata": {"source": "kb"}},
+    ]
+
+
 def test_nested_trace_and_session_records_are_preserved() -> None:
     trace = record_from_step(
         Step(
@@ -210,6 +263,65 @@ def test_nested_trace_and_session_records_are_preserved() -> None:
     assert session.traces[0].spans[0].name == "search"
 
 
+def test_nested_record_errors_and_existing_models_are_explicit() -> None:
+    from agent_control_evaluator_galileo.records.factory import _record_from_mapping
+
+    existing_child = ToolSpan(name="existing", input="input")
+    with pytest.raises(RecordFactoryError, match="objects"):
+        record_from_scorer_invoke_record(
+            _RecordPayload(type="tool", input="input", spans=[1])
+        )
+    with pytest.raises(RecordFactoryError, match="string 'type'"):
+        record_from_scorer_invoke_record(
+            _RecordPayload(type="tool", input="input", spans=[{}])
+        )
+    with pytest.raises(UnsupportedStepTypeError, match="custom"):
+        record_from_scorer_invoke_record(
+            _RecordPayload(type="tool", input="input", spans=[{"type": "custom"}])
+        )
+    with pytest.raises(RecordFactoryError, match="span record"):
+        record_from_scorer_invoke_record(
+            _RecordPayload(
+                type="tool",
+                input="input",
+                spans=[{"type": "trace", "input": "input", "spans": []}],
+            )
+        )
+
+    record = _record_from_mapping(
+        {"type": "tool", "input": "input", "spans": [existing_child]}, "tool"
+    )
+    assert isinstance(record, ToolSpan)
+    assert record.spans[0].name == existing_child.name
+
+
+def test_invalid_nested_context_shapes_are_rejected() -> None:
+    valid_context_record = record_from_step(
+        Step(type="tool", name="tool", input={"q": "input"}, context={"spans": []})
+    )
+    children_context_record = record_from_step(
+        Step(type="tool", name="tool", input={"q": "input"}, context={"children": []})
+    )
+    assert isinstance(valid_context_record, ToolSpan)
+    assert isinstance(children_context_record, ToolSpan)
+    with pytest.raises(RecordFactoryError, match="context must be a list"):
+        record_from_step(
+            Step(type="tool", name="tool", input={"q": "input"}, context={"spans": "invalid"})
+        )
+    with pytest.raises(RecordFactoryError, match="span context"):
+        record_from_scorer_invoke_record(
+            _RecordPayload(type="tool", input="input", spans="invalid")
+        )
+    with pytest.raises(RecordFactoryError, match="trace context"):
+        record_from_scorer_invoke_record(_RecordPayload(type="trace", input="input"))
+    with pytest.raises(RecordFactoryError, match="session context"):
+        record_from_scorer_invoke_record(_RecordPayload(type="session", input="input"))
+    with pytest.raises(RecordFactoryError, match="trace records"):
+        record_from_scorer_invoke_record(
+            _RecordPayload(type="session", input="input", traces=[{"type": "tool"}])
+        )
+
+
 def test_trace_structured_values_match_sdk_logger_coercion() -> None:
     from splunk_ao import SplunkAOLogger
 
@@ -233,6 +345,48 @@ def test_trace_structured_values_match_sdk_logger_coercion() -> None:
     assert [block.text for block in record.output] == [block.text for block in expected_output]
 
 
+def test_trace_and_session_envelopes_are_supported() -> None:
+    trace = record_from_step(
+        Step(
+            type="trace",
+            name="outer",
+            input={"input": "question", "spans": []},
+        )
+    )
+    session = record_from_step(
+        Step(
+            type="session",
+            name="outer",
+            input={"input": "question", "traces": []},
+        )
+    )
+    wrapped_trace = record_from_step(
+        Step(
+            type="trace",
+            name="outer",
+            input="ignored",
+            context={"trace": {"name": "inner", "input": "question", "spans": []}},
+        )
+    )
+    wrapped_session = record_from_step(
+        Step(
+            type="session",
+            name="outer",
+            input="ignored",
+            context={"session": {"name": "inner", "input": "question", "traces": []}},
+        )
+    )
+
+    assert isinstance(trace, Trace)
+    assert isinstance(session, Session)
+    assert isinstance(wrapped_trace, Trace)
+    assert isinstance(wrapped_session, Session)
+    assert trace.input == "question"
+    assert session.input == "question"
+    assert wrapped_trace.name == "inner"
+    assert wrapped_session.name == "inner"
+
+
 def test_trace_missing_output_stays_none() -> None:
     record = record_from_step(
         Step(type="trace", name="request", input="question", context={"spans": []})
@@ -240,6 +394,27 @@ def test_trace_missing_output_stays_none() -> None:
 
     assert isinstance(record, Trace)
     assert record.output is None
+
+
+def test_optional_fields_and_aliases_are_translated() -> None:
+    llm = record_from_step(
+        Step(
+            type="llm",
+            name="answer",
+            input="question",
+            tools=[{"name": "search"}],
+        )
+    )
+    tool = record_from_scorer_invoke_record(
+        _RecordPayload(type="tool", input="input", tool_call_id=123)
+    )
+    alias = build_galileo_record("question", Step(type="llm", name="answer", input="base"))
+
+    assert isinstance(llm, LlmSpan)
+    assert llm.tools == [{"name": "search"}]
+    assert isinstance(tool, ToolSpan)
+    assert tool.tool_call_id == "123"
+    assert isinstance(alias, LlmSpan)
 
 
 def test_session_message_and_document_sequences_use_public_validators() -> None:
@@ -312,3 +487,15 @@ def test_factory_accepts_the_existing_pydantic_luna_record() -> None:
 
     assert isinstance(record, ToolSpan)
     assert json.loads(record.input) == {"query": "q"}
+
+
+def test_factory_rejects_invalid_boundaries_and_normalizes_missing_text() -> None:
+    from agent_control_evaluator_galileo.records.normalization import session_value, text_value
+
+    with pytest.raises(RecordFactoryError, match="complete Agent Control Step"):
+        record_from_step(object())  # type: ignore[arg-type]
+    with pytest.raises(UnsupportedStepTypeError, match="unsupported"):
+        record_from_scorer_invoke_record(_RecordPayload(type="unsupported"))
+    assert text_value(None) == ""
+    assert session_value(Document(content="plain")) == {"content": "plain"}
+    assert session_value([Document(content="plain")]) == [{"content": "plain"}]
