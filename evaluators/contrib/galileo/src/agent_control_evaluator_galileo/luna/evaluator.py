@@ -6,12 +6,13 @@ import json
 import logging
 import os
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
-from agent_control_models import EvaluatorResult, JSONValue, Step
+from agent_control_models import EvaluatorResult, JSONObject, JSONValue, Step
 
+from ..records import build_galileo_record
 from .client import GalileoLunaClient, ScorerInvokeResponse
 from .config import LunaEvaluatorConfig, coerce_number
 
@@ -225,8 +226,25 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
 
         try:
             scorer_kwargs = self._scorer_kwargs()
+            record_payload: JSONObject | None = None
             if step is not None:
                 scorer_kwargs["step"] = step
+                if step.type.strip().lower() in {"llm", "tool", "retriever", "trace", "session"}:
+                    if self.config.scorer_version_id is None:
+                        raise ValueError(
+                            "scorer_version_id is required for structured Luna requests."
+                        )
+                    record = build_galileo_record(
+                        data,
+                        step,
+                        payload_field=self.config.payload_field,
+                    )
+                    record_payload = cast(
+                        JSONObject,
+                        record.model_dump(mode="json", exclude_none=True),
+                    )
+            if record_payload is not None:
+                scorer_kwargs["record"] = record_payload
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,

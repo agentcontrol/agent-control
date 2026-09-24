@@ -11,7 +11,7 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
-from typing import Literal, cast, get_args
+from typing import Literal, get_args
 from urllib.parse import urlsplit
 
 import httpx
@@ -233,8 +233,8 @@ class ScorerInvokeRequest(BaseModel):
 
     Attributes:
         scorer_id: Required scorer identifier.
-        scorer_version_id: Deprecated optional compatibility identifier. Orbit
-            currently invokes the scorer's current default version.
+        scorer_version_id: Optional for legacy requests and required when a
+            structured record is supplied.
         scorer_label: Optional display/metadata label.
         inputs: Selected scorer input values.
         record: Optional Orbit-compatible structured runtime record.
@@ -245,60 +245,20 @@ class ScorerInvokeRequest(BaseModel):
     scorer_version_id: str | None = Field(default=None, min_length=1)
     scorer_label: str | None = Field(default=None, min_length=1)
     inputs: ScorerInvokeInputs
-    record: ScorerInvokeRecord | None = None
+    record: JSONObject | ScorerInvokeRecord | None = None
     config: ScorerInvokeConfig = Field(default_factory=ScorerInvokeConfig)
 
     @model_validator(mode="after")
     def ensure_required_values(self) -> ScorerInvokeRequest:
         if not (_has_value(self.inputs.query) or _has_value(self.inputs.response)):
             raise ValueError("Either inputs.query or inputs.response must be set.")
+        if self.record is not None and self.scorer_version_id is None:
+            raise ValueError("scorer_version_id is required when a structured record is provided.")
         return self
 
     def to_dict(self) -> JSONObject:
         """Convert to the Luna scorer invoke request shape."""
         return self.model_dump(mode="json", exclude_none=True)
-
-
-def _orbit_record_from_step(
-    step: Step | None,
-    *,
-    selected_input: JSONValue,
-    selected_output: JSONValue,
-) -> ScorerInvokeRecord | None:
-    """Translate a generic Agent Control step into Orbit's record contract.
-
-    Selector-selected values remain the primary scorer input. When a selector
-    supplies one side, that value is written to both the legacy and structured
-    representations so Orbit's conflict validation cannot observe two meanings.
-    The complete step supplies the unselected side and additional record context.
-
-    Unknown Agent Control step types intentionally fall back to the legacy
-    ``inputs`` contract. This keeps the open-source Step model extensible without
-    sending an invalid discriminator to Orbit.
-
-    Args:
-        step: Complete Agent Control step, when contextual evaluation is used.
-        selected_input: Selector-selected value sent as ``inputs.query``.
-        selected_output: Selector-selected value sent as ``inputs.response``.
-
-    Returns:
-        An Orbit-compatible record, or ``None`` for absent/unsupported steps.
-    """
-    if step is None or step.type not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
-        return None
-
-    # The membership check above narrows the runtime value to Orbit's known
-    # discriminator set, but static type checkers cannot infer that relationship.
-    record_type = cast(ScorerInvokeRecordType, step.type)
-    return ScorerInvokeRecord(
-        type=record_type,
-        name=step.name,
-        input=selected_input if selected_input is not None else step.input,
-        output=selected_output if selected_output is not None else step.output,
-        context=step.context,
-        tools=step.tools,
-        dataset_output=step.ground_truth,
-    )
 
 
 class ScorerInvokeResponse(BaseModel):
@@ -474,6 +434,7 @@ class GalileoLunaClient:
         input: JSONValue = None,
         output: JSONValue = None,
         step: Step | None = None,
+        record: JSONObject | None = None,
         config: ScorerInvokeConfig | JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
@@ -488,6 +449,7 @@ class GalileoLunaClient:
             input: Optional user/system prompt text.
             output: Optional model response text.
             step: Optional complete runtime step used for structured dual-write.
+            record: Optional canonical Galileo record serialized by the evaluator.
             config: Optional Orbit-supported scorer invocation configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
@@ -526,11 +488,7 @@ class GalileoLunaClient:
                 ground_truth=step.ground_truth if step is not None else None,
                 tools=step.tools if step is not None else None,
             ),
-            record=_orbit_record_from_step(
-                step,
-                selected_input=input,
-                selected_output=output,
-            ),
+            record=record,
             config=invoke_config,
         ).to_dict()
 

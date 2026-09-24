@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import pytest
 from agent_control_evaluator_galileo.records import (
+    GalileoRecordNormalizer,
     RecordFactoryError,
     UnsupportedStepTypeError,
     build_galileo_record,
@@ -16,10 +17,13 @@ from agent_control_evaluator_galileo.records import (
     record_from_step,
 )
 from agent_control_models import Step
+from galileo_core.schemas.logging.llm import Message
+from galileo_core.schemas.logging.session import Session
+from galileo_core.schemas.logging.span import LlmSpan, RetrieverSpan, ToolSpan
+from galileo_core.schemas.logging.trace import Trace
+from galileo_core.schemas.shared.content_parts import FileContentPart, TextContentPart
+from galileo_core.schemas.shared.document import Document
 from pydantic import BaseModel, ConfigDict
-from splunk_ao import Document, LlmSpan, Message, RetrieverSpan, Session, ToolSpan, Trace
-from splunk_ao.utils.retrievers import convert_to_documents
-from splunk_ao.utils.serialization import serialize_to_str
 
 
 class _RecordPayload(BaseModel):
@@ -37,7 +41,7 @@ class _RecordPayload(BaseModel):
     tool_call_id: object | None = None
 
 
-def test_required_splunk_ao_public_exports_are_importable() -> None:
+def test_required_galileo_core_public_exports_are_importable() -> None:
     assert all((LlmSpan, ToolSpan, RetrieverSpan, Trace, Session, Document, Message))
 
 
@@ -55,7 +59,7 @@ def test_llm_messages_use_public_canonical_validation() -> None:
     assert isinstance(record, LlmSpan)
     assert record.input[0].role.value == "user"
     assert record.output.role.value == "assistant"
-    assert record.dataset_output == serialize_to_str({"expected": "answer"})
+    assert record.dataset_output == json.dumps({"expected": "answer"})
 
 
 @pytest.mark.parametrize(
@@ -101,7 +105,7 @@ def test_llm_tuple_output_uses_the_same_sdk_serializer() -> None:
     record = record_from_step(Step(type="llm", name="answer", input="question", output=output))
 
     assert isinstance(record, LlmSpan)
-    assert record.output.content == serialize_to_str(output)
+    assert record.output.content == json.dumps(list(output))
     assert json.loads(record.output.content) == list(output)
 
 
@@ -133,8 +137,8 @@ def test_tool_values_are_json_strings_and_missing_output_stays_missing() -> None
 
     expected = ToolSpan(
         name="search",
-        input=serialize_to_str({"query": "q"}),
-        output=serialize_to_str({"hits": [1, 2]}),
+        input=json.dumps({"query": "q"}),
+        output=json.dumps({"hits": [1, 2]}),
     )
     assert type(record) is type(expected)
     assert record.input == expected.input
@@ -146,21 +150,20 @@ def test_tool_values_are_json_strings_and_missing_output_stays_missing() -> None
     [None, "text", {"content": "document"}, {"invalid": True}, 42, ["one", "two"]],
 )
 def test_retriever_matches_sdk_document_coercion(output: object) -> None:
-    expected = convert_to_documents(output)
-
-    try:
-        record = record_from_step(
-            Step(type="retriever", name="retrieve", input="question", output=output)
-        )
-    except (TypeError, ValueError):
-        with pytest.raises((TypeError, ValueError)):
-            RetrieverSpan(input="question", output=expected)
-        return
-
+    record = record_from_step(
+        Step(type="retriever", name="retrieve", input="question", output=output)
+    )
     assert isinstance(record, RetrieverSpan)
-    assert [document.model_dump() for document in record.output] == [
-        document.model_dump() for document in expected
-    ]
+    if output is None or isinstance(output, int):
+        assert [document.content for document in record.output] == [""]
+    elif isinstance(output, str):
+        assert [document.content for document in record.output] == [output]
+    elif isinstance(output, dict) and "content" in output:
+        assert [document.content for document in record.output] == [output["content"]]
+    elif output == ["one", "two"]:
+        assert [document.content for document in record.output] == output
+    else:
+        assert record.output[0].content == json.dumps(output)
 
 
 def test_retriever_rejects_mixed_lists_like_the_sdk_helper() -> None:
@@ -190,7 +193,7 @@ def test_retriever_results_become_documents_with_scalar_metadata_only() -> None:
     assert record.output[0].metadata == {"score": 0.9, "source": "kb"}
 
 
-def test_retriever_accepts_the_public_splunk_ao_document_model() -> None:
+def test_retriever_accepts_the_public_galileo_core_document_model() -> None:
     from pydantic import BaseModel
 
     document = Document(content="context", metadata={"source": "kb"})
@@ -210,7 +213,7 @@ def test_retriever_accepts_the_public_splunk_ao_document_model() -> None:
 
 def test_public_document_metadata_variants_are_supported() -> None:
     document_without_metadata = Document(content="plain")
-    document_with_model_metadata = Document.from_dict(
+    document_with_model_metadata = Document.model_validate(
         {"content": "model metadata", "metadata": {"source": "kb"}}
     )
 
@@ -406,8 +409,8 @@ def test_malformed_trace_content_parts_follow_sdk_serialization() -> None:
 
     assert isinstance(scalar_item, Trace)
     assert isinstance(invalid_file, Trace)
-    assert scalar_item.output == serialize_to_str([1])
-    assert invalid_file.output == serialize_to_str([{"type": "file", "file_id": "not-a-uuid"}])
+    assert scalar_item.output == json.dumps([1])
+    assert invalid_file.output == json.dumps([{"type": "file", "file_id": "not-a-uuid"}])
 
 
 def test_nested_record_errors_and_existing_models_are_explicit() -> None:
@@ -469,14 +472,9 @@ def test_invalid_nested_context_shapes_are_rejected() -> None:
         )
 
 
-def test_trace_structured_values_match_sdk_logger_coercion() -> None:
-    from splunk_ao import SplunkAOLogger
-
+def test_trace_structured_values_are_normalized_without_losing_messages() -> None:
     trace_input = {"question": "hello"}
     trace_output = [{"role": "assistant", "content": "answer"}]
-    expected_input = SplunkAOLogger._coerce_trace_input("input", trace_input)
-    expected_output = SplunkAOLogger._coerce_output(trace_output)
-
     record = record_from_step(
         Step(
             type="trace",
@@ -488,8 +486,156 @@ def test_trace_structured_values_match_sdk_logger_coercion() -> None:
     )
 
     assert isinstance(record, Trace)
-    assert record.input == expected_input
-    assert [block.text for block in record.output] == [block.text for block in expected_output]
+    assert record.input == json.dumps(trace_input)
+    assert [block.text for block in record.output] == ["answer"]
+
+
+def test_trace_content_blocks_preserve_text_files_and_unrepresentable_data() -> None:
+    file_id = uuid4()
+    blocks = [
+        {"type": "text", "text": "look at this"},
+        {"type": "file", "file_id": str(file_id)},
+    ]
+    trace = record_from_step(
+        Step(
+            type="trace",
+            name="multimodal",
+            input=blocks,
+            output=blocks,
+            context={"spans": []},
+        )
+    )
+    serialized_data_block = {
+        "type": "data",
+        "modality": "image",
+        "url": "https://example/image.png",
+    }
+    data_trace = record_from_step(
+        Step(
+            type="trace",
+            name="inline-image",
+            input=[serialized_data_block],
+            output=[serialized_data_block],
+            context={"spans": []},
+        )
+    )
+
+    assert isinstance(trace, Trace)
+    assert isinstance(trace.input[0], TextContentPart)
+    assert isinstance(trace.input[1], FileContentPart)
+    assert trace.input[1].file_id == file_id
+    assert isinstance(trace.output[0], TextContentPart)
+    assert isinstance(trace.output[1], FileContentPart)
+    assert isinstance(data_trace, Trace)
+    assert json.loads(data_trace.input) == [serialized_data_block]
+    assert json.loads(data_trace.output or "") == [serialized_data_block]
+
+
+def test_trace_message_sequences_flatten_every_text_and_content_part() -> None:
+    file_id = uuid4()
+    output = [
+        {"role": "assistant", "content": "first message"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "second message"},
+                {"type": "file", "file_id": str(file_id)},
+            ],
+        },
+    ]
+
+    trace = record_from_step(
+        Step(type="trace", name="messages", input="question", output=output, context={"spans": []})
+    )
+
+    assert isinstance(trace, Trace)
+    assert [part.text for part in trace.output if isinstance(part, TextContentPart)] == [
+        "first message",
+        "second message",
+    ]
+    file_parts = [part for part in trace.output if isinstance(part, FileContentPart)]
+    assert len(file_parts) == 1
+    assert file_parts[0].file_id == file_id
+
+
+def test_record_normalizer_defines_none_and_empty_value_behavior() -> None:
+    assert GalileoRecordNormalizer.llm_input(None) == ""
+    assert GalileoRecordNormalizer.llm_output(None) == ""
+    assert GalileoRecordNormalizer.tool_input(None) == ""
+    assert GalileoRecordNormalizer.tool_output(None) is None
+    assert GalileoRecordNormalizer.retriever_output(None)[0].content == ""
+    assert GalileoRecordNormalizer.retriever_output([]) == []
+    assert GalileoRecordNormalizer.trace_input(None) == ""
+    assert GalileoRecordNormalizer.trace_output(None) is None
+    assert GalileoRecordNormalizer.trace_output([]) == []
+    assert GalileoRecordNormalizer.session_input(None) is None
+    assert GalileoRecordNormalizer.session_output(None) is None
+    assert GalileoRecordNormalizer.session_input([]) == []
+    assert GalileoRecordNormalizer.session_output([]) == []
+
+
+def test_session_content_parts_are_preserved_by_input_and_output_normalizers() -> None:
+    parts = [TextContentPart(text="text"), FileContentPart(file_id=uuid4())]
+
+    assert GalileoRecordNormalizer.session_input(parts) == [
+        part.model_dump(mode="json") for part in parts
+    ]
+    assert GalileoRecordNormalizer.session_output(parts) == [
+        part.model_dump(mode="json") for part in parts
+    ]
+
+
+def test_record_normalizer_serializes_nested_models_uuids_and_timestamps() -> None:
+    identifier = uuid4()
+    timestamp = datetime(2025, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+    class NestedPayload(BaseModel):
+        identifier: object
+        timestamp: datetime
+
+    payload = {
+        "nested": {"answer": "42"},
+        "payload": NestedPayload(identifier=identifier, timestamp=timestamp),
+        "uuid": identifier,
+        "timestamp": timestamp,
+    }
+    serialized = GalileoRecordNormalizer.tool_output(payload)
+
+    assert serialized == (
+        '{"nested": {"answer": "42"}, "payload": {"identifier": "'
+        + str(identifier)
+        + '", "timestamp": "2025-01-02T03:04:05Z"}, "uuid": "'
+        + str(identifier)
+        + '", "timestamp": "2025-01-02T03:04:05Z"}'
+    )
+
+
+def test_llm_tool_definitions_normalize_nested_pydantic_uuid_and_datetime_values() -> None:
+    identifier = uuid4()
+    timestamp = datetime(2025, 1, 2, tzinfo=UTC)
+    source = _RecordPayload(
+        type="llm",
+        input="question",
+        tools=[{"id": identifier, "created_at": timestamp}],
+    )
+
+    record = record_from_scorer_invoke_record(source)
+
+    assert isinstance(record, LlmSpan)
+    assert record.tools == [
+        {"id": str(identifier), "created_at": timestamp.isoformat().replace("+00:00", "Z")}
+    ]
+
+
+def test_retriever_dictionaries_become_canonical_documents() -> None:
+    documents = GalileoRecordNormalizer.retriever_output(
+        [{"content": "document", "metadata": {"source": "kb"}}]
+    )
+
+    assert len(documents) == 1
+    assert isinstance(documents[0], Document)
+    assert documents[0].content == "document"
+    assert documents[0].metadata == {"source": "kb"}
 
 
 def test_trace_and_session_envelopes_are_supported() -> None:
@@ -660,7 +806,7 @@ def test_record_serialization_is_json_safe() -> None:
     payload = record.model_dump(mode="json", exclude_none=True)
 
     assert payload["type"] == "tool"
-    assert payload["input"] == serialize_to_str({"q": "x"})
+    assert payload["input"] == json.dumps({"q": "x"})
 
 
 def test_factory_accepts_the_existing_pydantic_luna_record() -> None:
@@ -675,12 +821,16 @@ def test_factory_accepts_the_existing_pydantic_luna_record() -> None:
 
 
 def test_factory_rejects_invalid_boundaries_and_normalizes_missing_text() -> None:
-    from agent_control_evaluator_galileo.records.normalization import session_value, text_value
+    from agent_control_evaluator_galileo.records import GalileoRecordNormalizer
 
     with pytest.raises(RecordFactoryError, match="complete Agent Control Step"):
         record_from_step(object())  # type: ignore[arg-type]
     with pytest.raises(UnsupportedStepTypeError, match="unsupported"):
         record_from_scorer_invoke_record(_RecordPayload(type="unsupported"))
-    assert text_value(None) == ""
-    assert session_value(Document(content="plain")) == {"content": "plain"}
-    assert session_value([Document(content="plain")]) == [{"content": "plain"}]
+    assert GalileoRecordNormalizer.retriever_input(None) == ""
+    assert GalileoRecordNormalizer.session_input(Document(content="plain")) == json.dumps(
+        {"content": "plain"}
+    )
+    assert GalileoRecordNormalizer.session_input([Document(content="plain")]) == json.dumps(
+        [{"content": "plain"}]
+    )
