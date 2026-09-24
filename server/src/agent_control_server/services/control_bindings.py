@@ -279,7 +279,7 @@ class ControlBindingsService:
         if cursor is not None:
             page_stmt = page_stmt.where(ControlBinding.id < cursor)
         result = await self._db.execute(page_stmt.limit(limit + 1))
-        rows = list(result.scalars().all())
+        rows: list[ControlBinding] = list(result.scalars().all())
         has_more = len(rows) > limit
         if has_more:
             rows = rows[:limit]
