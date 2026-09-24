@@ -169,6 +169,83 @@ class TestAuthDisabled:
         assert response.status_code == 200
 
 
+class TestAgentMutationOperationRouting:
+    """Agent mutation routes request their narrow authorization operations."""
+
+    @pytest.mark.parametrize(
+        ("method", "path", "json_body", "expected_operation"),
+        [
+            (
+                "POST",
+                "/api/v1/agents/agent-route-authz/policies/1",
+                None,
+                Operation.AGENT_POLICY_ASSOCIATIONS_WRITE,
+            ),
+            (
+                "POST",
+                "/api/v1/agents/agent-route-authz/policy/1",
+                None,
+                Operation.AGENT_POLICY_ASSOCIATIONS_WRITE,
+            ),
+            (
+                "DELETE",
+                "/api/v1/agents/agent-route-authz/policies/1",
+                None,
+                Operation.AGENT_POLICY_ASSOCIATIONS_WRITE,
+            ),
+            (
+                "DELETE",
+                "/api/v1/agents/agent-route-authz/policies",
+                None,
+                Operation.AGENT_POLICY_ASSOCIATIONS_WRITE,
+            ),
+            (
+                "DELETE",
+                "/api/v1/agents/agent-route-authz/policy",
+                None,
+                Operation.AGENT_POLICY_ASSOCIATIONS_WRITE,
+            ),
+            (
+                "POST",
+                "/api/v1/agents/agent-route-authz/controls/1",
+                None,
+                Operation.AGENT_CONTROL_ASSOCIATIONS_WRITE,
+            ),
+            (
+                "DELETE",
+                "/api/v1/agents/agent-route-authz/controls/1",
+                None,
+                Operation.AGENT_CONTROL_ASSOCIATIONS_WRITE,
+            ),
+            (
+                "PATCH",
+                "/api/v1/agents/agent-route-authz",
+                {"remove_steps": [], "remove_evaluators": []},
+                Operation.AGENTS_UPDATE,
+            ),
+        ],
+    )
+    def test_route_uses_expected_operation(
+        self,
+        app: object,
+        method: str,
+        path: str,
+        json_body: dict[str, object] | None,
+        expected_operation: Operation,
+    ) -> None:
+        # Given: a recording authorizer and a valid route targeting a missing agent
+        authorizer = _RecordingAuthorizer()
+        set_authorizer(authorizer)
+        client = TestClient(app, raise_server_exceptions=True)
+
+        # When: invoking the public mutation endpoint
+        response = client.request(method, path, json=json_body)
+
+        # Then: authorization uses the route-specific operation before the 404
+        assert response.status_code == 404
+        assert authorizer.calls == [(expected_operation, None)]
+
+
 _VALID_CONTROL_DATA = {
     "description": "Test Control",
     "enabled": True,
@@ -257,6 +334,34 @@ class TestAdminWriteEndpointAuthorization:
         controls_response = non_admin_client.get(f"/api/v1/agents/{agent_name}/controls")
         assert controls_response.status_code == 200
         assert controls_response.json()["controls"] == []
+
+    def test_non_admin_key_cannot_force_replace_existing_agent(
+        self,
+        non_admin_client: TestClient,
+    ) -> None:
+        # Given: an agent registered by an authenticated non-admin caller
+        agent_name = f"runtime-agent-{uuid.uuid4().hex[:8]}"
+        init_payload = {
+            "agent": {
+                "agent_name": agent_name,
+                "agent_description": "Runtime agent",
+                "agent_version": "1.0",
+            },
+            "steps": [],
+            "evaluators": [],
+        }
+        init_response = non_admin_client.post("/api/v1/agents/initAgent", json=init_payload)
+        assert init_response.status_code == 200
+
+        # When: the non-admin caller requests destructive recovery
+        force_response = non_admin_client.post(
+            "/api/v1/agents/initAgent",
+            json={**init_payload, "force_replace": True},
+        )
+
+        # Then: the new recovery operation remains admin-only
+        assert force_response.status_code == 403
+        assert force_response.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
 
     def test_admin_key_allowed_on_representative_mutations(self, admin_client: TestClient) -> None:
         control_name = f"control-authz-{uuid.uuid4().hex[:8]}"

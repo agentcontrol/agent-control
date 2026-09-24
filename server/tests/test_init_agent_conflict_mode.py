@@ -17,6 +17,9 @@ from .utils import VALID_CONTROL_PAYLOAD
 
 
 class CreateOnlyAuthorizer:
+    def __init__(self) -> None:
+        self.calls: list[Operation] = []
+
     async def authorize(
         self,
         request: Request,
@@ -24,12 +27,29 @@ class CreateOnlyAuthorizer:
         context: dict[str, Any] | None = None,
     ) -> Principal:
         del request, context
-        if operation is Operation.AGENTS_UPDATE:
+        self.calls.append(operation)
+        if operation in {Operation.AGENTS_UPDATE, Operation.AGENTS_RECOVER}:
             raise ForbiddenError(
                 error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                detail="update denied",
+                detail=f"{operation.value} denied",
             )
         return Principal(namespace_key="default", is_admin=True)
+
+
+class RecoveryNamespaceMismatchAuthorizer:
+    def __init__(self) -> None:
+        self.calls: list[Operation] = []
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        del request, context
+        self.calls.append(operation)
+        namespace_key = "other" if operation is Operation.AGENTS_RECOVER else "default"
+        return Principal(namespace_key=namespace_key, is_admin=True)
 
 
 def _init_payload(
@@ -184,16 +204,18 @@ def test_init_agent_overwrite_existing_agent_requires_update_auth(
     )
     assert create_resp.status_code == 200
 
-    set_authorizer(CreateOnlyAuthorizer())
+    authorizer = CreateOnlyAuthorizer()
+    set_authorizer(authorizer)
     overwrite_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(agent_name=agent_name, conflict_mode="overwrite"),
     )
 
     assert overwrite_resp.status_code == 403
+    assert authorizer.calls == [Operation.AGENTS_CREATE, Operation.AGENTS_UPDATE]
 
 
-def test_init_agent_force_replace_existing_agent_requires_update_auth(
+def test_init_agent_force_replace_existing_agent_requires_recovery_auth(
     client: TestClient,
 ) -> None:
     agent_name = f"agent-{uuid.uuid4().hex[:12]}"
@@ -203,13 +225,42 @@ def test_init_agent_force_replace_existing_agent_requires_update_auth(
     )
     assert create_resp.status_code == 200
 
-    set_authorizer(CreateOnlyAuthorizer())
+    authorizer = CreateOnlyAuthorizer()
+    set_authorizer(authorizer)
     force_resp = client.post(
         "/api/v1/agents/initAgent",
         json={**_init_payload(agent_name=agent_name), "force_replace": True},
     )
 
     assert force_resp.status_code == 403
+    assert authorizer.calls == [Operation.AGENTS_CREATE, Operation.AGENTS_RECOVER]
+
+
+def test_init_agent_force_replace_rejects_recovery_namespace_mismatch(
+    client: TestClient,
+) -> None:
+    # Given: an existing agent and recovery authorization for a different namespace
+    agent_name = f"agent-{uuid.uuid4().hex[:12]}"
+    create_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json=_init_payload(agent_name=agent_name),
+    )
+    assert create_resp.status_code == 200
+    authorizer = RecoveryNamespaceMismatchAuthorizer()
+    set_authorizer(authorizer)
+
+    # When: force replacement is requested
+    force_resp = client.post(
+        "/api/v1/agents/initAgent",
+        json={**_init_payload(agent_name=agent_name), "force_replace": True},
+    )
+
+    # Then: the recovery namespace mismatch is rejected under the new operation
+    assert force_resp.status_code == 403
+    assert force_resp.json()["detail"] == (
+        "Recovery authorization resolved to a different namespace."
+    )
+    assert authorizer.calls == [Operation.AGENTS_CREATE, Operation.AGENTS_RECOVER]
 
 
 def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
@@ -222,7 +273,8 @@ def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
     )
     assert create_resp.status_code == 200
 
-    set_authorizer(CreateOnlyAuthorizer())
+    authorizer = CreateOnlyAuthorizer()
+    set_authorizer(authorizer)
     strict_resp = client.post(
         "/api/v1/agents/initAgent",
         json=_init_payload(
@@ -239,6 +291,7 @@ def test_init_agent_strict_existing_agent_mutation_requires_update_auth(
     )
 
     assert strict_resp.status_code == 403
+    assert authorizer.calls == [Operation.AGENTS_CREATE, Operation.AGENTS_UPDATE]
 
 
 def test_init_agent_overwrite_warns_on_removed_referenced_evaluator(client: TestClient) -> None:
