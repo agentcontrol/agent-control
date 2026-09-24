@@ -17,7 +17,7 @@ import hashlib
 from datetime import datetime
 from typing import Any
 
-from agent_control_models.errors import ErrorCode, ErrorReason
+from agent_control_models.errors import ErrorCode, ErrorReason, ValidationErrorItem
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,7 +28,7 @@ from ..auth_framework.runtime_token import (
     UpstreamGrantExpiredError,
     mint_runtime_token,
 )
-from ..errors import APIError, BadRequestError
+from ..errors import APIError, APIValidationError, BadRequestError
 from ..logging_utils import get_logger
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -62,22 +62,76 @@ class RuntimeTokenExchangeResponse(BaseModel):
     )
 
 
+def _exchange_body_validation_error() -> APIValidationError:
+    return APIValidationError(
+        error_code=ErrorCode.VALIDATION_ERROR,
+        detail="Runtime token exchange body must be a valid JSON object.",
+        hint="Provide a JSON object containing target_type and target_id.",
+    )
+
+
+def _validate_exchange_target_field(
+    body: dict[str, Any], field: str
+) -> ValidationErrorItem | None:
+    if field not in body:
+        return ValidationErrorItem(
+            resource="Request",
+            field=field,
+            code="missing",
+            message="Field required",
+        )
+
+    value = body[field]
+    if not isinstance(value, str):
+        return ValidationErrorItem(
+            resource="Request",
+            field=field,
+            code="string_type",
+            message="Input should be a valid string",
+        )
+    if not value:
+        return ValidationErrorItem(
+            resource="Request",
+            field=field,
+            code="string_too_short",
+            message="String should have at least 1 character",
+        )
+    return None
+
+
 async def _exchange_context(request: Request) -> dict[str, Any]:
-    """Surface target identifiers to the authorization context.
+    """Validate and surface target identifiers before authorization.
+
+    The endpoint model validates these fields again when binding the request.
+    This early check is intentional: an authorization provider must never
+    receive missing or invalid target context.
 
     Reads the request body once. FastAPI caches the parsed body, so the
     endpoint's own Pydantic body model still binds normally.
     """
     try:
         body = await request.json()
-    except Exception:  # noqa: BLE001  malformed JSON, defer to endpoint validation
-        return {}
+    except (TypeError, ValueError) as exc:
+        raise _exchange_body_validation_error() from exc
+
     if not isinstance(body, dict):
-        return {}
-    return {
-        "target_type": body.get("target_type"),
-        "target_id": body.get("target_id"),
-    }
+        raise _exchange_body_validation_error()
+
+    field_errors: list[ValidationErrorItem] = []
+    for field in ("target_type", "target_id"):
+        error = _validate_exchange_target_field(body, field)
+        if error is not None:
+            field_errors.append(error)
+
+    if field_errors:
+        raise APIValidationError(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Invalid runtime token target context.",
+            hint="Check the errors array for invalid target fields.",
+            errors=field_errors,
+        )
+
+    return {"target_type": body["target_type"], "target_id": body["target_id"]}
 
 
 @router.post(
