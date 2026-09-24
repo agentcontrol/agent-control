@@ -201,6 +201,51 @@ class TestGalileoLunaClient:
             "config": {"request_timeout_seconds": 7.0},
         }
 
+    def test_scorer_invoke_record_preserves_legacy_pydantic_contract(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeRecord
+
+        record = ScorerInvokeRecord(
+            type="llm",
+            name="answer",
+            input={"question": "hello"},
+            output={"answer": "world"},
+            context={"session_id": "session-1"},
+            tools=[{"name": "search"}],
+            dataset_output={"expected": "world"},
+        )
+
+        assert record.model_dump() == {
+            "type": "llm",
+            "name": "answer",
+            "input": {"question": "hello"},
+            "output": {"answer": "world"},
+            "context": {"session_id": "session-1"},
+            "tools": [{"name": "search"}],
+            "dataset_output": {"expected": "world"},
+        }
+        with pytest.raises(ValidationError, match="type"):
+            ScorerInvokeRecord(type="unsupported", name="answer")
+
+    def test_scorer_invoke_request_serialization_keeps_legacy_record_shape(self) -> None:
+        from agent_control_evaluator_galileo.luna import (
+            ScorerInvokeInputs,
+            ScorerInvokeRecord,
+            ScorerInvokeRequest,
+        )
+
+        request = ScorerInvokeRequest(
+            scorer_id="scorer-123",
+            inputs=ScorerInvokeInputs(query="hello"),
+            record=ScorerInvokeRecord(type="tool", name="search", input={"q": "hello"}),
+        )
+
+        assert request.to_dict() == {
+            "scorer_id": "scorer-123",
+            "inputs": {"query": "hello", "response": ""},
+            "record": {"type": "tool", "name": "search", "input": {"q": "hello"}},
+            "config": {},
+        }
+
     def test_scorer_invoke_request_rejects_unknown_config(self) -> None:
         from agent_control_evaluator_galileo.luna import (
             ScorerInvokeInputs,
@@ -231,6 +276,20 @@ class TestGalileoLunaClient:
         assert "scorer_version_id" not in body
         assert "scorer_label" not in body
         assert body["config"] == {}
+
+    def test_legacy_scorer_invoke_request_serialization_has_no_record_field(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeInputs, ScorerInvokeRequest
+
+        request = ScorerInvokeRequest(
+            scorer_id="scorer-123",
+            inputs=ScorerInvokeInputs(query="hello"),
+        )
+
+        assert request.to_dict() == {
+            "scorer_id": "scorer-123",
+            "inputs": {"query": "hello", "response": ""},
+            "config": {},
+        }
 
     @pytest.mark.parametrize("empty_value", ["", " ", {}, []])
     def test_scorer_invoke_request_requires_input_or_output(self, empty_value: object) -> None:

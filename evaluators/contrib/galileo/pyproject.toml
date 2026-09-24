@@ -10,6 +10,7 @@ dependencies = [
     "agent-control-evaluators>=8.6.0",
     "agent-control-models>=8.6.0",
     "httpx>=0.24.0",
+    "splunk-ao==0.4.0",
     "pydantic>=2.12.4",
 ]
 
