@@ -9,9 +9,11 @@ from .factory import (
     record_from_scorer_invoke_record,
     record_from_step,
 )
+from .normalization import GalileoRecordNormalizer
 
 __all__ = [
     "GalileoRecord",
+    "GalileoRecordNormalizer",
     "RecordFactoryError",
     "UnsupportedStepTypeError",
     "build_galileo_record",
