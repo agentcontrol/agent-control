@@ -594,22 +594,20 @@ def test_record_normalizer_serializes_nested_models_uuids_and_timestamps() -> No
         timestamp: datetime
 
     payload = {
+        "nested": {"answer": "42"},
         "payload": NestedPayload(identifier=identifier, timestamp=timestamp),
         "uuid": identifier,
         "timestamp": timestamp,
     }
     serialized = GalileoRecordNormalizer.tool_output(payload)
 
-    assert serialized is not None
-    parsed = json.loads(serialized)
-    assert parsed == {
-        "payload": {
-            "identifier": str(identifier),
-            "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
-        },
-        "uuid": str(identifier),
-        "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
-    }
+    assert serialized == (
+        '{"nested": {"answer": "42"}, "payload": {"identifier": "'
+        + str(identifier)
+        + '", "timestamp": "2025-01-02T03:04:05Z"}, "uuid": "'
+        + str(identifier)
+        + '", "timestamp": "2025-01-02T03:04:05Z"}'
+    )
 
 
 def test_llm_tool_definitions_normalize_nested_pydantic_uuid_and_datetime_values() -> None:
@@ -629,18 +627,15 @@ def test_llm_tool_definitions_normalize_nested_pydantic_uuid_and_datetime_values
     ]
 
 
-def test_serialization_and_document_conversion_match_sdk_when_available() -> None:
-    sdk_serialization = pytest.importorskip("splunk_ao.utils.serialization")
-    sdk_retrievers = pytest.importorskip("splunk_ao.utils.retrievers")
-    payload = {"uuid": uuid4(), "timestamp": datetime(2025, 1, 2, tzinfo=UTC)}
-    documents = [{"content": "document", "metadata": {"source": "kb"}}]
-
-    assert GalileoRecordNormalizer.tool_output(payload) == sdk_serialization.serialize_to_str(
-        payload
+def test_retriever_dictionaries_become_canonical_documents() -> None:
+    documents = GalileoRecordNormalizer.retriever_output(
+        [{"content": "document", "metadata": {"source": "kb"}}]
     )
-    assert GalileoRecordNormalizer.retriever_output(
-        documents
-    ) == sdk_retrievers.convert_to_documents(documents)
+
+    assert len(documents) == 1
+    assert isinstance(documents[0], Document)
+    assert documents[0].content == "document"
+    assert documents[0].metadata == {"source": "kb"}
 
 
 def test_trace_and_session_envelopes_are_supported() -> None:
