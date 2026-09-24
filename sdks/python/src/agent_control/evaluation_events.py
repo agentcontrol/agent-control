@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
+from agent_control_engine.selectors import select_data
 from agent_control_models import (
     ControlDefinition,
     ControlDefinitionRuntime,
@@ -118,6 +119,11 @@ def _build_events_for_matches(
         if control_def is not None:
             selector_path, evaluator_name, identity_metadata = observability_metadata(control_def)
             event_metadata.update(identity_metadata)
+            all_selector_paths = identity_metadata.get("all_selector_paths") or []
+            if all_selector_paths:
+                event_metadata["input"] = {
+                    path: select_data(request.step, path) for path in all_selector_paths
+                }
 
         events.append(
             ControlExecutionEvent(

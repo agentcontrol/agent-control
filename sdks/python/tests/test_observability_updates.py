@@ -279,7 +279,7 @@ class TestBuildControlExecutionEvents:
         assert events[0].applies_to == "retriever_call"
         assert events[0].model_dump(mode="json")["applies_to"] == "retriever_call"
 
-    def test_uses_safe_selected_data_preview_as_event_input(self):
+    def test_resolves_all_selector_paths_into_event_input(self):
         response = self._make_response(
             matches=[
                 self._make_match(
@@ -328,6 +328,38 @@ class TestBuildControlExecutionEvents:
         assert "selected_data_preview" not in events[0].metadata
         assert "engine_selected_data" not in events[0].metadata
         assert "engine_selected_data_preview" not in events[0].metadata
+        # The resolved-from-step value for the control's selector path wins over
+        # any stale debug preview captured at evaluation time.
+        assert events[0].metadata["input"] == {"input": "hello"}
+
+    def test_falls_back_to_selected_data_preview_when_control_definition_is_missing(self):
+        response = self._make_response(
+            matches=[
+                self._make_match(
+                    1,
+                    "ctrl-1",
+                    metadata={
+                        "selected_data_preview": {
+                            "type": "dict",
+                            "value": {"prompt": "raw sensitive input"},
+                            "truncated": False,
+                        },
+                    },
+                )
+            ]
+        )
+        request = self._make_request()
+
+        events = build_control_execution_events(
+            response,
+            request,
+            {},
+            "trace123",
+            "span456",
+            "test-agent",
+        )
+
+        assert len(events) == 1
         assert events[0].metadata["input"] == {"prompt": "raw sensitive input"}
 
     def test_composite_control_uses_representative_observability_identity(self):
@@ -370,6 +402,45 @@ class TestBuildControlExecutionEvents:
         assert event.metadata["leaf_count"] == 2
         assert event.metadata["all_evaluators"] == ["regex"]
         assert event.metadata["all_selector_paths"] == ["input", "output"]
+        # input reflects every leaf's resolved value, not just the
+        # representative selector chosen for observability identity.
+        assert event.metadata["input"] == {"input": "hello", "output": None}
+
+    def test_or_condition_resolves_input_for_every_leaf_selector(self):
+        response = self._make_response(matches=[self._make_match(1, "ctrl-1")])
+        request = self._make_request(step_type="tool")
+        control_lookup = {
+            1: self._make_control(
+                1,
+                "ctrl-1",
+                {
+                    "or": [
+                        {
+                            "selector": {"path": "input.query"},
+                            "evaluator": {"name": "regex", "config": {"pattern": "hello"}},
+                        },
+                        {
+                            "selector": {"path": "output"},
+                            "evaluator": {"name": "regex", "config": {"pattern": "done"}},
+                        },
+                    ]
+                },
+            ).control
+        }
+
+        events = build_control_execution_events(
+            response,
+            request,
+            control_lookup,
+            "trace123",
+            "span456",
+            "test-agent",
+        )
+
+        assert len(events) == 1
+        event = events[0]
+        assert event.metadata["all_selector_paths"] == ["input.query", "output"]
+        assert event.metadata["input"] == {"input.query": "hello", "output": None}
 
     def test_preserves_error_message_parity_by_result_category(self):
         from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult
