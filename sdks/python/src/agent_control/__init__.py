@@ -1650,6 +1650,7 @@ __all__ = [
     # Models (re-exported when available)
     "Agent",
     "Step",
+    "JSONObject",
     "StepSchema",
     "EvaluationRequest",
     "EvaluationResult",

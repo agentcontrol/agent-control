@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 from agent_control import evaluation
 from agent_control.evaluation import EvaluationResult
+from agent_control_models import Step
 from pydantic import ValidationError
 
 
@@ -104,6 +105,54 @@ async def test_check_evaluation_sends_custom_step_type_to_server():
         "context": None,
         "tools": None,
         "ground_truth": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_check_evaluation_accepts_step_with_tool_definitions():
+    """Framework callers can send a fully structured Step directly."""
+
+    class DummyResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"is_safe": True, "confidence": 1.0}
+
+    client = MagicMock()
+    client.http_client = MagicMock()
+    client.http_client.post = AsyncMock(return_value=DummyResponse())
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                },
+            },
+        }
+    ]
+    step = Step(
+        type="llm",
+        name="openai_agent",
+        input=[{"role": "user", "content": "question"}],
+        output={"role": "assistant", "content": "answer"},
+        tools=tools,
+    )
+
+    await evaluation.check_evaluation(
+        client=client,
+        agent_name="Agent-Example_01",
+        step=step,
+        stage="post",
+    )
+
+    sent_step = client.http_client.post.await_args.kwargs["json"]["step"]
+    assert sent_step["tools"] == tools
+    assert sent_step["tools"][0]["function"]["parameters"]["properties"]["query"] == {
+        "type": "string"
     }
 
 
