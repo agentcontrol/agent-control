@@ -8,9 +8,11 @@ end-to-end exchange-then-verify path: a token minted via
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,8 +29,10 @@ from agent_control_server.auth_framework.core import (
 from agent_control_server.auth_framework.providers import (
     LocalJwtVerifyProvider,
 )
+from agent_control_server.auth_framework.runtime_token import RuntimeTokenError
 
 _TEST_SECRET = "test-runtime-secret-12345678901234567890"
+_CUSTOM_TARGET_TYPE = "custom_target"
 
 
 @pytest.fixture
@@ -52,7 +56,7 @@ class _StubExchangeAuthorizer:
     def __init__(
         self,
         *,
-        actor_id: str = "actor-x",
+        actor_id: str | None = "actor-x",
         scopes: tuple[str, ...] = ("runtime.use",),
         target_type: str | None = None,
         target_id: str | None = None,
@@ -85,10 +89,21 @@ def test_exchange_endpoint_503_when_secret_not_configured(client: TestClient):
     assert response.status_code == 503
 
 
-def test_exchange_endpoint_mints_token_when_configured(client: TestClient, runtime_config_enabled):
+@pytest.mark.parametrize(
+    "scopes",
+    [
+        pytest.param(("runtime.use",), id="required-scope"),
+        pytest.param(("runtime.use", "runtime.debug"), id="multiple-scopes"),
+    ],
+)
+def test_exchange_endpoint_mints_token_when_configured(
+    client: TestClient,
+    runtime_config_enabled,
+    scopes: tuple[str, ...],
+):
     stub = _StubExchangeAuthorizer(
         actor_id="actor-9",
-        scopes=("runtime.use",),
+        scopes=scopes,
         target_type="log_stream",
         target_id="ls-42",
         grant_expires_at=datetime.now(UTC) + timedelta(hours=1),
@@ -105,18 +120,27 @@ def test_exchange_endpoint_mints_token_when_configured(client: TestClient, runti
     body = response.json()
     assert body["target_type"] == "log_stream"
     assert body["target_id"] == "ls-42"
-    assert "runtime.use" in body["scopes"]
+    assert body["scopes"] == list(scopes)
     assert body["token"]
     assert body["expires_at"]
 
 
+@pytest.mark.parametrize(
+    ("actor_id", "expected_log_actor_id"),
+    [
+        ("user@example.test", "user@example.test"),
+        (None, "anonymous"),
+    ],
+)
 def test_exchange_audit_log_redacts_actor_id(
     client: TestClient,
     runtime_config_enabled,
     caplog: pytest.LogCaptureFixture,
+    actor_id: str | None,
+    expected_log_actor_id: str,
 ):
     stub = _StubExchangeAuthorizer(
-        actor_id="user@example.test",
+        actor_id=actor_id,
         scopes=("runtime.use",),
         target_type="log_stream",
         target_id="ls-42",
@@ -139,35 +163,159 @@ def test_exchange_audit_log_redacts_actor_id(
     assert records
     record = records[-1]
     assert "actor_id" not in record.__dict__
-    assert record.__dict__["actor_id_hash"]
+    expected_hash = hashlib.sha256(expected_log_actor_id.encode("utf-8")).hexdigest()[:16]
+    assert record.__dict__["actor_id_hash"] == expected_hash
 
 
-def test_exchange_endpoint_rejects_target_mismatch(client: TestClient, runtime_config_enabled):
+@pytest.mark.parametrize(
+    (
+        "authorized_target_type",
+        "authorized_target_id",
+        "requested_target_type",
+        "requested_target_id",
+        "expected_detail",
+    ),
+    [
+        (
+            "log_stream",
+            "target-1",
+            _CUSTOM_TARGET_TYPE,
+            "target-1",
+            "Authorized target_type does not match the requested target_type.",
+        ),
+        (
+            "log_stream",
+            "target-1",
+            "log_stream",
+            "target-2",
+            "Authorized target_id does not match the requested target_id.",
+        ),
+    ],
+)
+def test_exchange_endpoint_rejects_target_mismatch(
+    client: TestClient,
+    runtime_config_enabled,
+    authorized_target_type: str,
+    authorized_target_id: str,
+    requested_target_type: str,
+    requested_target_id: str,
+    expected_detail: str,
+):
     """Provider says the credential is scoped to one target; body asks for another."""
     stub = _StubExchangeAuthorizer(
-        target_type="log_stream",
-        target_id="authorized-target",
+        target_type=authorized_target_type,
+        target_id=authorized_target_id,
     )
     clear_authorizers()
     set_authorizer(stub)
 
     response = client.post(
         "/api/v1/auth/runtime-token-exchange",
-        json={"target_type": "log_stream", "target_id": "different-target"},
+        json={"target_type": requested_target_type, "target_id": requested_target_id},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == expected_detail
 
 
-def test_exchange_endpoint_rejects_missing_target(client: TestClient):
+@pytest.mark.parametrize(
+    ("payload", "expected_errors"),
+    [
+        ({"target_type": "log_stream"}, (("target_id", "missing"),)),
+        ({"target_id": "opaque-target"}, (("target_type", "missing"),)),
+        (
+            {"target_type": None, "target_id": None},
+            (("target_type", "string_type"), ("target_id", "string_type")),
+        ),
+        (
+            {"target_type": "", "target_id": "opaque-target"},
+            (("target_type", "string_too_short"),),
+        ),
+        (
+            {"target_type": "log_stream", "target_id": 42},
+            (("target_id", "string_type"),),
+        ),
+    ],
+)
+def test_exchange_endpoint_rejects_invalid_target_before_authorization(
+    client: TestClient,
+    payload: dict[str, object],
+    expected_errors: tuple[tuple[str, str], ...],
+):
+    stub = _StubExchangeAuthorizer()
+    clear_authorizers()
+    set_authorizer(stub)
+
     response = client.post(
         "/api/v1/auth/runtime-token-exchange",
-        json={"target_type": "log_stream"},  # target_id missing
+        json=payload,
     )
     assert response.status_code == 422
+    response_body = response.json()
+    assert response_body["detail"] == "Invalid runtime token target context."
+    assert [(error["field"], error["code"]) for error in response_body["errors"]] == list(
+        expected_errors
+    )
+    assert all("value" not in error for error in response_body["errors"])
+    assert stub.calls == []
 
 
-def test_exchange_endpoint_passes_target_to_authorizer_context(
+def test_exchange_endpoint_rejects_non_object_body_before_authorization(client: TestClient):
+    stub = _StubExchangeAuthorizer()
+    clear_authorizers()
+    set_authorizer(stub)
+
+    response = client.post("/api/v1/auth/runtime-token-exchange", json=[])
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Runtime token exchange body must be a valid JSON object."
+    assert stub.calls == []
+
+
+def test_exchange_endpoint_rejects_non_json_before_authorization(client: TestClient):
+    stub = _StubExchangeAuthorizer()
+    clear_authorizers()
+    set_authorizer(stub)
+
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        content="not-json",
+        headers={"Content-Type": "text/plain"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Runtime token exchange body must be a valid JSON object."
+    assert stub.calls == []
+
+
+def test_exchange_endpoint_defers_unknown_fields_to_body_validation(client: TestClient):
+    stub = _StubExchangeAuthorizer()
+    clear_authorizers()
+    set_authorizer(stub)
+
+    response = client.post(
+        "/api/v1/auth/runtime-token-exchange",
+        json={"target_type": "log_stream", "target_id": "ls-1", "bogus": 1},
+    )
+
+    assert response.status_code == 422
+    response_body = response.json()
+    assert [(error["field"], error["code"]) for error in response_body["errors"]] == [
+        ("bogus", "extra_forbidden")
+    ]
+    # The rejection comes from the body model via the shared validation handler,
+    # not from the context builder, so it does not carry the builder's detail.
+    assert response_body["detail"] != "Invalid runtime token target context."
+    # The context builder deliberately validates only target fields; the body
+    # model rejects unrelated fields after authorization receives valid context.
+    assert stub.calls != []
+    assert stub.calls[0]["context"] == {
+        "target_type": "log_stream",
+        "target_id": "ls-1",
+    }
+
+
+def test_exchange_endpoint_passes_opaque_target_to_authorizer_context(
     client: TestClient, runtime_config_enabled
 ):
     stub = _StubExchangeAuthorizer()
@@ -176,15 +324,15 @@ def test_exchange_endpoint_passes_target_to_authorizer_context(
 
     response = client.post(
         "/api/v1/auth/runtime-token-exchange",
-        json={"target_type": "log_stream", "target_id": "ls-7"},
+        json={"target_type": _CUSTOM_TARGET_TYPE, "target_id": "not-a-uuid"},
     )
 
     assert response.status_code == 200
     assert stub.calls
     assert stub.calls[0]["operation"] == Operation.RUNTIME_TOKEN_EXCHANGE
     assert stub.calls[0]["context"] == {
-        "target_type": "log_stream",
-        "target_id": "ls-7",
+        "target_type": _CUSTOM_TARGET_TYPE,
+        "target_id": "not-a-uuid",
     }
 
 
@@ -418,6 +566,28 @@ def test_exchange_endpoint_502_when_upstream_grant_already_expired(
     # for operators.
 
 
+def test_exchange_endpoint_503_when_runtime_token_minting_fails(
+    client: TestClient,
+    runtime_config_enabled,
+):
+    stub = _StubExchangeAuthorizer()
+    clear_authorizers()
+    set_authorizer(stub)
+
+    with patch(
+        "agent_control_server.endpoints.auth.mint_runtime_token",
+        side_effect=RuntimeTokenError("test mint failure"),
+    ) as mint_mock:
+        response = client.post(
+            "/api/v1/auth/runtime-token-exchange",
+            json={"target_type": "log_stream", "target_id": "ls-1"},
+        )
+
+    mint_mock.assert_called_once()
+    assert response.status_code == 503, response.text
+    assert response.json()["error_code"] == "AUTH_MISCONFIGURED"
+
+
 def test_exchange_endpoint_rejects_grant_without_runtime_use(
     client: TestClient, runtime_config_enabled
 ):
@@ -435,6 +605,9 @@ def test_exchange_endpoint_rejects_grant_without_runtime_use(
         json={"target_type": "log_stream", "target_id": "ls-1"},
     )
     assert response.status_code == 400, response.text
+    assert response.json()["detail"] == (
+        "Authorizer grant does not include runtime.use; cannot mint a runtime token."
+    )
 
 
 def test_exchange_endpoint_rejects_explicit_empty_grant_scopes(
@@ -457,6 +630,9 @@ def test_exchange_endpoint_rejects_explicit_empty_grant_scopes(
         json={"target_type": "log_stream", "target_id": "ls-1"},
     )
     assert response.status_code == 400, response.text
+    assert response.json()["detail"] == (
+        "Authorizer grant does not include runtime.use; cannot mint a runtime token."
+    )
 
 
 @pytest.mark.asyncio
