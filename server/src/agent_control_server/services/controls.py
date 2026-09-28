@@ -303,7 +303,7 @@ class ControlService:
             stmt = stmt.where(ControlVersion.version_num < cursor)
 
         result = await self._db.execute(stmt.limit(limit + 1))
-        versions = list(result.scalars().all())
+        versions: list[ControlVersion] = list(result.scalars().all())
 
         has_more = len(versions) > limit
         if has_more:
@@ -509,7 +509,7 @@ class ControlService:
             query = query.where(Control.id < cursor)
 
         result = await self._db.execute(query.limit(limit + 1))
-        controls = list(result.scalars().all())
+        controls: list[Control] = list(result.scalars().all())
 
         total_query = (
             select(func.count())
