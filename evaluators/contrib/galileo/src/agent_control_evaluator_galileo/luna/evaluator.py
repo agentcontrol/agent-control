@@ -50,6 +50,16 @@ def _has_text(value: str | None) -> bool:
     return value is not None and value.strip() != ""
 
 
+def _has_payload_value(value: JSONValue | None) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (dict, list)):
+        return bool(value)
+    return True
+
+
 def _extract_dict_text(data: dict[str, Any], key: str) -> str | None:
     if key not in data:
         return None
@@ -145,8 +155,20 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         """Get the Galileo Luna client."""
         return self._client
 
-    def _prepare_payload(self, data: Any) -> tuple[str | None, str | None]:
-        """Prepare scorer input/output fields from selected data."""
+    def _prepare_payload(
+        self, data: Any, *, step: Step | None = None
+    ) -> tuple[JSONValue | None, JSONValue | None]:
+        """Prepare legacy scorer inputs while preserving structured LLM values."""
+        if step is not None and step.type.strip().lower() == "llm":
+            if isinstance(data, dict) and ("input" in data or "output" in data):
+                return cast(JSONValue | None, data.get("input")), cast(
+                    JSONValue | None, data.get("output")
+                )
+            selected_value = cast(JSONValue | None, data)
+            if self.config.payload_field == "output":
+                return None, selected_value
+            return selected_value, None
+
         if isinstance(data, dict):
             input_text = _extract_dict_text(data, "input")
             output_text = _extract_dict_text(data, "output")
@@ -215,8 +237,8 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
 
     async def _evaluate(self, data: Any, *, step: Step | None) -> EvaluatorResult:
         """Run a Luna evaluation with optional structured runtime context."""
-        input_text, output_text = self._prepare_payload(data)
-        if not (_has_text(input_text) or _has_text(output_text)):
+        input_text, output_text = self._prepare_payload(data, step=step)
+        if not (_has_payload_value(input_text) or _has_payload_value(output_text)):
             return EvaluatorResult(
                 matched=False,
                 confidence=1.0,
@@ -243,12 +265,18 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                         JSONObject,
                         record.model_dump(mode="json", exclude_none=True),
                     )
+                    if step.type.strip().lower() == "llm":
+                        # Keep the legacy inputs in the request, but derive
+                        # them from Orbit's canonical record so they cannot
+                        # conflict with normalized tool-call/message fields.
+                        input_text = cast(JSONValue | None, record_payload.get("input"))
+                        output_text = cast(JSONValue | None, record_payload.get("output"))
             if record_payload is not None:
                 scorer_kwargs["record"] = record_payload
             response = await self._get_client().invoke(
                 **scorer_kwargs,
-                input=input_text if _has_text(input_text) else None,
-                output=output_text if _has_text(output_text) else None,
+                input=input_text if _has_payload_value(input_text) else None,
+                output=output_text if _has_payload_value(output_text) else None,
                 config=self.config.scorer_config,
                 timeout=self.get_timeout_seconds(),
             )
