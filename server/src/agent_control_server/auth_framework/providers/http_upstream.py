@@ -79,6 +79,70 @@ _AUTH_UPSTREAM_ATTEMPT_DURATION = Histogram(
     ("operation", "outcome"),
 )
 
+# Upstream rejection bodies can be arbitrarily long. Log a bounded prefix and
+# report the total separately so a truncated list never reads as complete.
+_MAX_LOGGED_VALIDATION_ERRORS = 5
+
+
+def _field_shape(value: Any) -> str:
+    """Classify a target-context field without revealing its value.
+
+    Target identifiers are caller data, so diagnostics carry only the kind of
+    value supplied. The length is included because whether an id was
+    UUID-shaped is the question these diagnostics exist to answer.
+    """
+    if value is None:
+        return "null"
+    if not isinstance(value, str):
+        return f"non_string:{type(value).__name__}"
+    if not value:
+        return "empty"
+    return f"string:len={len(value)}"
+
+
+def _target_context_shape(context: dict[str, Any] | None) -> dict[str, str]:
+    """Describe the target context passed to the upstream, values omitted."""
+    if context is None:
+        return {"present": "false"}
+    return {
+        "present": "true",
+        "target_type": _field_shape(context.get("target_type")),
+        "target_id": _field_shape(context.get("target_id")),
+    }
+
+
+def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
+    """Summarize an upstream validation body by field path and error kind.
+
+    Keeps only ``type`` and ``loc`` from each entry. ``input``, ``ctx``, and
+    ``msg`` echo caller-supplied values and are dropped. Never raises: the
+    body is an external service's output, so an unexpected shape degrades to
+    an empty summary rather than turning a 502 into a 500.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        return {"total": 0, "errors": []}
+
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not isinstance(detail, list):
+        return {"total": 0, "errors": []}
+
+    errors = []
+    for item in detail[:_MAX_LOGGED_VALIDATION_ERRORS]:
+        if not isinstance(item, dict):
+            continue
+        loc = item.get("loc")
+        errors.append(
+            {
+                "type": str(item.get("type", "unknown")),
+                "loc": ".".join(str(part) for part in loc)
+                if isinstance(loc, list)
+                else "unknown",
+            }
+        )
+    return {"total": len(detail), "errors": errors}
+
 
 class _UpstreamGrant(BaseModel):
     """Strict schema for the upstream authorization-service response.
@@ -353,10 +417,18 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 hint=hint,
             )
         if 400 <= status < 500:
+            validation = _sanitized_validation_errors(response)
             _logger.warning(
                 "Authorization upstream rejected operation %s with status %d",
                 operation.value,
                 status,
+                extra={
+                    "operation": operation.value,
+                    "status_code": status,
+                    "target_context": _target_context_shape(context),
+                    "upstream_validation": validation["errors"],
+                    "upstream_validation_total": validation["total"],
+                },
             )
             raise APIError(
                 status_code=502,
