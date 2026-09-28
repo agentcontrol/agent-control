@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta, timezone
+from enum import Enum
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -23,7 +26,7 @@ from galileo_core.schemas.logging.span import LlmSpan, RetrieverSpan, ToolSpan
 from galileo_core.schemas.logging.trace import Trace
 from galileo_core.schemas.shared.content_parts import FileContentPart, TextContentPart
 from galileo_core.schemas.shared.document import Document
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class _RecordPayload(BaseModel):
@@ -608,6 +611,175 @@ def test_record_normalizer_serializes_nested_models_uuids_and_timestamps() -> No
         + str(identifier)
         + '", "timestamp": "2025-01-02T03:04:05Z"}'
     )
+
+
+def test_json_normalization_supports_python_value_types_and_fallbacks() -> None:
+    from agent_control_evaluator_galileo.records.normalization import (
+        _GalileoJSONEncoder,
+        _json_compatible,
+        _sdk_json_value,
+    )
+
+    class State(Enum):
+        READY = "ready"
+
+    class NestedModel(BaseModel):
+        value: int
+        optional: str | None = None
+
+    @dataclass
+    class NestedDataclass:
+        identifier: object
+
+    class SlottedValue:
+        __slots__ = ("value", "missing")
+
+        def __init__(self) -> None:
+            self.value = "slot"
+
+    class PlainValue:
+        def __init__(self) -> None:
+            self.visible = "public"
+            self._hidden = "private"
+
+    encoder = _GalileoJSONEncoder()
+    identifier = uuid4()
+    utc_timestamp = datetime(2025, 1, 2, tzinfo=UTC)
+    naive_timestamp = datetime(2025, 1, 2)
+    offset_timestamp = datetime(2025, 1, 2, tzinfo=timezone(timedelta(hours=2)))
+
+    assert encoder.default(NestedModel(value=3)) == {"value": 3}
+    assert encoder.default(utc_timestamp) == "2025-01-02T00:00:00Z"
+    assert isinstance(encoder.default(naive_timestamp), str)
+    assert encoder.default(offset_timestamp) == "2025-01-02T00:00:00+02:00"
+    assert encoder.default(date(2025, 1, 2)) == "2025-01-02"
+    assert encoder.default(identifier) == str(identifier)
+    assert encoder.default(Path("folder/file.txt")) == "folder/file.txt"
+    assert encoder.default(State.READY) == "ready"
+    assert encoder.default(b"text") == "text"
+    assert encoder.default(b"\xff") == "<not serializable bytes>"
+    assert encoder.default(NestedDataclass(identifier)) == {"identifier": identifier}
+    assert encoder.default(2**53) == str(2**53)
+    assert encoder.default({"item"}) == ["item"]
+    assert encoder.default(object()) == "<object>"
+
+    recursive: list[object] = []
+    recursive.append(recursive)
+    normalized = _sdk_json_value(
+        {
+            identifier: NestedModel(value=4),
+            "date": date(2025, 1, 2),
+            "enum": State.READY,
+            "bytes": b"text",
+            "invalid_bytes": b"\xff",
+            "large_integer": 2**53,
+            "set": frozenset({"item"}),
+            "dataclass": NestedDataclass(identifier),
+            "slotted": SlottedValue(),
+            "plain": PlainValue(),
+            "unsupported": object(),
+            "recursive": recursive,
+        }
+    )
+    assert normalized[str(identifier)] == {"value": 4}
+    assert normalized["date"] == "2025-01-02"
+    assert normalized["enum"] == "ready"
+    assert normalized["bytes"] == "text"
+    assert normalized["invalid_bytes"] == "<not serializable bytes>"
+    assert normalized["large_integer"] == str(2**53)
+    assert normalized["set"] == ["item"]
+    assert normalized["dataclass"] == {"identifier": str(identifier)}
+    assert normalized["slotted"] == {"value": "slot", "missing": None}
+    assert normalized["plain"] == {"visible": "public"}
+    assert normalized["unsupported"] == "<object>"
+    assert normalized["recursive"] == ["list"]
+    assert _json_compatible(NestedModel(value=5)) == {"value": 5}
+    assert _json_compatible({"values": [State.READY, date(2025, 1, 2)]}) == {
+        "values": ["ready", "2025-01-02"]
+    }
+
+
+def test_normalizer_preserves_message_content_and_reports_invalid_trace_inputs() -> None:
+    from agent_control_evaluator_galileo.records.normalization import (
+        _flatten_message_sequence,
+        _message_sequence,
+        _normalize_content_items,
+    )
+
+    messages = [
+        {"role": "user", "content": ""},
+        {"role": "assistant", "content": ["plain", {"unsupported": True}]},
+        {"content": 7},
+        {},
+    ]
+    flattened = _flatten_message_sequence(messages)
+
+    assert [part["text"] for part in flattened] == [
+        "plain",
+        '{"unsupported": true}',
+        "7",
+    ]
+    assert _message_sequence([{"role": "user", "content": "question"}])
+    assert not _message_sequence([{"other": "field"}])
+    assert _normalize_content_items("not a sequence") is None
+    assert _normalize_content_items([{"invalid": True}]) is None
+    assert GalileoRecordNormalizer.llm_input(42) == "42"
+    assert GalileoRecordNormalizer.llm_output([1, 2]) == "[1, 2]"
+    with pytest.raises(TypeError, match="Trace input must be"):
+        GalileoRecordNormalizer.trace_input([1])
+    with pytest.raises(TypeError, match="does not support int"):
+        GalileoRecordNormalizer.trace_input(1)
+
+
+def test_retriever_and_session_normalizers_accept_public_models() -> None:
+    class DocumentModel(BaseModel):
+        content: str
+        metadata: dict[str, str] = Field(default_factory=dict)
+
+    pydantic_document = DocumentModel(content="model document")
+    document = Document(content="canonical document")
+    part = TextContentPart(text="content part")
+    message = Message(role="user", content="question")
+
+    assert GalileoRecordNormalizer.retriever_output(pydantic_document) == [
+        Document(content="model document", metadata={})
+    ]
+    assert GalileoRecordNormalizer.retriever_output([pydantic_document]) == [
+        Document(content="model document", metadata={})
+    ]
+    assert GalileoRecordNormalizer.retriever_output([document]) == [document]
+    assert GalileoRecordNormalizer.session_input(part) == [part]
+    assert GalileoRecordNormalizer.session_input(document) == '{"content": "canonical document"}'
+    assert GalileoRecordNormalizer.session_input(pydantic_document) is pydantic_document
+    assert GalileoRecordNormalizer.session_input({"role": "user", "content": "question"}) == {
+        "role": "user",
+        "content": "question",
+    }
+    assert GalileoRecordNormalizer.session_input({"type": "text", "text": "hello"}) == [
+        {"type": "text", "text": "hello"}
+    ]
+    assert GalileoRecordNormalizer.session_input([message]) == [message]
+    assert GalileoRecordNormalizer.session_input([{"role": "user", "content": "question"}]) == [
+        {"role": "user", "content": "question"}
+    ]
+    assert json.loads(GalileoRecordNormalizer.session_input([pydantic_document]))[0][
+        "content"
+    ] == "model document"
+    assert GalileoRecordNormalizer.session_output(document) == [document]
+    assert GalileoRecordNormalizer.session_output(part) == [part]
+    assert GalileoRecordNormalizer.session_output(pydantic_document) is pydantic_document
+    assert GalileoRecordNormalizer.session_output({"role": "assistant", "content": "answer"}) == {
+        "role": "assistant",
+        "content": "answer",
+    }
+    assert GalileoRecordNormalizer.session_output({"page_content": "page"}).content == "page"
+    assert GalileoRecordNormalizer.session_output({"type": "text", "text": "hello"}) == [
+        {"type": "text", "text": "hello"}
+    ]
+    assert GalileoRecordNormalizer.session_output([document]) == [document]
+    assert GalileoRecordNormalizer.session_output([{"role": "assistant", "content": "answer"}]) == [
+        {"type": "text", "text": "answer"}
+    ]
 
 
 def test_llm_tool_definitions_normalize_nested_pydantic_uuid_and_datetime_values() -> None:
