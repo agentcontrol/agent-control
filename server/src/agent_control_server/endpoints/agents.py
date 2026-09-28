@@ -191,6 +191,23 @@ async def _authorize_existing_agent_overwrite(
     )
 
 
+async def _authorize_existing_agent_recovery(
+    request: Request,
+    principal: Principal,
+) -> None:
+    recovery_principal = await get_authorizer(Operation.AGENTS_RECOVER).authorize(
+        request,
+        Operation.AGENTS_RECOVER,
+    )
+    if recovery_principal.namespace_key == principal.namespace_key:
+        return
+    raise ForbiddenError(
+        error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+        detail="Recovery authorization resolved to a different namespace.",
+        hint="Ensure the credential is scoped to the requested agent namespace.",
+    )
+
+
 # =============================================================================
 # List Agents Models
 # =============================================================================
@@ -682,7 +699,9 @@ async def init_agent(
         )
         return InitAgentResponse(created=created, controls=controls)
 
-    if request.force_replace or request.conflict_mode == ConflictMode.OVERWRITE:
+    if request.force_replace:
+        await _authorize_existing_agent_recovery(http_request, principal)
+    elif request.conflict_mode == ConflictMode.OVERWRITE:
         await _authorize_existing_agent_overwrite(http_request, principal)
 
     # Parse existing data via AgentData Pydantic model
@@ -1077,7 +1096,7 @@ async def add_agent_policy(
     agent_name: str,
     policy_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.AGENTS_UPDATE)),
+    principal: Principal = Depends(require_operation(Operation.AGENT_POLICY_ASSOCIATIONS_WRITE)),
 ) -> AssocResponse:
     """Associate a policy with an agent (idempotent)."""
     namespace_key = principal.namespace_key
@@ -1154,7 +1173,7 @@ async def set_agent_policy(
     agent_name: str,
     policy_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.AGENTS_UPDATE)),
+    principal: Principal = Depends(require_operation(Operation.AGENT_POLICY_ASSOCIATIONS_WRITE)),
 ) -> SetPolicyResponse:
     """Compatibility endpoint that replaces all policy associations with one policy."""
     namespace_key = principal.namespace_key
@@ -1311,7 +1330,7 @@ async def remove_agent_policy(
     agent_name: str,
     policy_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.AGENTS_UPDATE)),
+    principal: Principal = Depends(require_operation(Operation.AGENT_POLICY_ASSOCIATIONS_WRITE)),
 ) -> AssocResponse:
     """Remove a policy association from an agent.
 
@@ -1368,7 +1387,7 @@ async def remove_agent_policy(
 async def remove_all_agent_policies(
     agent_name: str,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.AGENTS_UPDATE)),
+    principal: Principal = Depends(require_operation(Operation.AGENT_POLICY_ASSOCIATIONS_WRITE)),
 ) -> AssocResponse:
     """Remove all policy associations from an agent."""
     namespace_key = principal.namespace_key
@@ -1409,7 +1428,7 @@ async def remove_all_agent_policies(
 async def delete_agent_policy(
     agent_name: str,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.AGENTS_UPDATE)),
+    principal: Principal = Depends(require_operation(Operation.AGENT_POLICY_ASSOCIATIONS_WRITE)),
 ) -> DeletePolicyResponse:
     """Compatibility endpoint that removes all policy associations."""
     namespace_key = principal.namespace_key
@@ -1467,7 +1486,7 @@ async def add_agent_control(
     agent_name: str,
     control_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.AGENTS_UPDATE)),
+    principal: Principal = Depends(require_operation(Operation.AGENT_CONTROL_ASSOCIATIONS_WRITE)),
 ) -> AssocResponse:
     """Associate a control directly with an agent (idempotent)."""
     namespace_key = principal.namespace_key
@@ -1528,7 +1547,7 @@ async def remove_agent_control(
     agent_name: str,
     control_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.AGENTS_UPDATE)),
+    principal: Principal = Depends(require_operation(Operation.AGENT_CONTROL_ASSOCIATIONS_WRITE)),
 ) -> RemoveAgentControlResponse:
     """Remove a direct control association from an agent (idempotent)."""
     namespace_key = principal.namespace_key
