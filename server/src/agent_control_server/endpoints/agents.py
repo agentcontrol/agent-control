@@ -460,7 +460,7 @@ async def list_agents(
     # Fetch limit + 1 to check if there are more pages
     query = query.limit(limit + 1)
     result = await db.execute(query)
-    agents = result.scalars().all()
+    agents: Sequence[Agent] = result.scalars().all()
 
     # Check if there are more pages
     has_more = len(agents) > limit
