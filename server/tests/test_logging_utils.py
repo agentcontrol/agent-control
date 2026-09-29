@@ -1,5 +1,7 @@
 """Tests for logging utilities."""
 
+import io
+import json
 import logging
 
 from agent_control_server.logging_utils import (
@@ -176,3 +178,34 @@ def test_configure_logging_noops_when_host_owns_logging(monkeypatch) -> None:
     finally:
         root.handlers = original_handlers
         root.setLevel(original_level)
+
+
+def test_configure_json_logging_includes_exception_and_stack(monkeypatch) -> None:
+    """JSON logs retain traceback and stack information when supplied."""
+    monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "true")
+    root = logging.getLogger()
+    original_handlers, original_level = list(root.handlers), root.level
+    uvicorn_loggers = [
+        logging.getLogger(name) for name in ("uvicorn", "uvicorn.error", "uvicorn.access")
+    ]
+    original_uvicorn = [
+        (logger, list(logger.handlers), logger.level, logger.propagate)
+        for logger in uvicorn_loggers
+    ]
+    stream = io.StringIO()
+    try:
+        configure_logging(level="ERROR", json=True)
+        root.handlers[0].setStream(stream)
+        try:
+            raise ValueError("test failure")
+        except ValueError:
+            logging.getLogger(__name__).error("operation failed", exc_info=True, stack_info=True)
+    finally:
+        root.handlers, root.level = original_handlers, original_level
+        for logger, handlers, level, propagate in original_uvicorn:
+            logger.handlers, logger.level, logger.propagate = handlers, level, propagate
+
+    record = json.loads(stream.getvalue())
+    assert record["msg"] == "operation failed"
+    assert "ValueError: test failure" in record["exc_info"]
+    assert "Stack (most recent call last):" in record["stack_info"]

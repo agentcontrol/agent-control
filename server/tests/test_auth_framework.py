@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import json
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -36,6 +39,7 @@ from agent_control_server.errors import (
     ForbiddenError,
     NotFoundError,
 )
+from agent_control_server.logging_utils import configure_logging
 from agent_control_server.models import DEFAULT_NAMESPACE_KEY
 
 
@@ -486,6 +490,377 @@ async def test_http_upstream_unexpected_4xx_reports_upstream_rejection(status):
     assert exc_info.value.error_code == "AUTH_UPSTREAM_REJECTED"
     assert str(status) in exc_info.value.detail
     assert "request shape" in exc_info.value.hint
+
+
+def _rejection_record(caplog: pytest.LogCaptureFixture) -> logging.LogRecord:
+    """Return the upstream-rejection warning emitted by the 4xx branch."""
+    records = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("Authorization upstream rejected operation")
+    ]
+    assert records
+    return records[-1]
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_4xx_diagnostics_name_the_rejected_field(
+    caplog: pytest.LogCaptureFixture,
+):
+    """A 422 names the upstream field path and error kind, not the value.
+
+    This is the case the multitenant incident could not diagnose: the log
+    recorded only the operation and status, so the rejected field was unknown.
+    """
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {
+                        "type": "uuid_parsing",
+                        "loc": ["body", "context", "target_id"],
+                        "msg": "Input should be a valid UUID",
+                        "input": "not-a-uuid",
+                    }
+                ]
+            },
+        )
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError):
+            await provider.authorize(
+                _build_request(),
+                Operation.RUNTIME_TOKEN_EXCHANGE,
+                context={"target_type": "log_stream", "target_id": "not-a-uuid"},
+            )
+
+    record = _rejection_record(caplog)
+    assert record.__dict__["operation"] == Operation.RUNTIME_TOKEN_EXCHANGE.value
+    assert record.__dict__["status_code"] == 422
+    assert record.__dict__["upstream_validation"] == {
+        "0": {"type": "uuid_parsing", "loc": "body.context.target_id"}
+    }
+    assert record.__dict__["upstream_validation_total"] == 1
+    assert record.__dict__["upstream_validation_status"] == "parsed"
+    assert record.__dict__["target_context"] == {
+        "present": "true",
+        "target_type": "string:len=10",
+        "target_id": "string:len=10",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("context", "expected_shape"),
+    [
+        (None, {"present": "false"}),
+        ({}, {"present": "false"}),
+        (
+            {"target_type": "log_stream"},
+            {"present": "true", "target_type": "string:len=10", "target_id": "missing"},
+        ),
+        (
+            {"target_type": None, "target_id": None},
+            {"present": "true", "target_type": "null", "target_id": "null"},
+        ),
+        (
+            {"target_type": "log_stream", "target_id": ""},
+            {"present": "true", "target_type": "string:len=10", "target_id": "empty"},
+        ),
+        (
+            {"target_type": "log_stream", "target_id": 42},
+            {
+                "present": "true",
+                "target_type": "string:len=10",
+                "target_id": "non_string:int",
+            },
+        ),
+    ],
+)
+async def test_http_upstream_4xx_diagnostics_report_target_context_shape(
+    caplog: pytest.LogCaptureFixture,
+    context: dict[str, object] | None,
+    expected_shape: dict[str, str],
+):
+    """Target context is described by shape, so absent and null stay distinct."""
+    sent_payloads: list[dict[str, object]] = []
+
+    def reject(request: httpx.Request) -> httpx.Response:
+        sent_payloads.append(json.loads(request.content))
+        return httpx.Response(422, text="rejected")
+
+    provider = _build_upstream(reject)
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError):
+            await provider.authorize(
+                _build_request(),
+                Operation.RUNTIME_TOKEN_EXCHANGE,
+                context=context,
+            )
+
+    assert _rejection_record(caplog).__dict__["target_context"] == expected_shape
+    assert ("context" in sent_payloads[0]) is bool(context)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("as_json", [False, True], ids=["text", "json"])
+async def test_http_upstream_4xx_diagnostics_reach_configured_log_output(
+    monkeypatch: pytest.MonkeyPatch,
+    as_json: bool,
+) -> None:
+    """The configured handler must emit the fields, not only retain them in LogRecord."""
+    sentinel = "SENTINEL-DO-NOT-LOG"
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {
+                        "type": "uuid_parsing",
+                        "loc": ["body", "context", "target_id"],
+                        "msg": sentinel,
+                        "input": sentinel,
+                    }
+                ]
+            },
+        )
+    )
+    monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "true")
+    root = logging.getLogger()
+    original_root = (list(root.handlers), root.level)
+    uvicorn_loggers = [
+        logging.getLogger(name) for name in ("uvicorn", "uvicorn.error", "uvicorn.access")
+    ]
+    original_uvicorn = [
+        (logger, list(logger.handlers), logger.level, logger.propagate)
+        for logger in uvicorn_loggers
+    ]
+    stream = io.StringIO()
+    try:
+        configure_logging(level="WARNING", json=as_json)
+        root.handlers[0].setStream(stream)
+        with pytest.raises(APIError):
+            await provider.authorize(
+                _build_request(),
+                Operation.RUNTIME_TOKEN_EXCHANGE,
+                context={"target_type": "log_stream", "target_id": sentinel},
+            )
+    finally:
+        root.handlers, root.level = original_root
+        for logger, handlers, level, propagate in original_uvicorn:
+            logger.handlers, logger.level, logger.propagate = handlers, level, propagate
+
+    output = stream.getvalue()
+    assert sentinel not in output
+    if as_json:
+        rendered = json.loads(output)
+        assert rendered["target_context"]["target_id"] == f"string:len={len(sentinel)}"
+        assert rendered["upstream_validation"] == {
+            "0": {"type": "uuid_parsing", "loc": "body.context.target_id"}
+        }
+        assert rendered["upstream_validation_total"] == 1
+        assert rendered["upstream_validation_status"] == "parsed"
+    else:
+        assert 'target_context={"present":"true"' in output
+        assert 'upstream_validation={"0":{"type":"uuid_parsing"' in output
+        assert "upstream_validation_total=1" in output
+        assert "upstream_validation_status=parsed" in output
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_4xx_diagnostics_omit_caller_supplied_values(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Nothing the caller supplied reaches the log, from either side."""
+    sentinel = "SENTINEL-DO-NOT-LOG"
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {
+                        "type": "enum",
+                        "loc": ["body", "context", "target_type"],
+                        "msg": f"Input should be 'log_stream', got {sentinel}",
+                        "input": sentinel,
+                        "ctx": {"expected": sentinel},
+                    }
+                ]
+            },
+        )
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError):
+            await provider.authorize(
+                _build_request(),
+                Operation.RUNTIME_TOKEN_EXCHANGE,
+                context={"target_type": sentinel, "target_id": sentinel},
+            )
+
+    record = _rejection_record(caplog)
+    assert sentinel not in record.getMessage()
+    assert sentinel not in str(record.__dict__)
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Validation paths and kinds can also echo caller-controlled data."""
+    sentinel = "SENTINEL-DO-NOT-LOG" * 100
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {
+                        "type": sentinel,
+                        "loc": ["body", "context", sentinel, "target_id", sentinel],
+                    },
+                    {"type": [sentinel], "loc": ["body", "context", "target_id"]},
+                ]
+            },
+        )
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError):
+            await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
+
+    record = _rejection_record(caplog)
+    assert record.__dict__["upstream_validation"] == {
+        "0": {"type": "other", "loc": "body.context.<other>.target_id"},
+        "1": {"type": "other", "loc": "body.context.target_id"},
+    }
+    assert sentinel not in record.getMessage()
+    assert sentinel not in str(record.__dict__)
+    assert len(record.getMessage()) < 500
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("factory", "expected_total", "expected_status"),
+    [
+        pytest.param(
+            lambda req: httpx.Response(422, text="not json"),
+            "unknown",
+            "unusable",
+            id="non-json",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(422, json={"detail": "a string, not a list"}),
+            "unknown",
+            "unusable",
+            id="detail-not-a-list",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(422, json=["top-level list"]),
+            "unknown",
+            "unusable",
+            id="body-not-an-object",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(422, json={"detail": ["bare string entry"]}),
+            1,
+            "parsed",
+            id="entry-not-an-object",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(
+                422,
+                content=b'{"detail":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}",
+            ),
+            "unknown",
+            "unusable",
+            id="deeply-nested-json",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(
+                422,
+                json={
+                    "detail": [
+                        {
+                            "type": "missing",
+                            "loc": ["body", "target_id"],
+                            "input": "x" * (64 * 1024),
+                        }
+                    ]
+                },
+            ),
+            "unknown",
+            "oversized",
+            id="oversized-validation-body",
+        ),
+    ],
+)
+async def test_http_upstream_4xx_diagnostics_tolerate_unexpected_bodies(
+    caplog: pytest.LogCaptureFixture,
+    factory,
+    expected_total: int | str,
+    expected_status: str,
+):
+    """Unexpected rejection bodies still yield 502 with an accurate count."""
+    provider = _build_upstream(factory)
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError) as exc_info:
+            await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+
+    assert exc_info.value.status_code == 502
+    record = _rejection_record(caplog)
+    assert record.__dict__["upstream_validation"] == {}
+    assert record.__dict__["upstream_validation_total"] == expected_total
+    assert f"upstream_validation_total={expected_total}" in record.getMessage()
+    assert record.__dict__["upstream_validation_status"] == expected_status
+    assert f"upstream_validation_status={expected_status}" in record.getMessage()
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_4xx_diagnostics_distinguish_empty_validation_list(
+    caplog: pytest.LogCaptureFixture,
+):
+    """An actual empty validation list has a known count of zero."""
+    provider = _build_upstream(lambda req: httpx.Response(422, json={"detail": []}))
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError):
+            await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+
+    record = _rejection_record(caplog)
+    assert record.__dict__["upstream_validation"] == {}
+    assert record.__dict__["upstream_validation_total"] == 0
+    assert record.__dict__["upstream_validation_status"] == "parsed"
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_4xx_diagnostics_bound_the_logged_error_list(
+    caplog: pytest.LogCaptureFixture,
+):
+    """A long rejection body is truncated, and the total says so."""
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {"type": "missing", "loc": ["body", f"field_{index}"]}
+                    for index in range(12)
+                ]
+            },
+        )
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError):
+            await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+
+    record = _rejection_record(caplog)
+    assert len(record.__dict__["upstream_validation"]) == 5
+    assert record.__dict__["upstream_validation_total"] == 12
+    assert record.__dict__["upstream_validation_status"] == "parsed"
 
 
 @pytest.mark.asyncio

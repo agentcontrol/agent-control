@@ -41,6 +41,7 @@ from local auth setup failures.
 
 from __future__ import annotations
 
+import json
 import ssl
 from dataclasses import dataclass
 from datetime import datetime
@@ -78,6 +79,95 @@ _AUTH_UPSTREAM_ATTEMPT_DURATION = Histogram(
     "Duration of auth upstream HTTP attempts made by Agent Control.",
     ("operation", "outcome"),
 )
+
+# Upstream rejection bodies can be arbitrarily long. Bound decoding as well as
+# logged output, and report the total when a parsed list is truncated.
+_MAX_VALIDATION_RESPONSE_BYTES = 64 * 1024
+_MAX_LOGGED_VALIDATION_ERRORS = 5
+_MAX_LOGGED_LOCATION_PARTS = 4
+_UNKNOWN_VALIDATION_TOTAL = "unknown"
+_SAFE_VALIDATION_LOCATION_PARTS = frozenset(
+    {"body", "context", "operation", "target_type", "target_id"}
+)
+_SAFE_VALIDATION_TYPES = frozenset(
+    {"enum", "literal_error", "missing", "string_type", "uuid_parsing", "uuid_type", "uuid_version"}
+)
+_MISSING = object()
+
+
+def _field_shape(value: Any) -> str:
+    """Classify a target-context field without revealing its value.
+
+    Target identifiers are caller data, so diagnostics carry only the kind of
+    value supplied. The length is included because whether an id was
+    UUID-shaped is the question these diagnostics exist to answer.
+    """
+    if value is _MISSING:
+        return "missing"
+    if value is None:
+        return "null"
+    if not isinstance(value, str):
+        return f"non_string:{type(value).__name__}"
+    if not value:
+        return "empty"
+    return f"string:len={len(value)}"
+
+
+def _target_context_shape(context: dict[str, Any] | None) -> dict[str, str]:
+    """Describe the target context passed to the upstream, values omitted."""
+    if not context:
+        return {"present": "false"}
+    return {
+        "present": "true",
+        "target_type": _field_shape(context.get("target_type", _MISSING)),
+        "target_id": _field_shape(context.get("target_id", _MISSING)),
+    }
+
+
+def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
+    """Summarize an upstream validation body by field path and error kind.
+
+    Keeps only known validation kinds and request fields. Dynamic location
+    segments, unknown kinds, ``input``, ``ctx``, and ``msg`` may contain
+    caller-supplied values and are dropped. Oversized or undecodable bodies
+    yield an empty summary with an unknown total and a reason rather than
+    changing the upstream rejection's 502.
+    """
+    if len(response.content) > _MAX_VALIDATION_RESPONSE_BYTES:
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": [], "status": "oversized"}
+    try:
+        body = response.json()
+    except (ValueError, RecursionError):
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": [], "status": "unusable"}
+
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not isinstance(detail, list):
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": [], "status": "unusable"}
+
+    errors = []
+    for item in detail[:_MAX_LOGGED_VALIDATION_ERRORS]:
+        if not isinstance(item, dict):
+            continue
+        loc = item.get("loc")
+        error_type = item.get("type")
+        errors.append(
+            {
+                "type": (
+                    error_type
+                    if isinstance(error_type, str) and error_type in _SAFE_VALIDATION_TYPES
+                    else "other"
+                ),
+                "loc": ".".join(
+                    part
+                    if isinstance(part, str) and part in _SAFE_VALIDATION_LOCATION_PARTS
+                    else "<other>"
+                    for part in loc[:_MAX_LOGGED_LOCATION_PARTS]
+                )
+                if isinstance(loc, list) and loc
+                else "unknown",
+            }
+        )
+    return {"total": len(detail), "errors": errors, "status": "parsed"}
 
 
 class _UpstreamGrant(BaseModel):
@@ -353,10 +443,31 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 hint=hint,
             )
         if 400 <= status < 500:
+            validation = _sanitized_validation_errors(response)
+            target_context = _target_context_shape(context)
+            # Orbit's JSON formatter drops list-valued extras. Index the bounded
+            # validation entries so its log record retains every type and loc.
+            upstream_validation = {
+                str(index): error for index, error in enumerate(validation["errors"])
+            }
             _logger.warning(
-                "Authorization upstream rejected operation %s with status %d",
+                "Authorization upstream rejected operation %s with status %d "
+                "target_context=%s upstream_validation=%s upstream_validation_total=%s "
+                "upstream_validation_status=%s",
                 operation.value,
                 status,
+                json.dumps(target_context, separators=(",", ":")),
+                json.dumps(upstream_validation, separators=(",", ":")),
+                validation["total"],
+                validation["status"],
+                extra={
+                    "operation": operation.value,
+                    "status_code": status,
+                    "target_context": target_context,
+                    "upstream_validation": upstream_validation,
+                    "upstream_validation_total": validation["total"],
+                    "upstream_validation_status": validation["status"],
+                },
             )
             raise APIError(
                 status_code=502,

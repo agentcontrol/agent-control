@@ -1,3 +1,4 @@
+import json
 import logging
 
 from .config import LoggingSettings
@@ -11,6 +12,34 @@ _LEVELS = {
     "NOTSET": logging.NOTSET,
 }
 _UVICORN_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"}
+_UPSTREAM_DIAGNOSTIC_FIELDS = (
+    "operation",
+    "status_code",
+    "target_context",
+    "upstream_validation",
+    "upstream_validation_total",
+    "upstream_validation_status",
+)
+
+
+class _JsonLogFormatter(logging.Formatter):
+    """Render log messages and approved upstream diagnostics as valid JSON."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, object] = {
+            "time": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "name": record.name,
+            "msg": record.getMessage(),
+        }
+        for field in _UPSTREAM_DIAGNOSTIC_FIELDS:
+            if field in record.__dict__:
+                payload[field] = record.__dict__[field]
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        if record.stack_info:
+            payload["stack_info"] = self.formatStack(record.stack_info)
+        return json.dumps(payload, default=str)
 
 
 def _normalize_level_name(level: str | None) -> str | None:
@@ -88,11 +117,6 @@ def configure_logging(
     resolved_level = level if level is not None else get_log_level_name(default_level)
     lvl = _parse_level(resolved_level)
     as_json = _parse_json(json)
-    fmt = (
-        '{"time":"%(asctime)s","level":"%(levelname)s","name":"%(name)s","msg":"%(message)s"}'
-        if as_json
-        else "%(asctime)s %(levelname)s [%(name)s] %(message)s"
-    )
     datefmt = "%Y-%m-%dT%H:%M:%S%z"
 
     root = logging.getLogger()
@@ -100,7 +124,14 @@ def configure_logging(
     for h in list(root.handlers):
         root.removeHandler(h)
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(fmt=fmt, datefmt=datefmt))
+    formatter = (
+        _JsonLogFormatter(datefmt=datefmt)
+        if as_json
+        else logging.Formatter(
+            fmt="%(asctime)s %(levelname)s [%(name)s] %(message)s", datefmt=datefmt
+        )
+    )
+    handler.setFormatter(formatter)
     root.addHandler(handler)
 
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
