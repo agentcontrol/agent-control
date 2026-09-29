@@ -441,6 +441,151 @@ def test_client_raises_when_no_api_key(monkeypatch):
         GalileoLunaClient()
 
 
+def test_client_raises_when_no_auth_mode_is_configured(monkeypatch):
+    """The client still rejects configurations with neither grant nor legacy auth."""
+    monkeypatch.delenv("GALILEO_API_KEY", raising=False)
+    monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
+    monkeypatch.delenv("GALILEO_API_SECRET", raising=False)
+    monkeypatch.delenv("GALILEO_API_KEY", raising=False)
+    monkeypatch.delenv("GALILEO_API_URL", raising=False)
+    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna-invoke:8090")
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    with pytest.raises(ValueError, match="Configure GALILEO_API_KEY"):
+        GalileoLunaClient()
+
+
+def test_evaluator_rejects_partial_grant_configuration(monkeypatch):
+    monkeypatch.setenv("GALILEO_API_KEY", "test-api-key")
+    monkeypatch.delenv("GALILEO_API_URL", raising=False)
+    monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
+    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna-invoke:8090")
+    from agent_control_evaluator_galileo.luna import LunaEvaluator
+
+    with pytest.raises(ValueError, match="GALILEO_API_KEY and GALILEO_API_URL"):
+        LunaEvaluator.from_dict({"scorer_id": "scorer-123"})
+
+
+@pytest.mark.parametrize(
+    ("target_type", "target_id", "message"),
+    [
+        (None, None, "supplied together"),
+        ("log_stream", None, "supplied together"),
+        ("trace", "run-123", "target_type='log_stream'"),
+        ("log_stream", "  ", "non-empty log-stream ID"),
+    ],
+)
+def test_run_id_from_target_rejects_invalid_target(target_type, target_id, message):
+    from agent_control_evaluator_galileo.luna.client import _run_id_from_target
+
+    with pytest.raises(ValueError, match=message):
+        _run_id_from_target(target_type, target_id)
+
+
+@pytest.mark.asyncio
+async def test_scorer_grant_exchange_is_rejected_in_legacy_mode(monkeypatch):
+    monkeypatch.delenv("GALILEO_API_KEY", raising=False)
+    monkeypatch.delenv("GALILEO_API_URL", raising=False)
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "legacy-secret")
+    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna-invoke:8090")
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    client = GalileoLunaClient()
+    with pytest.raises(RuntimeError, match="unavailable in legacy Luna auth mode"):
+        await client._get_scorer_grant(target_type="log_stream", run_id=TEST_RUN_ID)
+
+
+def test_legacy_auth_header_is_unavailable_in_scorer_grant_mode(monkeypatch):
+    for key, value in LUNA_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    client = GalileoLunaClient()
+    with pytest.raises(RuntimeError, match="Legacy Luna auth is unavailable"):
+        client._endpoint_and_auth_header()
+
+
+@pytest.mark.asyncio
+async def test_scorer_grant_exchange_refreshes_naive_expiration(monkeypatch):
+    for key, value in LUNA_ENV.items():
+        monkeypatch.setenv(key, value)
+    from datetime import datetime, timedelta
+
+    from agent_control_evaluator_galileo.luna import client as luna_client
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient, _ScorerGrant
+
+    client = GalileoLunaClient()
+    cache_key = (
+        client.orbit_url,
+        "log_stream",
+        TEST_RUN_ID,
+        luna_client.sha256(client.api_key.encode("utf-8")).hexdigest(),
+    )
+    luna_client._scorer_grant_cache[cache_key] = _ScorerGrant(
+        token="expired-grant",
+        expires_at=datetime.now() - timedelta(seconds=1),
+    )
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(_mock_grant_response)
+    )
+
+    try:
+        assert await client._get_scorer_grant(
+            target_type="log_stream", run_id=TEST_RUN_ID
+        ) == "coverage-test-grant"
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (["not", "an", "object"], "JSON object"),
+        ({"expires_at": "2099-01-01T00:00:00Z"}, "'grant'"),
+        ({"grant": "test-grant"}, "'expires_at'"),
+        ({"grant": "test-grant", "expires_at": "2000-01-01T00:00:00Z"}, "already expired"),
+    ],
+)
+async def test_scorer_grant_exchange_rejects_invalid_responses(monkeypatch, payload, message):
+    for key, value in LUNA_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=payload)
+
+    client = GalileoLunaClient()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        with pytest.raises(RuntimeError, match=f"Invalid Orbit scorer grant response.*{message}"):
+            await client._get_scorer_grant(target_type="log_stream", run_id=TEST_RUN_ID)
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_scorer_grant_exchange_accepts_naive_expiration(monkeypatch):
+    for key, value in LUNA_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"grant": "naive-expiry-grant", "expires_at": "2099-01-01T00:00:00"},
+        )
+
+    client = GalileoLunaClient()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    try:
+        assert await client._get_scorer_grant(
+            target_type="log_stream", run_id=TEST_RUN_ID
+        ) == "naive-expiry-grant"
+    finally:
+        await client.close()
+
+
 def test_client_raises_when_no_luna_invoke_url(monkeypatch):
     """The client requires GALILEO_LUNA_INVOKE_URL."""
     monkeypatch.setenv("GALILEO_API_KEY", "test-api-key")
