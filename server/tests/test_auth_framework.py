@@ -708,7 +708,7 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
     caplog: pytest.LogCaptureFixture,
 ):
     """Validation paths and kinds can also echo caller-controlled data."""
-    sentinel = "SENTINEL-DO-NOT-LOG" * 1000
+    sentinel = "SENTINEL-DO-NOT-LOG" * 100
     provider = _build_upstream(
         lambda req: httpx.Response(
             422,
@@ -754,6 +754,28 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
         pytest.param(
             lambda req: httpx.Response(422, json={"detail": ["bare string entry"]}),
             id="entry-not-an-object",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(
+                422,
+                content=b'{"detail":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}",
+            ),
+            id="deeply-nested-json",
+        ),
+        pytest.param(
+            lambda req: httpx.Response(
+                422,
+                json={
+                    "detail": [
+                        {
+                            "type": "missing",
+                            "loc": ["body", "target_id"],
+                            "input": "x" * (64 * 1024),
+                        }
+                    ]
+                },
+            ),
+            id="oversized-validation-body",
         ),
     ],
 )

@@ -80,8 +80,9 @@ _AUTH_UPSTREAM_ATTEMPT_DURATION = Histogram(
     ("operation", "outcome"),
 )
 
-# Upstream rejection bodies can be arbitrarily long. Log a bounded prefix and
-# report the total separately so a truncated list never reads as complete.
+# Upstream rejection bodies can be arbitrarily long. Bound decoding as well as
+# logged output, and report the total when a parsed list is truncated.
+_MAX_VALIDATION_RESPONSE_BYTES = 64 * 1024
 _MAX_LOGGED_VALIDATION_ERRORS = 5
 _MAX_LOGGED_LOCATION_PARTS = 4
 _SAFE_VALIDATION_LOCATION_PARTS = frozenset(
@@ -127,13 +128,14 @@ def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
 
     Keeps only known validation kinds and request fields. Dynamic location
     segments, unknown kinds, ``input``, ``ctx``, and ``msg`` may contain
-    caller-supplied values and are dropped. Never raises: the
-    body is an external service's output, so an unexpected shape degrades to
-    an empty summary rather than turning a 502 into a 500.
+    caller-supplied values and are dropped. Oversized or undecodable bodies
+    yield an empty summary rather than changing the upstream rejection's 502.
     """
+    if len(response.content) > _MAX_VALIDATION_RESPONSE_BYTES:
+        return {"total": 0, "errors": []}
     try:
         body = response.json()
-    except ValueError:
+    except (ValueError, RecursionError):
         return {"total": 0, "errors": []}
 
     detail = body.get("detail") if isinstance(body, dict) else None
