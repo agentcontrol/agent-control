@@ -85,6 +85,7 @@ _AUTH_UPSTREAM_ATTEMPT_DURATION = Histogram(
 _MAX_VALIDATION_RESPONSE_BYTES = 64 * 1024
 _MAX_LOGGED_VALIDATION_ERRORS = 5
 _MAX_LOGGED_LOCATION_PARTS = 4
+_UNKNOWN_VALIDATION_TOTAL = "unknown"
 _SAFE_VALIDATION_LOCATION_PARTS = frozenset(
     {"body", "context", "operation", "target_type", "target_id"}
 )
@@ -129,18 +130,19 @@ def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
     Keeps only known validation kinds and request fields. Dynamic location
     segments, unknown kinds, ``input``, ``ctx``, and ``msg`` may contain
     caller-supplied values and are dropped. Oversized or undecodable bodies
-    yield an empty summary rather than changing the upstream rejection's 502.
+    yield an empty summary with an unknown total rather than changing the
+    upstream rejection's 502.
     """
     if len(response.content) > _MAX_VALIDATION_RESPONSE_BYTES:
-        return {"total": 0, "errors": []}
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": []}
     try:
         body = response.json()
     except (ValueError, RecursionError):
-        return {"total": 0, "errors": []}
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": []}
 
     detail = body.get("detail") if isinstance(body, dict) else None
     if not isinstance(detail, list):
-        return {"total": 0, "errors": []}
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": []}
 
     errors = []
     for item in detail[:_MAX_LOGGED_VALIDATION_ERRORS]:
@@ -450,7 +452,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             }
             _logger.warning(
                 "Authorization upstream rejected operation %s with status %d "
-                "target_context=%s upstream_validation=%s upstream_validation_total=%d",
+                "target_context=%s upstream_validation=%s upstream_validation_total=%s",
                 operation.value,
                 status,
                 json.dumps(target_context, separators=(",", ":")),

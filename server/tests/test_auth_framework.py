@@ -740,19 +740,22 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "factory",
+    ("factory", "expected_total"),
     [
-        pytest.param(lambda req: httpx.Response(422, text="not json"), id="non-json"),
+        pytest.param(lambda req: httpx.Response(422, text="not json"), "unknown", id="non-json"),
         pytest.param(
             lambda req: httpx.Response(422, json={"detail": "a string, not a list"}),
+            "unknown",
             id="detail-not-a-list",
         ),
         pytest.param(
             lambda req: httpx.Response(422, json=["top-level list"]),
+            "unknown",
             id="body-not-an-object",
         ),
         pytest.param(
             lambda req: httpx.Response(422, json={"detail": ["bare string entry"]}),
+            1,
             id="entry-not-an-object",
         ),
         pytest.param(
@@ -760,6 +763,7 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
                 422,
                 content=b'{"detail":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}",
             ),
+            "unknown",
             id="deeply-nested-json",
         ),
         pytest.param(
@@ -775,6 +779,7 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
                     ]
                 },
             ),
+            "unknown",
             id="oversized-validation-body",
         ),
     ],
@@ -782,8 +787,9 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
 async def test_http_upstream_4xx_diagnostics_tolerate_unexpected_bodies(
     caplog: pytest.LogCaptureFixture,
     factory,
+    expected_total: int | str,
 ):
-    """An unparseable rejection body still yields a 502, never a 500."""
+    """Unexpected rejection bodies still yield 502 with an accurate count."""
     provider = _build_upstream(factory)
 
     with caplog.at_level(logging.WARNING):
@@ -791,7 +797,26 @@ async def test_http_upstream_4xx_diagnostics_tolerate_unexpected_bodies(
             await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
 
     assert exc_info.value.status_code == 502
-    assert _rejection_record(caplog).__dict__["upstream_validation"] == {}
+    record = _rejection_record(caplog)
+    assert record.__dict__["upstream_validation"] == {}
+    assert record.__dict__["upstream_validation_total"] == expected_total
+    assert f"upstream_validation_total={expected_total}" in record.getMessage()
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_4xx_diagnostics_distinguish_empty_validation_list(
+    caplog: pytest.LogCaptureFixture,
+):
+    """An actual empty validation list has a known count of zero."""
+    provider = _build_upstream(lambda req: httpx.Response(422, json={"detail": []}))
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError):
+            await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+
+    record = _rejection_record(caplog)
+    assert record.__dict__["upstream_validation"] == {}
+    assert record.__dict__["upstream_validation_total"] == 0
 
 
 @pytest.mark.asyncio
