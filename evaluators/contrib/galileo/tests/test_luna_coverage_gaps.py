@@ -7,22 +7,33 @@ integration-style tests in ``test_luna_evaluator.py`` skip past.
 from __future__ import annotations
 
 import json
-from base64 import urlsafe_b64decode
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
 LUNA_ENV = {
-    "GALILEO_API_SECRET_KEY": "test-secret",
+    "GALILEO_API_KEY": "test-api-key",
+    "GALILEO_API_URL": "http://orbit:8088",
     "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
 }
+TEST_RUN_ID = "coverage-run"
 
 
-def _decode_jwt_payload(token: str) -> dict[str, object]:
-    payload_segment = token.split(".")[1]
-    padded = payload_segment + ("=" * (-len(payload_segment) % 4))
-    return json.loads(urlsafe_b64decode(padded.encode()).decode())
+@pytest.fixture(autouse=True)
+def _clear_scorer_grant_cache() -> None:
+    from agent_control_evaluator_galileo.luna import client as luna_client
+
+    luna_client._scorer_grant_cache.clear()
+
+
+def _mock_grant_response(request: httpx.Request) -> httpx.Response | None:
+    if request.url.path == "/internal/auth/scorer_grant":
+        return httpx.Response(
+            200,
+            json={"grant": "coverage-test-grant", "expires_at": "2099-01-01T00:00:00Z"},
+        )
+    return None
 
 
 # =============================================================================
@@ -419,20 +430,21 @@ class TestScorerInvokeRequestValidation:
             ScorerInvokeRequest(inputs=ScorerInvokeInputs(query="hello"))
 
 
-def test_client_raises_when_no_api_secret(monkeypatch):
-    """The client requires GALILEO_API_SECRET_KEY or GALILEO_API_SECRET."""
-    for name in ("GALILEO_API_SECRET_KEY", "GALILEO_API_SECRET"):
-        monkeypatch.delenv(name, raising=False)
+def test_client_raises_when_no_api_key(monkeypatch):
+    """The client requires the application API key for grant exchange."""
+    monkeypatch.delenv("GALILEO_API_KEY", raising=False)
+    monkeypatch.setenv("GALILEO_API_URL", "http://orbit:8088")
     monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna-invoke:8090")
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
-    with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_SECRET"):
+    with pytest.raises(ValueError, match="GALILEO_API_KEY"):
         GalileoLunaClient()
 
 
 def test_client_raises_when_no_luna_invoke_url(monkeypatch):
     """The client requires GALILEO_LUNA_INVOKE_URL."""
-    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GALILEO_API_KEY", "test-api-key")
+    monkeypatch.setenv("GALILEO_API_URL", "http://orbit:8088")
     monkeypatch.delenv("GALILEO_LUNA_INVOKE_URL", raising=False)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
@@ -440,31 +452,24 @@ def test_client_raises_when_no_luna_invoke_url(monkeypatch):
         GalileoLunaClient()
 
 
-def test_client_jwt_has_internal_scope(monkeypatch):
-    """JWT produced by the client must carry internal=True and scope=scorers.invoke."""
+def test_client_targets_the_orbit_grant_endpoint(monkeypatch):
+    """Grant exchange uses Orbit's credential-passthrough endpoint."""
     for key, value in LUNA_ENV.items():
         monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
-    _, auth_header = client._endpoint_and_auth_header()
-
-    assert auth_header.startswith("Bearer ")
-    payload = _decode_jwt_payload(auth_header.removeprefix("Bearer "))
-    assert payload["internal"] is True
-    assert payload["scope"] == "scorers.invoke"
+    assert client.scorer_grant_url == "http://orbit:8088/internal/auth/scorer_grant"
 
 
 def test_client_posts_to_correct_luna_invoke_endpoint(monkeypatch):
-    """_endpoint_and_auth_header must return the Luna invoke endpoint path."""
+    """The runner endpoint remains the configured Luna invoke path."""
     for key, value in LUNA_ENV.items():
         monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
-    endpoint, _ = client._endpoint_and_auth_header()
-
-    assert endpoint == "http://luna-invoke:8090/api/v1/scorers/invoke"
+    assert client.luna_invoke_url == "http://luna-invoke:8090/api/v1/scorers/invoke"
 
 
 def test_client_does_not_use_old_api_paths(monkeypatch):
@@ -474,11 +479,9 @@ def test_client_does_not_use_old_api_paths(monkeypatch):
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
-    endpoint, _ = client._endpoint_and_auth_header()
-
-    assert "/scorers/invoke" in endpoint
-    assert endpoint.startswith("http://luna-invoke:8090/api/v1/")
-    assert "/internal/scorers/invoke" not in endpoint
+    assert "/scorers/invoke" in client.luna_invoke_url
+    assert client.luna_invoke_url.startswith("http://luna-invoke:8090/api/v1/")
+    assert "/internal/scorers/invoke" not in client.luna_invoke_url
 
 
 @pytest.mark.asyncio
@@ -554,13 +557,23 @@ async def test_invoke_raises_when_response_is_not_a_json_object(monkeypatch):
     fake_response.json = MagicMock(return_value=["not", "an", "object"])
 
     fake_http = AsyncMock()
-    fake_http.post = AsyncMock(return_value=fake_response)
+    grant_response = MagicMock()
+    grant_response.raise_for_status = MagicMock()
+    grant_response.json = MagicMock(
+        return_value={"grant": "test-grant", "expires_at": "2099-01-01T00:00:00Z"}
+    )
+    fake_http.post = AsyncMock(side_effect=[grant_response, fake_response])
     fake_http.is_closed = False
     client._client = fake_http
 
     try:
         with pytest.raises(RuntimeError, match="not a JSON object"):
-            await client.invoke(scorer_id="scorer-123", input="hello")
+            await client.invoke(
+                scorer_id="scorer-123",
+                input="hello",
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
     finally:
         await client.close()
 
@@ -584,13 +597,23 @@ async def test_invoke_propagates_http_status_error(monkeypatch):
     )
 
     fake_http = AsyncMock()
-    fake_http.post = AsyncMock(return_value=fake_response)
+    grant_response = MagicMock()
+    grant_response.raise_for_status = MagicMock()
+    grant_response.json = MagicMock(
+        return_value={"grant": "test-grant", "expires_at": "2099-01-01T00:00:00Z"}
+    )
+    fake_http.post = AsyncMock(side_effect=[grant_response, fake_response])
     fake_http.is_closed = False
     client._client = fake_http
 
     try:
         with pytest.raises(httpx.HTTPStatusError):
-            await client.invoke(scorer_id="scorer-123", input="hello")
+            await client.invoke(
+                scorer_id="scorer-123",
+                input="hello",
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
     finally:
         await client.close()
 
@@ -611,7 +634,12 @@ async def test_invoke_propagates_request_error(monkeypatch):
 
     try:
         with pytest.raises(httpx.RequestError):
-            await client.invoke(scorer_id="scorer-123", input="hello")
+            await client.invoke(
+                scorer_id="scorer-123",
+                input="hello",
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
     finally:
         await client.close()
 
@@ -640,6 +668,9 @@ async def test_invoke_strips_caller_supplied_galileo_api_key_header(monkeypatch)
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        grant_response = _mock_grant_response(request)
+        if grant_response is not None:
+            return grant_response
         captured["headers"] = dict(request.headers)
         return httpx.Response(200, json={"score": 0.9, "status": "success"})
 
@@ -651,6 +682,7 @@ async def test_invoke_strips_caller_supplied_galileo_api_key_header(monkeypatch)
             scorer_id="scorer-123",
             input="hello",
             headers={"Galileo-API-Key": "should-be-stripped", "X-Custom": "keep-me"},
+            target_type="log_stream", target_id=TEST_RUN_ID,
         )
     finally:
         await client.close()
@@ -671,6 +703,9 @@ async def test_invoke_always_emits_config_field(monkeypatch):
     captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        grant_response = _mock_grant_response(request)
+        if grant_response is not None:
+            return grant_response
         captured["body"] = json.loads(request.content.decode())
         return httpx.Response(200, json={"score": 0.5, "status": "success"})
 
@@ -678,7 +713,12 @@ async def test_invoke_always_emits_config_field(monkeypatch):
     client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
     try:
-        await client.invoke(scorer_id="scorer-123", input="hello")
+        await client.invoke(
+            scorer_id="scorer-123",
+            input="hello",
+            target_type="log_stream",
+            target_id=TEST_RUN_ID,
+        )
     finally:
         await client.close()
 

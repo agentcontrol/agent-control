@@ -178,6 +178,31 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
         """
         return await self.evaluate(data)
 
+    async def evaluate_with_request_context(
+        self,
+        data: Any,
+        step: Step,
+        *,
+        target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> EvaluatorResult:
+        """Evaluate selected data with step and opaque request target metadata.
+
+        The default implementation delegates to :meth:`evaluate_with_context`
+        so existing evaluators that override that hook keep working unchanged.
+
+        Args:
+            data: Data extracted by the configured selector.
+            step: Complete runtime step for the current request.
+            target_type: Optional target kind attached to the evaluation request.
+            target_id: Optional opaque target ID attached to the evaluation request.
+
+        Returns:
+            EvaluatorResult produced by this evaluator.
+        """
+        del target_type, target_id
+        return await self.evaluate_with_context(data, step)
+
     def get_timeout_seconds(self) -> float:
         """Get timeout in seconds from config or metadata default."""
         timeout_ms: int = getattr(self.config, "timeout_ms", self.metadata.timeout_ms)

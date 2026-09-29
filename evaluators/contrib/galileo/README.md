@@ -9,10 +9,17 @@ The `galileo.luna2` evaluator ID has been removed. Existing controls that use
 configuration to use the direct Luna scorer fields. `scorer_id` is required;
 `scorer_label` and `scorer_version_id` are optional. `scorer_version_id` is a
 deprecated optional compatibility identifier; Orbit currently invokes the
-scorer's current default version. The evaluator calls the
-URL configured by `GALILEO_LUNA_INVOKE_URL`; the target must support the Luna
-scorer invoke request/response contract and internal Galileo secret auth. Also
-set `threshold` and `operator` as needed. If you still need the legacy Luna2
+scorer's current default version. When `GALILEO_API_KEY` and `GALILEO_API_URL`
+are both configured, an invoked evaluator exchanges the application key for
+one short-lived Orbit scorer grant scoped to the `target_id` on the Agent
+Control evaluation request. Configure `agent_control.init()` with
+`target_type="log_stream"` and that run's `target_id`; Orbit receives the ID as
+`run_id`. The grant is reused across scorers for that run and sent to the Luna
+invoke URL configured by `GALILEO_LUNA_INVOKE_URL`. The application key is
+sent only to Orbit. If only
+`GALILEO_API_SECRET_KEY` or `GALILEO_API_SECRET` is configured, the legacy
+internal JWT flow remains active and does not request a scorer grant. Also set
+`threshold` and `operator` as needed. If you still need the legacy Luna2
 evaluator, pin
 `agent-control-evaluator-galileo <8`.
 

@@ -7,6 +7,7 @@ import os
 import ssl
 from asyncio import Lock
 from base64 import urlsafe_b64encode
+from datetime import UTC, datetime
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
@@ -26,7 +27,12 @@ DEFAULT_TIMEOUT_SECS = 10.0
 SERVER_TIMEOUT_RATIO = 0.8
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 DEFAULT_LUNA_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
+SCORER_GRANT_PATH = "/internal/auth/scorer_grant"
 LUNA_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
+ORBIT_API_URL_ENV = "GALILEO_API_URL"
+GALILEO_API_KEY_ENV = "GALILEO_API_KEY"
+GALILEO_API_SECRET_KEY_ENV = "GALILEO_API_SECRET_KEY"
+GALILEO_API_SECRET_ENV = "GALILEO_API_SECRET"
 LUNA_INVOKE_CA_FILE_ENV = "GALILEO_LUNA_INVOKE_CA_FILE"
 AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
@@ -59,6 +65,20 @@ ScorerInvokeRecordType = Literal[
 SUPPORTED_SCORER_INVOKE_RECORD_TYPES = frozenset(get_args(ScorerInvokeRecordType))
 
 
+def _normalize_luna_invoke_url(raw_url: str) -> str:
+    """Use full invoke URLs as-is and append the default path to bare service roots."""
+    url = raw_url.strip().rstrip("/")
+    parsed = urlsplit(url)
+    if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+        return url
+    return f"{url}{DEFAULT_LUNA_SCORER_INVOKE_PATH}"
+
+
+def _normalize_orbit_url(raw_url: str) -> str:
+    """Normalize the configured Galileo API root used for grant exchange."""
+    return raw_url.strip().rstrip("/")
+
+
 def _b64url(data: bytes) -> str:
     return urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
@@ -67,7 +87,7 @@ def _internal_auth_token(
     api_secret: str,
     ttl_seconds: int = DEFAULT_INTERNAL_TOKEN_TTL_SECS,
 ) -> str:
-    """Create the internal JWT expected by Luna scorer invoke routes."""
+    """Create the legacy internal JWT expected by Luna scorer invoke routes."""
     now = int(time())
     header = {"alg": "HS256", "typ": "JWT"}
     payload = {
@@ -86,13 +106,27 @@ def _internal_auth_token(
     return f"{signing_input}.{_b64url(signature)}"
 
 
-def _normalize_luna_invoke_url(raw_url: str) -> str:
-    """Use full invoke URLs as-is and append the default path to bare service roots."""
-    url = raw_url.strip().rstrip("/")
-    parsed = urlsplit(url)
-    if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
-        return url
-    return f"{url}{DEFAULT_LUNA_SCORER_INVOKE_PATH}"
+def _run_id_from_target(target_type: str | None, target_id: str | None) -> str:
+    """Resolve the Orbit run ID from Agent Control's opaque evaluation target."""
+    if target_type is None or target_id is None:
+        raise ValueError("target_type and target_id must be supplied together for scorer grants.")
+    if target_type != "log_stream":
+        raise ValueError("Galileo scorer grants require target_type='log_stream'.")
+    resolved_target_id = target_id.strip()
+    if not resolved_target_id:
+        raise ValueError("target_id must be a non-empty log-stream ID for scorer grants.")
+    return resolved_target_id
+
+
+class _ScorerGrant(BaseModel):
+    """Orbit-issued grant and its expiration time."""
+
+    token: str
+    expires_at: datetime
+
+
+_scorer_grant_cache: dict[tuple[str, str, str, str], _ScorerGrant] = {}
+_scorer_grant_cache_lock = Lock()
 
 
 def _load_float_env(env_name: str, default: float) -> float:
@@ -337,7 +371,9 @@ class GalileoLunaClient:
     """Thin HTTP client for Galileo Luna scorer invocation.
 
     Environment Variables:
-        GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: JWT signing secret for internal auth.
+        GALILEO_API_KEY and GALILEO_API_URL: Application API key and Galileo API
+            root for Orbit grant exchange. Both must be configured together.
+        GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: Legacy internal JWT secret.
         GALILEO_LUNA_INVOKE_URL: Luna scorer invoke URL or service root (required).
         GALILEO_LUNA_INVOKE_CA_FILE: CA bundle used to verify Luna invoke TLS.
         AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE: Shared internal CA fallback.
@@ -352,12 +388,19 @@ class GalileoLunaClient:
         api_secret: str | None = None,
         luna_invoke_url: str | None = None,
         luna_invoke_ca_file: str | None = None,
+        *,
+        api_key: str | None = None,
+        orbit_url: str | None = None,
     ) -> None:
         """Initialize the Galileo Luna client.
 
         Args:
-            api_secret: Internal JWT signing secret. If not provided, reads from
-                GALILEO_API_SECRET_KEY or GALILEO_API_SECRET.
+            api_key: Galileo application API key. If not provided, reads from
+                GALILEO_API_KEY. The key is sent only to Orbit's grant endpoint.
+            orbit_url: Galileo API root. If not provided, reads from GALILEO_API_URL.
+            api_secret: Legacy internal JWT secret. If not provided, reads from
+                GALILEO_API_SECRET_KEY or GALILEO_API_SECRET. New grant credentials
+                take precedence when both modes are configured.
             luna_invoke_url: Luna scorer invoke URL or service root. If not provided,
                 reads from GALILEO_LUNA_INVOKE_URL.
             luna_invoke_ca_file: Optional CA bundle used to verify Luna invoke TLS. If not
@@ -365,17 +408,29 @@ class GalileoLunaClient:
                 AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE.
 
         Raises:
-            ValueError: If the API secret, Luna invoke URL, CA bundle, or connection
-                tuning configuration is invalid.
+            ValueError: If the grant credentials are incomplete, neither auth mode is
+                configured, or the Luna URL, CA bundle, or connection tuning is invalid.
         """
-        resolved_api_secret = (
-            api_secret or os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
-        )
-        if not resolved_api_secret:
+        configured_api_key = api_key if api_key is not None else os.getenv(GALILEO_API_KEY_ENV)
+        configured_orbit_url = orbit_url if orbit_url is not None else os.getenv(ORBIT_API_URL_ENV)
+        has_api_key = bool(configured_api_key and configured_api_key.strip())
+        has_orbit_url = bool(configured_orbit_url and configured_orbit_url.strip())
+        if has_api_key != has_orbit_url:
             raise ValueError(
-                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for Luna "
-                "scorer invocation. Set one as an environment variable or pass it "
-                "to the constructor."
+                "GALILEO_API_KEY and GALILEO_API_URL must be configured together "
+                "for scorer-grant authentication."
+            )
+
+        resolved_api_secret = (
+            api_secret
+            or os.getenv(GALILEO_API_SECRET_KEY_ENV)
+            or os.getenv(GALILEO_API_SECRET_ENV)
+        )
+        if not has_api_key and not resolved_api_secret:
+            raise ValueError(
+                "Configure GALILEO_API_KEY with GALILEO_API_URL for scorer-grant "
+                "authentication, or set GALILEO_API_SECRET_KEY or GALILEO_API_SECRET "
+                "for legacy Luna authentication."
             )
 
         resolved_luna_invoke_url = luna_invoke_url or os.getenv(LUNA_INVOKE_URL_ENV)
@@ -385,7 +440,17 @@ class GalileoLunaClient:
                 "Set it as an environment variable or pass it to the constructor."
             )
 
+        self.api_key = configured_api_key.strip() if configured_api_key else None
         self.api_secret = resolved_api_secret
+        self.auth_mode: Literal["scorer_grant", "legacy"] = (
+            "scorer_grant" if has_api_key else "legacy"
+        )
+        self.orbit_url = (
+            _normalize_orbit_url(configured_orbit_url) if configured_orbit_url else None
+        )
+        self.scorer_grant_url = (
+            f"{self.orbit_url}{SCORER_GRANT_PATH}" if self.orbit_url is not None else None
+        )
         self.luna_invoke_url = _normalize_luna_invoke_url(resolved_luna_invoke_url)
         self.luna_invoke_ca_file = (
             luna_invoke_ca_file
@@ -461,7 +526,58 @@ class GalileoLunaClient:
 
             return self._select_pooled_client()
 
+    async def _get_scorer_grant(self, *, target_type: str, run_id: str) -> str:
+        """Exchange the application key for a cached Orbit-issued run grant."""
+        if self.auth_mode != "scorer_grant" or self.api_key is None or self.orbit_url is None:
+            raise RuntimeError("Scorer-grant exchange is unavailable in legacy Luna auth mode.")
+        caller_context = sha256(self.api_key.encode("utf-8")).hexdigest()
+        cache_key = (self.orbit_url, target_type, run_id, caller_context)
+
+        async with _scorer_grant_cache_lock:
+            cached = _scorer_grant_cache.get(cache_key)
+            now = datetime.now(tz=UTC)
+            if cached is not None:
+                expires_at = cached.expires_at
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=UTC)
+                if expires_at > now:
+                    return cached.token
+                _scorer_grant_cache.pop(cache_key, None)
+
+            client = await self._get_client()
+            response = await client.post(
+                f"{self.orbit_url}{SCORER_GRANT_PATH}",
+                json={"target_type": target_type, "run_id": run_id},
+                headers={"Galileo-API-Key": self.api_key},
+                timeout=DEFAULT_TIMEOUT_SECS,
+            )
+            response.raise_for_status()
+            try:
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("response must be a JSON object")
+                grant_value = payload.get("grant")
+                expires_value = payload.get("expires_at")
+                if not isinstance(grant_value, str) or not grant_value.strip():
+                    raise ValueError("response field 'grant' must be a non-empty string")
+                if not isinstance(expires_value, str):
+                    raise ValueError("response field 'expires_at' must be an ISO timestamp")
+                expires_at = datetime.fromisoformat(expires_value.replace("Z", "+00:00"))
+                if expires_at.tzinfo is None:
+                    expires_at = expires_at.replace(tzinfo=UTC)
+                if expires_at <= datetime.now(tz=UTC):
+                    raise ValueError("response grant is already expired")
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(f"Invalid Orbit scorer grant response: {exc}") from exc
+
+            grant = _ScorerGrant(token=grant_value, expires_at=expires_at)
+            _scorer_grant_cache[cache_key] = grant
+            return grant.token
+
     def _endpoint_and_auth_header(self) -> tuple[str, str]:
+        """Return the invoke endpoint and legacy bearer token."""
+        if self.auth_mode != "legacy" or self.api_secret is None:
+            raise RuntimeError("Legacy Luna auth is unavailable in scorer-grant mode.")
         token = _internal_auth_token(self.api_secret)
         return self.luna_invoke_url, f"Bearer {token}"
 
@@ -477,6 +593,8 @@ class GalileoLunaClient:
         config: ScorerInvokeConfig | JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
     ) -> ScorerInvokeResponse:
         """Invoke a Galileo Luna scorer.
 
@@ -491,6 +609,9 @@ class GalileoLunaClient:
             config: Optional Orbit-supported scorer invocation configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
+            target_type: Opaque evaluation target kind. Grant mode supports
+                ``log_stream`` and uses ``target_id`` as Orbit's run ID.
+            target_id: Opaque evaluation target ID supplied by Agent Control.
 
         Returns:
             Parsed scorer invocation response.
@@ -534,19 +655,28 @@ class GalileoLunaClient:
             config=invoke_config,
         ).to_dict()
 
-        endpoint, auth_header = self._endpoint_and_auth_header()
+        if self.auth_mode == "scorer_grant":
+            resolved_run_id = _run_id_from_target(target_type, target_id)
+            assert target_type is not None
+            scorer_grant = await self._get_scorer_grant(
+                target_type=target_type,
+                run_id=resolved_run_id,
+            )
+            auth_header = f"Bearer {scorer_grant}"
+        else:
+            _, auth_header = self._endpoint_and_auth_header()
         request_headers = {
             k: v for k, v in (headers or {}).items() if k.lower() not in _BLOCKED_REQUEST_HEADERS
         }
         request_headers["Authorization"] = auth_header
 
-        logger.debug("[GalileoLunaClient] POST %s", endpoint)
+        logger.debug("[GalileoLunaClient] POST %s", self.luna_invoke_url)
         logger.debug("[GalileoLunaClient] Request body: %s", request_body)
 
         try:
             client = await self._get_client()
             response = await client.post(
-                endpoint,
+                self.luna_invoke_url,
                 json=request_body,
                 headers=request_headers,
                 timeout=timeout,

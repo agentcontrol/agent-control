@@ -39,7 +39,7 @@ class SimpleConfig(BaseModel):
 # Shared state for coordination between test evaluators
 _execution_log: list[str] = []
 _blocker_event: asyncio.Event | None = None
-_context_calls: list[tuple[Any, Step]] = []
+_context_calls: list[tuple[Any, Step, str | None, str | None]] = []
 
 
 def reset_test_state() -> None:
@@ -178,8 +178,15 @@ class ContextEvaluator(Evaluator[SimpleConfig]):
     async def evaluate(self, data: Any) -> EvaluatorResult:
         raise AssertionError("engine should call evaluate_with_context")
 
-    async def evaluate_with_context(self, data: Any, step: Step) -> EvaluatorResult:
-        _context_calls.append((data, step))
+    async def evaluate_with_request_context(
+        self,
+        data: Any,
+        step: Step,
+        *,
+        target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> EvaluatorResult:
+        _context_calls.append((data, step, target_type, target_id))
         return EvaluatorResult(matched=False, confidence=1.0, message="context received")
 
 
@@ -296,11 +303,13 @@ async def test_context_evaluator_receives_selected_data_and_complete_step() -> N
             agent_name="00000000-0000-0000-0000-000000000001",
             step=step,
             stage="pre",
+            target_type="log_stream",
+            target_id="run-1",
         )
     )
 
     # Then: selector behavior is unchanged and the complete Step is separate
-    assert _context_calls == [("answer", step)]
+    assert _context_calls == [("answer", step, "log_stream", "run-1")]
 
 
 @pytest.mark.asyncio
@@ -331,7 +340,7 @@ async def test_cached_context_evaluator_handles_concurrent_steps_without_retaini
     )
 
     # Then: each selected value remains paired with its own full Step
-    assert {(data, step.ground_truth) for data, step in _context_calls} == {
+    assert {(data, step.ground_truth) for data, step, _, _ in _context_calls} == {
         ("first", "one"),
         ("second", "two"),
     }

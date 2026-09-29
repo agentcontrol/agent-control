@@ -5,7 +5,7 @@ Prerequisites:
     1. Start server: make server-run
     2. Create controls: uv run python setup_controls.py
     3. Set Galileo credentials where this script runs:
-       GALILEO_API_SECRET_KEY or GALILEO_API_SECRET
+       GALILEO_API_KEY and GALILEO_API_URL, or a legacy API secret
        GALILEO_LUNA_INVOKE_URL
 
 Usage:
@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import os
@@ -72,12 +73,14 @@ async def run_case(label: str, message: str) -> None:
             print(f"Metadata: {exc.metadata}")
 
 
-def init_agent() -> None:
+def init_agent(target_id: str) -> None:
     """Initialize Agent Control and fetch controls created by setup_controls.py."""
     agent_control.init(
         agent_name=AGENT_NAME,
         agent_description="Demo agent protected by direct Galileo Luna scorer controls",
         server_url=SERVER_URL,
+        target_type="log_stream",
+        target_id=target_id,
         steps=[
             {
                 "type": "llm",
@@ -90,15 +93,20 @@ def init_agent() -> None:
     )
 
 
-async def run_demo() -> None:
+async def run_demo(target_id: str) -> None:
     """Run scripted scenarios."""
-    api_secret = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
+    api_key = os.getenv("GALILEO_API_KEY")
+    api_url = os.getenv("GALILEO_API_URL")
+    legacy_secret = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
     luna_invoke_url = os.getenv("GALILEO_LUNA_INVOKE_URL")
 
-    if not api_secret:
+    if bool(api_key) != bool(api_url):
+        print("GALILEO_API_KEY and GALILEO_API_URL must be set together.")
+        return
+    if not ((api_key and api_url) or legacy_secret):
         print(
-            "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for the "
-            "galileo.luna evaluator."
+            "Set GALILEO_API_KEY and GALILEO_API_URL, or configure "
+            "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET."
         )
         return
     if not luna_invoke_url:
@@ -111,9 +119,10 @@ async def run_demo() -> None:
     print(f"Server:      {SERVER_URL}")
     print(f"Agent:       {AGENT_NAME}")
     print(f"Luna invoke: {luna_invoke_url}")
+    print(f"Log stream:  {target_id}")
     print()
 
-    init_agent()
+    init_agent(target_id)
     try:
         await run_case(
             "Safe request: no composite prefilter match, Luna is not called",
@@ -133,7 +142,14 @@ async def run_demo() -> None:
 
 def main() -> None:
     """Run the demo."""
-    asyncio.run(run_demo())
+    parser = argparse.ArgumentParser(description="Run the Galileo Luna evaluator demo.")
+    parser.add_argument(
+        "--target-id",
+        required=True,
+        help="ID of the existing Galileo log stream used for this evaluation run.",
+    )
+    args = parser.parse_args()
+    asyncio.run(run_demo(args.target_id))
 
 
 if __name__ == "__main__":

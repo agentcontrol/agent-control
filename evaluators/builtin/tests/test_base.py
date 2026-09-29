@@ -6,7 +6,6 @@ Architecture: Evaluators take config at __init__, evaluate() only takes data.
 from typing import Any
 
 import pytest
-
 from agent_control_evaluators import Evaluator, EvaluatorConfig, EvaluatorMetadata
 from agent_control_models import EvaluatorResult, Step
 
@@ -38,6 +37,15 @@ class MockEvaluator(Evaluator[MockConfig]):
             message="Mock evaluation",
             metadata={"data": str(data)},
         )
+
+
+class LegacyContextOverrideEvaluator(MockEvaluator):
+    """Models an installed evaluator overriding the pre-existing context hook."""
+
+    async def evaluate_with_context(self, data: Any, step: Step) -> EvaluatorResult:
+        result = await self.evaluate(data)
+        result.metadata["step_name"] = step.name
+        return result
 
 
 class TestEvaluatorMetadata:
@@ -114,12 +122,34 @@ class TestEvaluator:
         evaluator = MockEvaluator.from_dict({"should_match": True})
         step = Step(type="llm", name="answer", input="full input")
 
-        # When: the engine-facing contextual hook is called
-        result = await evaluator.evaluate_with_context("selected data", step)
+        # When: the engine-facing hook includes opaque request target metadata
+        result = await evaluator.evaluate_with_request_context(
+            "selected data",
+            step,
+            target_type="log_stream",
+            target_id="run-1",
+        )
 
         # Then: the legacy evaluate implementation handles the selected data
         assert result.matched is True
         assert result.metadata == {"data": "selected data"}
+
+    @pytest.mark.asyncio
+    async def test_request_context_preserves_existing_context_overrides(self):
+        """The new request hook delegates to older evaluate_with_context overrides."""
+        evaluator = LegacyContextOverrideEvaluator.from_dict({"should_match": True})
+        step = Step(type="llm", name="answer", input="full input")
+
+        result = await evaluator.evaluate_with_request_context(
+            "selected data",
+            step,
+            target_type="log_stream",
+            target_id="run-1",
+        )
+
+        assert result.matched is True
+        assert result.metadata["data"] == "selected data"
+        assert result.metadata["step_name"] == "answer"
 
     def test_evaluator_config_stored(self):
         """Test that evaluator stores config."""

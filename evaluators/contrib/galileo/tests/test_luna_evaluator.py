@@ -6,6 +6,8 @@ import asyncio
 import json
 import os
 from base64 import urlsafe_b64decode
+from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Literal
 from unittest.mock import AsyncMock, patch
 
@@ -15,11 +17,35 @@ from agent_control_models import EvaluatorResult, JSONValue, Step
 from pydantic import UUID4, BaseModel, ConfigDict, ValidationError
 
 LUNA_ENV = {
-    "GALILEO_API_SECRET_KEY": "test-secret",
+    "GALILEO_API_KEY": "test-api-key",
+    "GALILEO_API_URL": "http://orbit:8088",
     "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
 }
 SCORER_ID = "3d45ef0d-5f14-4f1a-a8f1-8ab758da18b4"
 SCORER_VERSION_ID = "07fb9c96-9752-4cf5-a253-1a396100e9d2"
+TEST_RUN_ID = "run-for-grant-tests"
+
+
+@pytest.fixture(autouse=True)
+def _clear_scorer_grant_cache() -> None:
+    from agent_control_evaluator_galileo.luna import client as luna_client
+
+    luna_client._scorer_grant_cache.clear()
+
+
+def _mock_grant_response(request: httpx.Request) -> httpx.Response | None:
+    if request.url.path == "/internal/auth/scorer_grant":
+        return httpx.Response(
+            200,
+            json={"grant": "orbit-signed-test-grant", "expires_at": "2099-01-01T00:00:00Z"},
+        )
+    return None
+
+
+def _decode_jwt_payload(token: str) -> dict[str, object]:
+    payload_segment = token.split(".")[1]
+    padded = payload_segment + ("=" * (-len(payload_segment) % 4))
+    return json.loads(urlsafe_b64decode(padded.encode()).decode())
 
 
 class _LegacyOrbitInputs(BaseModel):
@@ -81,17 +107,6 @@ class _Orbit1720Request(BaseModel):
     inputs: _Orbit1720Inputs
     record: _Orbit1720Record | None = None
     config: _Orbit1720Config | None = None
-
-
-def _decode_jwt_segment(segment: str) -> dict[str, object]:
-    """Decode one base64url JSON segment from an internal JWT."""
-    padded = segment + ("=" * (-len(segment) % 4))
-    return json.loads(urlsafe_b64decode(padded.encode()).decode())
-
-
-def _decode_jwt_payload(token: str) -> dict[str, object]:
-    """Decode the claims segment from an internal JWT."""
-    return _decode_jwt_segment(token.split(".")[1])
 
 
 class TestLunaEvaluatorConfig:
@@ -415,7 +430,8 @@ class TestGalileoLunaClient:
         with patch.dict(
             os.environ,
             {
-                "GALILEO_API_SECRET_KEY": "test-secret",
+                "GALILEO_API_KEY": "test-api-key",
+                "GALILEO_API_URL": "http://orbit:8088",
                 "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
                 "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS": "0.25",
                 "GALILEO_LUNA_MAX_CONNECTIONS": "17",
@@ -454,7 +470,8 @@ class TestGalileoLunaClient:
         with patch.dict(
             os.environ,
             {
-                "GALILEO_API_SECRET_KEY": "test-secret",
+                "GALILEO_API_KEY": "test-api-key",
+                "GALILEO_API_URL": "http://orbit:8088",
                 "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
                 "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS": "",
                 "GALILEO_LUNA_MAX_CONNECTIONS": " ",
@@ -493,7 +510,8 @@ class TestGalileoLunaClient:
         with patch.dict(
             os.environ,
             {
-                "GALILEO_API_SECRET_KEY": "test-secret",
+                "GALILEO_API_KEY": "test-api-key",
+                "GALILEO_API_URL": "http://orbit:8088",
                 "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
                 "GALILEO_LUNA_CLIENT_POOL_SIZE": "3",
             },
@@ -525,7 +543,8 @@ class TestGalileoLunaClient:
         with patch.dict(
             os.environ,
             {
-                "GALILEO_API_SECRET_KEY": "test-secret",
+                "GALILEO_API_KEY": "test-api-key",
+                "GALILEO_API_URL": "http://orbit:8088",
                 "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
                 "GALILEO_LUNA_CLIENT_POOL_SIZE": "2",
             },
@@ -631,6 +650,9 @@ class TestGalileoLunaClient:
         captured: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                return grant_response
             captured["url"] = str(request.url)
             captured["headers"] = dict(request.headers)
             captured["body"] = json.loads(request.content.decode())
@@ -656,11 +678,12 @@ class TestGalileoLunaClient:
                 output="model answer",
                 config={"request_timeout_seconds": 7},
                 headers={"Galileo-API-Key": "blocked", "X-Request-ID": "safe-id"},
+                target_type="log_stream", target_id=TEST_RUN_ID,
             )
         finally:
             await client.close()
 
-        # Then: posts to luna invoke endpoint /api/v1/scorers/invoke with JWT, no Galileo-API-Key
+        # Then: posts to the runner with Orbit's grant and no application API key
         assert response.score == 0.82
         assert captured["url"] == "http://luna-invoke:8090/api/v1/scorers/invoke"
         expected_body = {
@@ -673,18 +696,7 @@ class TestGalileoLunaClient:
         assert isinstance(headers, dict)
         assert "galileo-api-key" not in headers
         assert headers["x-request-id"] == "safe-id"
-        auth_header = headers["authorization"]
-        assert isinstance(auth_header, str)
-        assert auth_header.startswith("Bearer ")
-        token = auth_header.removeprefix("Bearer ")
-        jwt_header = _decode_jwt_segment(token.split(".")[0])
-        payload = _decode_jwt_payload(token)
-        assert jwt_header["alg"] == "HS256"
-        assert payload["internal"] is True
-        assert payload["scope"] == "scorers.invoke"
-        assert isinstance(payload["iat"], int)
-        assert isinstance(payload["exp"], int)
-        assert payload["exp"] > payload["iat"]
+        assert headers["authorization"] == "Bearer orbit-signed-test-grant"
 
     @pytest.mark.asyncio
     async def test_client_derives_server_timeout_from_custom_http_deadline(self) -> None:
@@ -693,6 +705,9 @@ class TestGalileoLunaClient:
         captured: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                return grant_response
             captured["body"] = json.loads(request.content.decode())
             return httpx.Response(200, json={"score": 0.5, "status": "success"})
 
@@ -703,7 +718,13 @@ class TestGalileoLunaClient:
 
         # When: invoking the scorer with a five-second HTTP deadline
         try:
-            await client.invoke(scorer_id=SCORER_ID, input="hello", timeout=5)
+            await client.invoke(
+                scorer_id=SCORER_ID,
+                input="hello",
+                timeout=5,
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
         finally:
             await client.close()
 
@@ -739,6 +760,7 @@ class TestGalileoLunaClient:
                     input="hello",
                     timeout=10,
                     config={"request_timeout_seconds": server_timeout},
+                    target_type="log_stream", target_id=TEST_RUN_ID,
                 )
         finally:
             await client.close()
@@ -751,6 +773,9 @@ class TestGalileoLunaClient:
         captured: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                return grant_response
             captured["body"] = json.loads(request.content.decode())
             return httpx.Response(
                 200,
@@ -782,11 +807,12 @@ class TestGalileoLunaClient:
         try:
             response = await client.invoke(
                 scorer_id=SCORER_ID,
-                scorer_version_id=SCORER_VERSION_ID,
-                scorer_label="toxicity",
-                input="selected question",
-                output="selected answer",
-                step=step,
+            scorer_version_id=SCORER_VERSION_ID,
+            scorer_label="toxicity",
+            input="selected question",
+            output="selected answer",
+            step=step,
+            target_type="log_stream", target_id=TEST_RUN_ID,
             )
         finally:
             await client.close()
@@ -851,6 +877,9 @@ class TestGalileoLunaClient:
         captured: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                return grant_response
             captured["body"] = json.loads(request.content.decode())
             return httpx.Response(200, json={"score": 0.4, "status": "success"})
 
@@ -862,7 +891,13 @@ class TestGalileoLunaClient:
 
         # When: the scorer is invoked with selector-selected input
         try:
-            await client.invoke(scorer_id="scorer-123", input="selected input", step=step)
+            await client.invoke(
+                scorer_id="scorer-123",
+                input="selected input",
+                step=step,
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
         finally:
             await client.close()
 
@@ -880,6 +915,9 @@ class TestGalileoLunaClient:
         captured: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                return grant_response
             captured["body"] = json.loads(request.content.decode())
             return httpx.Response(200, json={"score": 0.5, "status": "success"})
 
@@ -892,6 +930,7 @@ class TestGalileoLunaClient:
                 scorer_id="scorer-123",
                 scorer_version_id="version-456",
                 input="hello",
+                target_type="log_stream", target_id=TEST_RUN_ID,
             )
         finally:
             await client.close()
@@ -905,6 +944,9 @@ class TestGalileoLunaClient:
         captured: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                return grant_response
             captured["headers"] = dict(request.headers)
             return httpx.Response(200, json={"score": 0.5, "status": "success"})
 
@@ -914,7 +956,12 @@ class TestGalileoLunaClient:
         client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
         try:
-            await client.invoke(scorer_id="scorer-123", input="hello")
+            await client.invoke(
+                scorer_id="scorer-123",
+                input="hello",
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
         finally:
             await client.close()
 
@@ -936,6 +983,365 @@ class TestGalileoLunaClient:
             await client.invoke(scorer_id="scorer-123", input=empty_value, output=empty_value)
 
 
+class TestScorerGrantExchange:
+    """Orbit grants are acquired lazily and reused by run and caller context."""
+
+    @pytest.mark.asyncio
+    async def test_configured_luna_requests_grant_only_when_invoked(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                return grant_response
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        assert requests == []
+        try:
+            await client.invoke(
+                scorer_id="scorer-one",
+                input="hello",
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
+        finally:
+            await client.close()
+
+        grant_requests = [
+            request for request in requests if request.url.path.endswith("scorer_grant")
+        ]
+        runner_requests = [
+            request for request in requests if request.url.path.endswith("scorers/invoke")
+        ]
+        assert len(grant_requests) == 1
+        assert grant_requests[0].url == "http://orbit:8088/internal/auth/scorer_grant"
+        assert grant_requests[0].headers["Galileo-API-Key"] == "test-api-key"
+        assert json.loads(grant_requests[0].content) == {
+            "target_type": "log_stream",
+            "run_id": TEST_RUN_ID,
+        }
+        assert len(runner_requests) == 1
+        assert "galileo-api-key" not in runner_requests[0].headers
+        assert runner_requests[0].headers["authorization"] == "Bearer orbit-signed-test-grant"
+
+    @pytest.mark.asyncio
+    async def test_multiple_scorers_reuse_one_grant_for_a_run(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        grant_requests = 0
+        invoke_requests = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal grant_requests, invoke_requests
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                grant_requests += 1
+                return grant_response
+            invoke_requests += 1
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            for scorer_id in ("scorer-one", "scorer-two"):
+                await client.invoke(
+                    scorer_id=scorer_id,
+                    input="hello",
+                    target_type="log_stream",
+                    target_id=TEST_RUN_ID,
+                )
+        finally:
+            await client.close()
+
+        assert grant_requests == 1
+        assert invoke_requests == 2
+
+    @pytest.mark.asyncio
+    async def test_different_runs_get_different_grants(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        grant_runs: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("scorer_grant"):
+                body = json.loads(request.content)
+                grant_runs.append(body["run_id"])
+                return httpx.Response(
+                    200,
+                    json={
+                        "grant": f"grant-for-{body['run_id']}",
+                        "expires_at": "2099-01-01T00:00:00Z",
+                    },
+                )
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            for run_id in ("run-one", "run-two"):
+                await client.invoke(
+                    scorer_id="scorer-one",
+                    input="hello",
+                    target_type="log_stream",
+                    target_id=run_id,
+                )
+        finally:
+            await client.close()
+
+        assert grant_runs == ["run-one", "run-two"]
+
+    @pytest.mark.asyncio
+    async def test_different_application_callers_do_not_share_grants(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        grant_requests = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal grant_requests
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                grant_requests += 1
+                return grant_response
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            clients = [
+                GalileoLunaClient(api_key="caller-one-key"),
+                GalileoLunaClient(api_key="caller-two-key"),
+            ]
+        for client in clients:
+            client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            for client in clients:
+                await client.invoke(
+                    scorer_id="scorer-one",
+                    input="hello",
+                    target_type="log_stream",
+                    target_id=TEST_RUN_ID,
+                )
+        finally:
+            for client in clients:
+                await client.close()
+
+        assert grant_requests == 2
+
+    @pytest.mark.asyncio
+    async def test_expired_grant_is_refreshed(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+        from agent_control_evaluator_galileo.luna import client as luna_client
+
+        grant_requests = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal grant_requests
+            if request.url.path.endswith("scorer_grant"):
+                grant_requests += 1
+                return httpx.Response(
+                    200,
+                    json={"grant": f"grant-{grant_requests}", "expires_at": "2099-01-01T00:00:00Z"},
+                )
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        caller_context = sha256(client.api_key.encode("utf-8")).hexdigest()
+        cache_key = (client.orbit_url, "log_stream", TEST_RUN_ID, caller_context)
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            await client.invoke(
+                scorer_id="scorer-one",
+                input="hello",
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
+            luna_client._scorer_grant_cache[cache_key].expires_at = datetime(
+                2000, 1, 1, tzinfo=UTC
+            )
+            await client.invoke(
+                scorer_id="scorer-two",
+                input="hello",
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
+        finally:
+            await client.close()
+
+        assert grant_requests == 2
+
+    @pytest.mark.asyncio
+    async def test_invalid_grant_response_fails_clearly(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("scorer_grant"):
+                return httpx.Response(200, json={"expires_at": "2099-01-01T00:00:00Z"})
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with pytest.raises(RuntimeError, match="Invalid Orbit scorer grant response.*grant"):
+                await client.invoke(
+                    scorer_id="scorer-one",
+                    input="hello",
+                    target_type="log_stream",
+                    target_id=TEST_RUN_ID,
+                )
+        finally:
+            await client.close()
+
+    @pytest.mark.asyncio
+    async def test_generic_evaluator_does_not_request_a_scorer_grant(self) -> None:
+        from agent_control_evaluator_galileo.luna import client as luna_client
+        from agent_control_evaluators.regex import RegexEvaluator
+
+        evaluator = RegexEvaluator.from_dict({"pattern": "secret"})
+        result = await evaluator.evaluate("not a secret")
+
+        assert result.matched is True
+        assert luna_client._scorer_grant_cache == {}
+
+
+class TestLegacyLunaAuthentication:
+    """Secret-only deployments retain the original local JWT invocation flow."""
+
+    @pytest.mark.asyncio
+    async def test_legacy_secret_only_invocation_sends_internal_jwt_without_grant(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_SECRET_KEY": "legacy-secret",
+                "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
+            },
+            clear=True,
+        ):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            await client.invoke(scorer_id="scorer-one", input="hello")
+        finally:
+            await client.close()
+
+        assert len(requests) == 1
+        assert requests[0].url.path == "/api/v1/scorers/invoke"
+        authorization = requests[0].headers["authorization"]
+        assert authorization.startswith("Bearer ")
+        payload = _decode_jwt_payload(authorization.removeprefix("Bearer "))
+        assert payload["internal"] is True
+        assert payload["scope"] == "scorers.invoke"
+        assert "galileo-api-key" not in requests[0].headers
+
+    @pytest.mark.asyncio
+    async def test_new_grant_mode_takes_precedence_when_both_modes_are_configured(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            grant_response = _mock_grant_response(request)
+            if grant_response is not None:
+                return grant_response
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        env = {**LUNA_ENV, "GALILEO_API_SECRET_KEY": "legacy-secret"}
+        with patch.dict(os.environ, env, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            await client.invoke(
+                scorer_id="scorer-one",
+                input="hello",
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
+        finally:
+            await client.close()
+
+        assert client.auth_mode == "scorer_grant"
+        assert [request.url.path for request in requests] == [
+            "/internal/auth/scorer_grant",
+            "/api/v1/scorers/invoke",
+        ]
+        assert requests[1].headers["authorization"] == "Bearer orbit-signed-test-grant"
+
+    def test_partial_grant_configuration_fails_even_with_legacy_secret(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_KEY": "application-key",
+                "GALILEO_API_SECRET_KEY": "legacy-secret",
+                "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
+            },
+            clear=True,
+        ):
+            with pytest.raises(ValueError, match="GALILEO_API_KEY and GALILEO_API_URL"):
+                GalileoLunaClient()
+
+    @pytest.mark.asyncio
+    async def test_grant_failure_never_falls_back_to_legacy_jwt(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(401, json={"detail": "invalid API key"})
+
+        env = {**LUNA_ENV, "GALILEO_API_SECRET_KEY": "legacy-secret"}
+        with patch.dict(os.environ, env, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            with pytest.raises(httpx.HTTPStatusError):
+                await client.invoke(
+                    scorer_id="scorer-one",
+                    input="hello",
+                    target_type="log_stream",
+                    target_id=TEST_RUN_ID,
+                )
+        finally:
+            await client.close()
+
+        assert len(requests) == 1
+        assert requests[0].url.path == "/internal/auth/scorer_grant"
+
+    def test_luna_evaluator_accepts_legacy_secret_only_configuration(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+
+        with patch.dict(
+            os.environ,
+            {
+                "GALILEO_API_SECRET": "legacy-secret",
+                "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
+            },
+            clear=True,
+        ):
+            evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-one"})
+
+        assert evaluator._client.auth_mode == "legacy"
+
+
 class TestLunaEvaluator:
     """Tests for direct Luna evaluator behavior."""
 
@@ -950,11 +1356,11 @@ class TestLunaEvaluator:
     def test_evaluator_init_without_auth_raises(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
-        with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_SECRET"):
+        with pytest.raises(ValueError, match="GALILEO_API_KEY"):
             LunaEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
 
     @patch.dict(os.environ, LUNA_ENV, clear=True)
-    def test_evaluator_init_accepts_api_secret(self) -> None:
+    def test_evaluator_init_accepts_application_api_key(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator
 
         evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
@@ -1036,13 +1442,20 @@ class TestLunaEvaluator:
         # When: evaluating through the contextual hook
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-            result = await evaluator.evaluate_with_context("selected input", step)
+            result = await evaluator.evaluate_with_request_context(
+                "selected input",
+                step,
+                target_type="log_stream",
+                target_id=TEST_RUN_ID,
+            )
 
         # Then: selector-selected data and the complete Step are both forwarded
         assert result.matched is True
         mock_invoke.assert_awaited_once_with(
             scorer_id="scorer-123",
             step=step,
+            target_type="log_stream",
+            target_id=TEST_RUN_ID,
             input="selected input",
             output=None,
             config=None,

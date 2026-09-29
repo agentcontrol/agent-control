@@ -127,14 +127,24 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             config: Validated LunaEvaluatorConfig instance.
 
         Raises:
-            ValueError: If neither GALILEO_API_SECRET_KEY nor GALILEO_API_SECRET is set.
+            ValueError: If neither complete scorer-grant credentials nor a legacy
+                Galileo API secret is configured.
         """
-        has_secret = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
-        if not has_secret:
+        has_api_key = bool(os.getenv("GALILEO_API_KEY", "").strip())
+        has_api_url = bool(os.getenv("GALILEO_API_URL", "").strip())
+        has_legacy_secret = bool(
+            os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
+        )
+        if has_api_key != has_api_url:
             raise ValueError(
-                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for Luna "
-                "scorer invocation. Set one as an environment variable before using "
-                "galileo.luna."
+                "GALILEO_API_KEY and GALILEO_API_URL must be configured together "
+                "for scorer-grant authentication."
+            )
+        if not has_api_key and not has_legacy_secret:
+            raise ValueError(
+                "Configure GALILEO_API_KEY with GALILEO_API_URL for scorer-grant "
+                "authentication, or set GALILEO_API_SECRET_KEY or GALILEO_API_SECRET "
+                "for legacy Luna authentication."
             )
 
         super().__init__(config)
@@ -212,7 +222,30 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         """
         return await self._evaluate(data, step=step)
 
-    async def _evaluate(self, data: Any, *, step: Step | None) -> EvaluatorResult:
+    async def evaluate_with_request_context(
+        self,
+        data: Any,
+        step: Step,
+        *,
+        target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> EvaluatorResult:
+        """Evaluate using the request's Agent Control target metadata."""
+        return await self._evaluate(
+            data,
+            step=step,
+            target_type=target_type,
+            target_id=target_id,
+        )
+
+    async def _evaluate(
+        self,
+        data: Any,
+        *,
+        step: Step | None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> EvaluatorResult:
         """Run a Luna evaluation with optional structured runtime context."""
         input_text, output_text = self._prepare_payload(data)
         if not (_has_text(input_text) or _has_text(output_text)):
@@ -227,6 +260,10 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             scorer_kwargs = self._scorer_kwargs()
             if step is not None:
                 scorer_kwargs["step"] = step
+            if target_type is not None:
+                scorer_kwargs["target_type"] = target_type
+            if target_id is not None:
+                scorer_kwargs["target_id"] = target_id
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,

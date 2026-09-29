@@ -20,11 +20,12 @@ make server-run
 Configure Luna invoke credentials:
 
 ```bash
-export GALILEO_API_SECRET_KEY="your-api-secret"
-export GALILEO_LUNA_INVOKE_URL="http://luna-invoke.internal/api/v1/scorers/invoke"
+export GALILEO_API_KEY="your-application-api-key"
+export GALILEO_API_URL="https://your-galileo-api.example"
+export GALILEO_LUNA_INVOKE_URL="https://your-luna-invoke.example/api/v1/scorers/invoke"
 ```
 
-`GALILEO_API_SECRET` can be used instead of `GALILEO_API_SECRET_KEY` if that is how your deployment exposes the internal Galileo JWT signing secret. `GALILEO_LUNA_INVOKE_URL` can be either the full scorer invoke URL or a service root that serves `/api/v1/scorers/invoke`.
+The application API key is used only to obtain a short-lived, run-scoped scorer grant from Orbit. Configure `agent_control.init()` with `target_type="log_stream"` and the target log-stream ID; Agent Control forwards that target on each evaluation request, and Orbit uses `target_id` as `run_id`. `GALILEO_API_URL` is the Orbit API root. `GALILEO_LUNA_INVOKE_URL` can be either the full scorer invoke URL or a service root that serves `/api/v1/scorers/invoke`. Existing deployments can instead set `GALILEO_API_SECRET_KEY` or `GALILEO_API_SECRET` to keep using the legacy internal JWT flow.
 
 Required scorer setting:
 
@@ -58,5 +59,5 @@ Run:
 ```bash
 cd examples/galileo_luna
 uv run python setup_controls.py
-uv run python demo_agent.py
+uv run python demo_agent.py --target-id "your-existing-log-stream-id"
 ```

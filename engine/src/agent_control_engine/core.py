@@ -320,7 +320,12 @@ class ControlEngine:
                     timeout = DEFAULT_EVALUATOR_TIMEOUT
 
                 result = await asyncio.wait_for(
-                    evaluator.evaluate_with_context(data, request.step),
+                    evaluator.evaluate_with_request_context(
+                        data,
+                        request.step,
+                        target_type=request.target_type,
+                        target_id=request.target_id,
+                    ),
                     timeout=timeout,
                 )
         except TimeoutError:
