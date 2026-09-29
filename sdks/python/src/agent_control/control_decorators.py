@@ -868,7 +868,8 @@ def control(
                    ``llm``.
         tools: Optional tool definitions for LLM steps. Static definitions are
                copied when the decorator is created. A provider receives the
-               function's positional and keyword arguments at each check.
+               raw call-site positional arguments as ``args`` and keyword
+               arguments as ``kwargs`` at each pre- and post-execution check.
 
     Returns:
         Decorated function

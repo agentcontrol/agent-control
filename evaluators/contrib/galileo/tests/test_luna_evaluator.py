@@ -248,6 +248,50 @@ class TestGalileoLunaClient:
             "config": {},
         }
 
+    def test_scorer_invoke_request_validates_and_preserves_record_fields(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeRequest
+
+        request = ScorerInvokeRequest(
+            scorer_id="scorer-123",
+            scorer_version_id="version-123",
+            inputs={"query": "hello"},
+            record={
+                "type": "llm",
+                "input": "hello",
+                "metrics": {"duration_ns": 12},
+                "custom_field": {"value": "preserved"},
+            },
+        )
+
+        assert request.to_dict()["record"] == {
+            "type": "llm",
+            "input": "hello",
+            "metrics": {"duration_ns": 12},
+            "custom_field": {"value": "preserved"},
+        }
+
+    @pytest.mark.parametrize("record", [{}, {"type": "BOGUS_TYPE"}])
+    def test_scorer_invoke_request_validates_record_discriminator(self, record: dict) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeRequest
+
+        with pytest.raises(ValidationError, match="type"):
+            ScorerInvokeRequest(
+                scorer_id="scorer-123",
+                scorer_version_id="version-123",
+                inputs={"query": "hello"},
+                record=record,
+            )
+
+    def test_scorer_invoke_request_requires_version_for_structured_record(self) -> None:
+        from agent_control_evaluator_galileo.luna import ScorerInvokeRequest
+
+        with pytest.raises(ValidationError, match="scorer_version_id is required"):
+            ScorerInvokeRequest(
+                scorer_id="scorer-123",
+                inputs={"query": "hello"},
+                record={"type": "llm", "input": "hello"},
+            )
+
     def test_scorer_invoke_request_rejects_unknown_config(self) -> None:
         from agent_control_evaluator_galileo.luna import (
             ScorerInvokeInputs,
@@ -797,6 +841,7 @@ class TestGalileoLunaClient:
                     "context": {"session": {"id": "s-1", "attributes": {"region": "west"}}},
                     "tools": [{"name": "search", "description": "Search", "input_schema": {}}],
                     "dataset_output": {"text": "expected"},
+                    "metrics": {"duration_ns": 12},
                 },
             )
         finally:
@@ -826,6 +871,7 @@ class TestGalileoLunaClient:
                 "context": {"session": {"id": "s-1", "attributes": {"region": "west"}}},
                 "tools": [{"name": "search", "description": "Search", "input_schema": {}}],
                 "dataset_output": {"text": "expected"},
+                "metrics": {"duration_ns": 12},
             },
             "config": {"request_timeout_seconds": 8.0},
         }
@@ -1457,18 +1503,25 @@ class TestLunaEvaluator:
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio
-    async def test_structured_request_requires_explicit_scorer_version(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator
+    async def test_context_without_scorer_version_uses_legacy_request(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
         evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123"})
         step = Step(type="llm", name="answer", input="question", output="answer")
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
             result = await evaluator.evaluate_with_context("question", step)
 
-        assert "scorer_version_id is required" in (result.error or "")
-        mock_invoke.assert_not_called()
+        assert result.error is None
+        assert result.matched is True
+        mock_invoke.assert_awaited_once()
+        assert mock_invoke.await_args.kwargs["scorer_id"] == "scorer-123"
+        assert "scorer_version_id" not in mock_invoke.await_args.kwargs
+        assert "record" not in mock_invoke.await_args.kwargs
+        assert mock_invoke.await_args.kwargs["input"] == "question"
+        assert mock_invoke.await_args.kwargs["output"] is None
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio

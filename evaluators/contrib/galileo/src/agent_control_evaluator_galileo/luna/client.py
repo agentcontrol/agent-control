@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue, Step
-from pydantic import BaseModel, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from .config import ScorerInvokeConfig
 
@@ -219,6 +219,8 @@ class ScorerInvokeRecord(BaseModel):
     represented here. Orbit hydrates those fields from trusted server context.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     type: ScorerInvokeRecordType
     name: str | None = None
     input: JSONValue = None
@@ -245,7 +247,7 @@ class ScorerInvokeRequest(BaseModel):
     scorer_version_id: str | None = Field(default=None, min_length=1)
     scorer_label: str | None = Field(default=None, min_length=1)
     inputs: ScorerInvokeInputs
-    record: JSONObject | ScorerInvokeRecord | None = None
+    record: ScorerInvokeRecord | None = None
     config: ScorerInvokeConfig = Field(default_factory=ScorerInvokeConfig)
 
     @model_validator(mode="after")
@@ -488,7 +490,7 @@ class GalileoLunaClient:
                 ground_truth=step.ground_truth if step is not None else None,
                 tools=step.tools if step is not None else None,
             ),
-            record=record,
+            record=ScorerInvokeRecord.model_validate(record) if record is not None else None,
             config=invoke_config,
         ).to_dict()
 

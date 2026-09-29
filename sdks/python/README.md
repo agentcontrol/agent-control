@@ -53,8 +53,10 @@ async def answer(message: str) -> str:
 ```
 
 For per-call tools, pass a provider such as
-`tools=lambda args, kwargs: tools_for(kwargs.get("model"))`. The provider may
-return `None` when the step has no available tools.
+`tools=lambda args, kwargs: tools_for(kwargs.get("model"))`. The provider
+receives the raw positional call arguments in `args` and keyword arguments in
+`kwargs` for each pre- and post-execution check. The provider may return `None`
+when the step has no available tools.
 
 For framework adapters and advanced callers, construct the shared `Step`
 directly and send it through the SDK's `check_evaluation` helper. This keeps

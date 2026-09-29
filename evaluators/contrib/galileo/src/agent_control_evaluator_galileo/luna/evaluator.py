@@ -252,25 +252,22 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             if step is not None:
                 scorer_kwargs["step"] = step
                 if step.type.strip().lower() in {"llm", "tool", "retriever", "trace", "session"}:
-                    if self.config.scorer_version_id is None:
-                        raise ValueError(
-                            "scorer_version_id is required for structured Luna requests."
+                    if self.config.scorer_version_id is not None:
+                        record = build_galileo_record(
+                            data,
+                            step,
+                            payload_field=self.config.payload_field,
                         )
-                    record = build_galileo_record(
-                        data,
-                        step,
-                        payload_field=self.config.payload_field,
-                    )
-                    record_payload = cast(
-                        JSONObject,
-                        record.model_dump(mode="json", exclude_none=True),
-                    )
-                    if step.type.strip().lower() == "llm":
-                        # Keep the legacy inputs in the request, but derive
-                        # them from Orbit's canonical record so they cannot
-                        # conflict with normalized tool-call/message fields.
-                        input_text = cast(JSONValue | None, record_payload.get("input"))
-                        output_text = cast(JSONValue | None, record_payload.get("output"))
+                        record_payload = cast(
+                            JSONObject,
+                            record.model_dump(mode="json", exclude_none=True),
+                        )
+                        if step.type.strip().lower() == "llm":
+                            # Keep the legacy inputs in the request, but derive
+                            # them from Orbit's canonical record so they cannot
+                            # conflict with normalized tool-call/message fields.
+                            input_text = cast(JSONValue | None, record_payload.get("input"))
+                            output_text = cast(JSONValue | None, record_payload.get("output"))
             if record_payload is not None:
                 scorer_kwargs["record"] = record_payload
             response = await self._get_client().invoke(
