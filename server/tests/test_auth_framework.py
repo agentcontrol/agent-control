@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import json
 import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -37,6 +39,7 @@ from agent_control_server.errors import (
     ForbiddenError,
     NotFoundError,
 )
+from agent_control_server.logging_utils import configure_logging
 from agent_control_server.models import DEFAULT_NAMESPACE_KEY
 
 
@@ -682,9 +685,9 @@ async def test_http_upstream_4xx_diagnostics_name_the_rejected_field(
     record = _rejection_record(caplog)
     assert record.__dict__["operation"] == Operation.RUNTIME_TOKEN_EXCHANGE.value
     assert record.__dict__["status_code"] == 422
-    assert record.__dict__["upstream_validation"] == [
-        {"type": "uuid_parsing", "loc": "body.context.target_id"}
-    ]
+    assert record.__dict__["upstream_validation"] == {
+        "0": {"type": "uuid_parsing", "loc": "body.context.target_id"}
+    }
     assert record.__dict__["upstream_validation_total"] == 1
     assert record.__dict__["target_context"] == {
         "present": "true",
@@ -698,6 +701,11 @@ async def test_http_upstream_4xx_diagnostics_name_the_rejected_field(
     ("context", "expected_shape"),
     [
         (None, {"present": "false"}),
+        ({}, {"present": "false"}),
+        (
+            {"target_type": "log_stream"},
+            {"present": "true", "target_type": "string:len=10", "target_id": "missing"},
+        ),
         (
             {"target_type": None, "target_id": None},
             {"present": "true", "target_type": "null", "target_id": "null"},
@@ -722,7 +730,13 @@ async def test_http_upstream_4xx_diagnostics_report_target_context_shape(
     expected_shape: dict[str, str],
 ):
     """Target context is described by shape, so absent and null stay distinct."""
-    provider = _build_upstream(lambda req: httpx.Response(422, text="rejected"))
+    sent_payloads: list[dict[str, object]] = []
+
+    def reject(request: httpx.Request) -> httpx.Response:
+        sent_payloads.append(json.loads(request.content))
+        return httpx.Response(422, text="rejected")
+
+    provider = _build_upstream(reject)
 
     with caplog.at_level(logging.WARNING):
         with pytest.raises(APIError):
@@ -733,6 +747,70 @@ async def test_http_upstream_4xx_diagnostics_report_target_context_shape(
             )
 
     assert _rejection_record(caplog).__dict__["target_context"] == expected_shape
+    assert ("context" in sent_payloads[0]) is bool(context)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("as_json", [False, True], ids=["text", "json"])
+async def test_http_upstream_4xx_diagnostics_reach_configured_log_output(
+    monkeypatch: pytest.MonkeyPatch,
+    as_json: bool,
+) -> None:
+    """The configured handler must emit the fields, not only retain them in LogRecord."""
+    sentinel = "SENTINEL-DO-NOT-LOG"
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {
+                        "type": "uuid_parsing",
+                        "loc": ["body", "context", "target_id"],
+                        "msg": sentinel,
+                        "input": sentinel,
+                    }
+                ]
+            },
+        )
+    )
+    monkeypatch.setenv("AGENT_CONTROL_CONFIGURE_LOGGING", "true")
+    root = logging.getLogger()
+    original_root = (list(root.handlers), root.level)
+    uvicorn_loggers = [
+        logging.getLogger(name) for name in ("uvicorn", "uvicorn.error", "uvicorn.access")
+    ]
+    original_uvicorn = [
+        (logger, list(logger.handlers), logger.level, logger.propagate)
+        for logger in uvicorn_loggers
+    ]
+    stream = io.StringIO()
+    try:
+        configure_logging(level="WARNING", json=as_json)
+        root.handlers[0].setStream(stream)
+        with pytest.raises(APIError):
+            await provider.authorize(
+                _build_request(),
+                Operation.RUNTIME_TOKEN_EXCHANGE,
+                context={"target_type": "log_stream", "target_id": sentinel},
+            )
+    finally:
+        root.handlers, root.level = original_root
+        for logger, handlers, level, propagate in original_uvicorn:
+            logger.handlers, logger.level, logger.propagate = handlers, level, propagate
+
+    output = stream.getvalue()
+    assert sentinel not in output
+    if as_json:
+        rendered = json.loads(output)
+        assert rendered["target_context"]["target_id"] == f"string:len={len(sentinel)}"
+        assert rendered["upstream_validation"] == {
+            "0": {"type": "uuid_parsing", "loc": "body.context.target_id"}
+        }
+        assert rendered["upstream_validation_total"] == 1
+    else:
+        assert 'target_context={"present":"true"' in output
+        assert 'upstream_validation={"0":{"type":"uuid_parsing"' in output
+        assert "upstream_validation_total=1" in output
 
 
 @pytest.mark.asyncio
@@ -802,7 +880,7 @@ async def test_http_upstream_4xx_diagnostics_tolerate_unexpected_bodies(
             await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
 
     assert exc_info.value.status_code == 502
-    assert _rejection_record(caplog).__dict__["upstream_validation"] == []
+    assert _rejection_record(caplog).__dict__["upstream_validation"] == {}
 
 
 @pytest.mark.asyncio

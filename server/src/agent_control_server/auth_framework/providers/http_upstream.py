@@ -41,6 +41,7 @@ from local auth setup failures.
 
 from __future__ import annotations
 
+import json
 import ssl
 from dataclasses import dataclass
 from datetime import datetime
@@ -87,6 +88,7 @@ _JSON_OBJECT_ADAPTER: TypeAdapter[JSONObject] = TypeAdapter(JSONObject)
 # Upstream rejection bodies can be arbitrarily long. Log a bounded prefix and
 # report the total separately so a truncated list never reads as complete.
 _MAX_LOGGED_VALIDATION_ERRORS = 5
+_MISSING = object()
 
 
 def _field_shape(value: Any) -> str:
@@ -96,6 +98,8 @@ def _field_shape(value: Any) -> str:
     value supplied. The length is included because whether an id was
     UUID-shaped is the question these diagnostics exist to answer.
     """
+    if value is _MISSING:
+        return "missing"
     if value is None:
         return "null"
     if not isinstance(value, str):
@@ -107,12 +111,12 @@ def _field_shape(value: Any) -> str:
 
 def _target_context_shape(context: dict[str, Any] | None) -> dict[str, str]:
     """Describe the target context passed to the upstream, values omitted."""
-    if context is None:
+    if not context:
         return {"present": "false"}
     return {
         "present": "true",
-        "target_type": _field_shape(context.get("target_type")),
-        "target_id": _field_shape(context.get("target_id")),
+        "target_type": _field_shape(context.get("target_type", _MISSING)),
+        "target_id": _field_shape(context.get("target_id", _MISSING)),
     }
 
 
@@ -462,15 +466,25 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             )
         if 400 <= status < 500:
             validation = _sanitized_validation_errors(response)
+            target_context = _target_context_shape(context)
+            # Orbit's JSON formatter drops list-valued extras. Index the bounded
+            # validation entries so its log record retains every type and loc.
+            upstream_validation = {
+                str(index): error for index, error in enumerate(validation["errors"])
+            }
             _logger.warning(
-                "Authorization upstream rejected operation %s with status %d",
+                "Authorization upstream rejected operation %s with status %d "
+                "target_context=%s upstream_validation=%s upstream_validation_total=%d",
                 operation,
                 status,
+                json.dumps(target_context, separators=(",", ":")),
+                json.dumps(upstream_validation, separators=(",", ":")),
+                validation["total"],
                 extra={
-                    "operation": operation.value,
+                    "operation": operation,
                     "status_code": status,
-                    "target_context": _target_context_shape(context),
-                    "upstream_validation": validation["errors"],
+                    "target_context": target_context,
+                    "upstream_validation": upstream_validation,
                     "upstream_validation_total": validation["total"],
                 },
             )
