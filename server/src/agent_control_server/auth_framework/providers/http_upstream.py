@@ -130,19 +130,19 @@ def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
     Keeps only known validation kinds and request fields. Dynamic location
     segments, unknown kinds, ``input``, ``ctx``, and ``msg`` may contain
     caller-supplied values and are dropped. Oversized or undecodable bodies
-    yield an empty summary with an unknown total rather than changing the
-    upstream rejection's 502.
+    yield an empty summary with an unknown total and a reason rather than
+    changing the upstream rejection's 502.
     """
     if len(response.content) > _MAX_VALIDATION_RESPONSE_BYTES:
-        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": []}
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": [], "status": "oversized"}
     try:
         body = response.json()
     except (ValueError, RecursionError):
-        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": []}
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": [], "status": "unusable"}
 
     detail = body.get("detail") if isinstance(body, dict) else None
     if not isinstance(detail, list):
-        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": []}
+        return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": [], "status": "unusable"}
 
     errors = []
     for item in detail[:_MAX_LOGGED_VALIDATION_ERRORS]:
@@ -167,7 +167,7 @@ def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
                 else "unknown",
             }
         )
-    return {"total": len(detail), "errors": errors}
+    return {"total": len(detail), "errors": errors, "status": "parsed"}
 
 
 class _UpstreamGrant(BaseModel):
@@ -452,18 +452,21 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             }
             _logger.warning(
                 "Authorization upstream rejected operation %s with status %d "
-                "target_context=%s upstream_validation=%s upstream_validation_total=%s",
+                "target_context=%s upstream_validation=%s upstream_validation_total=%s "
+                "upstream_validation_status=%s",
                 operation.value,
                 status,
                 json.dumps(target_context, separators=(",", ":")),
                 json.dumps(upstream_validation, separators=(",", ":")),
                 validation["total"],
+                validation["status"],
                 extra={
                     "operation": operation.value,
                     "status_code": status,
                     "target_context": target_context,
                     "upstream_validation": upstream_validation,
                     "upstream_validation_total": validation["total"],
+                    "upstream_validation_status": validation["status"],
                 },
             )
             raise APIError(

@@ -18,6 +18,7 @@ _UPSTREAM_DIAGNOSTIC_FIELDS = (
     "target_context",
     "upstream_validation",
     "upstream_validation_total",
+    "upstream_validation_status",
 )
 
 

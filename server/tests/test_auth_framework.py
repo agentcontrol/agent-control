@@ -543,6 +543,7 @@ async def test_http_upstream_4xx_diagnostics_name_the_rejected_field(
         "0": {"type": "uuid_parsing", "loc": "body.context.target_id"}
     }
     assert record.__dict__["upstream_validation_total"] == 1
+    assert record.__dict__["upstream_validation_status"] == "parsed"
     assert record.__dict__["target_context"] == {
         "present": "true",
         "target_type": "string:len=10",
@@ -661,10 +662,12 @@ async def test_http_upstream_4xx_diagnostics_reach_configured_log_output(
             "0": {"type": "uuid_parsing", "loc": "body.context.target_id"}
         }
         assert rendered["upstream_validation_total"] == 1
+        assert rendered["upstream_validation_status"] == "parsed"
     else:
         assert 'target_context={"present":"true"' in output
         assert 'upstream_validation={"0":{"type":"uuid_parsing"' in output
         assert "upstream_validation_total=1" in output
+        assert "upstream_validation_status=parsed" in output
 
 
 @pytest.mark.asyncio
@@ -740,22 +743,30 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("factory", "expected_total"),
+    ("factory", "expected_total", "expected_status"),
     [
-        pytest.param(lambda req: httpx.Response(422, text="not json"), "unknown", id="non-json"),
+        pytest.param(
+            lambda req: httpx.Response(422, text="not json"),
+            "unknown",
+            "unusable",
+            id="non-json",
+        ),
         pytest.param(
             lambda req: httpx.Response(422, json={"detail": "a string, not a list"}),
             "unknown",
+            "unusable",
             id="detail-not-a-list",
         ),
         pytest.param(
             lambda req: httpx.Response(422, json=["top-level list"]),
             "unknown",
+            "unusable",
             id="body-not-an-object",
         ),
         pytest.param(
             lambda req: httpx.Response(422, json={"detail": ["bare string entry"]}),
             1,
+            "parsed",
             id="entry-not-an-object",
         ),
         pytest.param(
@@ -764,6 +775,7 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
                 content=b'{"detail":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}",
             ),
             "unknown",
+            "unusable",
             id="deeply-nested-json",
         ),
         pytest.param(
@@ -780,6 +792,7 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
                 },
             ),
             "unknown",
+            "oversized",
             id="oversized-validation-body",
         ),
     ],
@@ -788,6 +801,7 @@ async def test_http_upstream_4xx_diagnostics_tolerate_unexpected_bodies(
     caplog: pytest.LogCaptureFixture,
     factory,
     expected_total: int | str,
+    expected_status: str,
 ):
     """Unexpected rejection bodies still yield 502 with an accurate count."""
     provider = _build_upstream(factory)
@@ -801,6 +815,8 @@ async def test_http_upstream_4xx_diagnostics_tolerate_unexpected_bodies(
     assert record.__dict__["upstream_validation"] == {}
     assert record.__dict__["upstream_validation_total"] == expected_total
     assert f"upstream_validation_total={expected_total}" in record.getMessage()
+    assert record.__dict__["upstream_validation_status"] == expected_status
+    assert f"upstream_validation_status={expected_status}" in record.getMessage()
 
 
 @pytest.mark.asyncio
@@ -817,6 +833,7 @@ async def test_http_upstream_4xx_diagnostics_distinguish_empty_validation_list(
     record = _rejection_record(caplog)
     assert record.__dict__["upstream_validation"] == {}
     assert record.__dict__["upstream_validation_total"] == 0
+    assert record.__dict__["upstream_validation_status"] == "parsed"
 
 
 @pytest.mark.asyncio
@@ -843,6 +860,7 @@ async def test_http_upstream_4xx_diagnostics_bound_the_logged_error_list(
     record = _rejection_record(caplog)
     assert len(record.__dict__["upstream_validation"]) == 5
     assert record.__dict__["upstream_validation_total"] == 12
+    assert record.__dict__["upstream_validation_status"] == "parsed"
 
 
 @pytest.mark.asyncio
