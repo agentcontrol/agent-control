@@ -850,6 +850,41 @@ async def test_http_upstream_4xx_diagnostics_omit_caller_supplied_values(
 
 
 @pytest.mark.asyncio
+async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
+    caplog: pytest.LogCaptureFixture,
+):
+    """Validation paths and kinds can also echo caller-controlled data."""
+    sentinel = "SENTINEL-DO-NOT-LOG" * 1000
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            422,
+            json={
+                "detail": [
+                    {
+                        "type": sentinel,
+                        "loc": ["body", "context", sentinel, "target_id", sentinel],
+                    },
+                    {"type": [sentinel], "loc": ["body", "context", "target_id"]},
+                ]
+            },
+        )
+    )
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError):
+            await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
+
+    record = _rejection_record(caplog)
+    assert record.__dict__["upstream_validation"] == {
+        "0": {"type": "other", "loc": "body.context.<other>.target_id"},
+        "1": {"type": "other", "loc": "body.context.target_id"},
+    }
+    assert sentinel not in record.getMessage()
+    assert sentinel not in str(record.__dict__)
+    assert len(record.getMessage()) < 500
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "factory",
     [

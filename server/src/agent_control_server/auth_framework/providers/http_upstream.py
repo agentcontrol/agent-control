@@ -88,6 +88,13 @@ _JSON_OBJECT_ADAPTER: TypeAdapter[JSONObject] = TypeAdapter(JSONObject)
 # Upstream rejection bodies can be arbitrarily long. Log a bounded prefix and
 # report the total separately so a truncated list never reads as complete.
 _MAX_LOGGED_VALIDATION_ERRORS = 5
+_MAX_LOGGED_LOCATION_PARTS = 4
+_SAFE_VALIDATION_LOCATION_PARTS = frozenset(
+    {"body", "context", "operation", "target_type", "target_id"}
+)
+_SAFE_VALIDATION_TYPES = frozenset(
+    {"enum", "literal_error", "missing", "string_type", "uuid_parsing", "uuid_type", "uuid_version"}
+)
 _MISSING = object()
 
 
@@ -123,8 +130,9 @@ def _target_context_shape(context: dict[str, Any] | None) -> dict[str, str]:
 def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
     """Summarize an upstream validation body by field path and error kind.
 
-    Keeps only ``type`` and ``loc`` from each entry. ``input``, ``ctx``, and
-    ``msg`` echo caller-supplied values and are dropped. Never raises: the
+    Keeps only known validation kinds and request fields. Dynamic location
+    segments, unknown kinds, ``input``, ``ctx``, and ``msg`` may contain
+    caller-supplied values and are dropped. Never raises: the
     body is an external service's output, so an unexpected shape degrades to
     an empty summary rather than turning a 502 into a 500.
     """
@@ -142,11 +150,21 @@ def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
         if not isinstance(item, dict):
             continue
         loc = item.get("loc")
+        error_type = item.get("type")
         errors.append(
             {
-                "type": str(item.get("type", "unknown")),
-                "loc": ".".join(str(part) for part in loc)
-                if isinstance(loc, list)
+                "type": (
+                    error_type
+                    if isinstance(error_type, str) and error_type in _SAFE_VALIDATION_TYPES
+                    else "other"
+                ),
+                "loc": ".".join(
+                    part
+                    if isinstance(part, str) and part in _SAFE_VALIDATION_LOCATION_PARTS
+                    else "<other>"
+                    for part in loc[:_MAX_LOGGED_LOCATION_PARTS]
+                )
+                if isinstance(loc, list) and loc
                 else "unknown",
             }
         )
