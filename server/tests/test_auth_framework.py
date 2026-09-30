@@ -305,6 +305,7 @@ async def test_http_upstream_resolves_identity_at_derived_orbit_url():
             "extra_forward_headers": ("X-Deployer-Auth",),
         },
     )
+    assert provider.binding_target_authorization is True
     principal = await provider.resolve_identity(
         _build_request(
             headers={
@@ -339,6 +340,7 @@ async def test_http_upstream_resolves_identity_at_explicit_url():
         factory,
         config_overrides={"identity_url": "https://identity.example/resolve"},
     )
+    assert provider.binding_target_authorization is True
     principal = await provider.resolve_identity(_build_request(), Operation.CONTROL_BINDINGS_READ)
 
     assert captured["url"] == "https://identity.example/resolve"
@@ -346,8 +348,9 @@ async def test_http_upstream_resolves_identity_at_explicit_url():
 
 
 @pytest.mark.asyncio
-async def test_http_upstream_identity_requires_configured_url():
+async def test_http_upstream_direct_identity_lookup_requires_configured_url():
     provider = _build_upstream(lambda request: pytest.fail("unexpected upstream call"))
+    assert provider.binding_target_authorization is False
 
     with pytest.raises(APIError) as exc_info:
         await provider.resolve_identity(_build_request(), Operation.CONTROL_BINDINGS_READ)

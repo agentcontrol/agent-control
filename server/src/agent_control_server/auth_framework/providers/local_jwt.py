@@ -53,6 +53,8 @@ def validate_http_field_name(name: str) -> str:
 class LocalJwtVerifyProvider(RequestAuthorizer):
     """Verifies a runtime Bearer token and emits a target-bound :class:`Principal`."""
 
+    binding_target_authorization = True
+
     def __init__(
         self,
         *,

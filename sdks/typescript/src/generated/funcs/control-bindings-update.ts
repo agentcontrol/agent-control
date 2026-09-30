@@ -33,8 +33,9 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Update the ``enabled`` flag on a control binding.
  *
- * Authorization uses the binding's stored target identifiers. The mutation
- * remains scoped to the namespace resolved by the authorizer.
+ * Target-aware authorizers use the binding's stored target identifiers.
+ * Other authorizers retain namespace-wide authorization. The mutation
+ * remains scoped to the authorized namespace.
  */
 export function controlBindingsUpdate(
   client: AgentControlSDKCore,

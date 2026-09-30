@@ -75,10 +75,6 @@ class HeaderAuthProvider(RequestAuthorizer):
         )
         self._default_namespace_key = default_namespace_key
 
-    async def resolve_identity(self, request: Request, operation: Operation) -> Principal:
-        """Apply the local operation gate before a namespace-scoped lookup."""
-        return await self.authorize(request, operation)
-
     async def authorize(
         self,
         request: Request,

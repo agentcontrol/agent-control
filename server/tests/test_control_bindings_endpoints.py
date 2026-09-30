@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
+import httpx
 import pytest
 from agent_control_models.errors import ErrorCode, ErrorReason
 from fastapi.testclient import TestClient
 from httpx import Response
 
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
+from agent_control_server.auth_framework.providers import (
+    HeaderAuthProvider,
+    HttpUpstreamAuthProvider,
+)
+from agent_control_server.auth_framework.providers.http_upstream import HttpUpstreamConfig
 from agent_control_server.errors import APIError, ForbiddenError, NotFoundError
 from agent_control_server.models import DEFAULT_NAMESPACE_KEY
 
@@ -117,6 +124,8 @@ def test_binding_id_routes_authorize_the_stored_target(client: TestClient) -> No
     calls: list[tuple[str, Operation, dict[str, Any] | None]] = []
 
     class RecordingAuthorizer:
+        binding_target_authorization = True
+
         async def resolve_identity(self, request: Any, operation: Operation) -> Principal:
             del request
             calls.append(("identity", operation, None))
@@ -211,6 +220,7 @@ def test_binding_id_lookup_is_scoped_before_target_authorization(
     method: str, client: TestClient
 ) -> None:
     class NamespaceAuthorizer:
+        binding_target_authorization = True
         namespace_key = "other-namespace"
 
         def __init__(self) -> None:
@@ -269,6 +279,8 @@ def test_binding_id_identity_failure_does_not_depend_on_id(
     binding_id = _create_binding(client, control_id=control_id)["binding_id"]
 
     class UnavailableAuthorizer:
+        binding_target_authorization = True
+
         async def resolve_identity(self, request: Any, operation: Operation) -> Principal:
             del request, operation
             raise APIError(
@@ -306,6 +318,8 @@ def test_binding_id_target_denial_looks_like_missing_binding(
     binding_id = _create_binding(client, control_id=control_id)["binding_id"]
 
     class DenyingAuthorizer:
+        binding_target_authorization = True
+
         async def resolve_identity(self, request: Any, operation: Operation) -> Principal:
             del request, operation
             return Principal(namespace_key=DEFAULT_NAMESPACE_KEY)
@@ -342,7 +356,7 @@ def test_binding_id_target_denial_looks_like_missing_binding(
     )
 
 
-def test_binding_id_legacy_authorizer_preflights_before_lookup(client: TestClient) -> None:
+def test_binding_id_legacy_authorizer_preserves_namespace_wide_check(client: TestClient) -> None:
     control_id = _create_control(client)
     binding_id = _create_binding(client, control_id=control_id)["binding_id"]
     contexts: list[dict[str, Any] | None] = []
@@ -364,9 +378,120 @@ def test_binding_id_legacy_authorizer_preflights_before_lookup(client: TestClien
     # When: an ID-based binding read succeeds.
     response = client.get(f"{_BINDINGS_URL}/{binding_id}")
 
-    # Then: operation-wide auth runs before target auth.
+    # Then: the legacy provider receives the same single targetless check as before.
     assert response.status_code == 200
-    assert contexts == [None, {"target_type": "env", "target_id": "prod"}]
+    assert contexts == [None]
+
+
+@pytest.mark.parametrize(
+    ("method", "operation"),
+    [
+        ("get", Operation.CONTROL_BINDINGS_READ),
+        ("patch", Operation.CONTROL_BINDINGS_WRITE),
+        ("delete", Operation.CONTROL_BINDINGS_WRITE),
+    ],
+)
+@pytest.mark.parametrize(
+    ("namespace_key", "expected_status"),
+    [(DEFAULT_NAMESPACE_KEY, 200), ("other-namespace", 404)],
+)
+def test_binding_id_non_orbit_http_upstream_preserves_targetless_check(
+    method: str,
+    operation: Operation,
+    namespace_key: str,
+    expected_status: int,
+    client: TestClient,
+) -> None:
+    control_id = _create_control(client)
+    binding_id = _create_binding(client, control_id=control_id)["binding_id"]
+    upstream_requests: list[httpx.Request] = []
+
+    def upstream_auth(request: httpx.Request) -> Response:
+        upstream_requests.append(request)
+        if "context" in json.loads(request.content):
+            # This upstream accepted the old namespace-wide contract only.
+            return Response(400, json={"detail": "Unexpected target context"})
+        return Response(200, json={"namespace_key": namespace_key})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    set_authorizer(
+        HttpUpstreamAuthProvider(
+            HttpUpstreamConfig(url="https://custom.example/check"),
+            client=upstream_client,
+        )
+    )
+
+    url = f"{_BINDINGS_URL}/{binding_id}"
+    if method == "get":
+        response = client.get(url)
+    elif method == "patch":
+        response = client.patch(url, json={"enabled": False})
+    else:
+        response = client.delete(url)
+
+    assert response.status_code == expected_status, response.text
+    assert len(upstream_requests) == 1
+    assert str(upstream_requests[0].url) == "https://custom.example/check"
+    assert upstream_requests[0].method == "POST"
+    assert upstream_requests[0].headers["x-api-key"] == client.headers["x-api-key"]
+    assert json.loads(upstream_requests[0].content) == {"operation": operation.value}
+    if expected_status == 404:
+        assert response.json()["error_code"] == "CONTROL_BINDING_NOT_FOUND"
+    elif method == "get":
+        assert response.json()["namespace_key"] == DEFAULT_NAMESPACE_KEY
+    else:
+        assert response.json()["success"] is True
+
+    set_authorizer(HeaderAuthProvider())
+    stored = client.get(url)
+    if method == "delete" and expected_status == 200:
+        assert stored.status_code == 404
+    else:
+        assert stored.status_code == 200
+        assert stored.json()["enabled"] is (method != "patch" or expected_status != 200)
+
+
+def test_binding_id_orbit_http_upstream_authorizes_stored_target(client: TestClient) -> None:
+    # Given: Orbit requires target context for management authorization.
+    control_id = _create_control(client)
+    target_id = str(uuid.uuid4())
+    binding_id = _create_binding(
+        client, control_id=control_id, target_type="log_stream", target_id=target_id
+    )["binding_id"]
+    upstream_requests: list[httpx.Request] = []
+
+    def upstream_auth(request: httpx.Request) -> Response:
+        upstream_requests.append(request)
+        if request.url.path == "/internal/auth/resolve_tenant_context":
+            return Response(200, json={"namespace_key": DEFAULT_NAMESPACE_KEY})
+        body = json.loads(request.content)
+        if body.get("context") != {"target_type": "log_stream", "target_id": target_id}:
+            return Response(400, json={"detail": "Target context required"})
+        return Response(200, json={"namespace_key": DEFAULT_NAMESPACE_KEY})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    set_authorizer(
+        HttpUpstreamAuthProvider(
+            HttpUpstreamConfig(
+                url="https://orbit.example/internal/auth/agent_control/check_management_access"
+            ),
+            client=upstream_client,
+        )
+    )
+
+    # When: an ID-based delete is requested without a target in the request.
+    response = client.delete(f"{_BINDINGS_URL}/{binding_id}")
+
+    # Then: identity resolution precedes a target-bound management check.
+    assert response.status_code == 200, response.text
+    assert [request.url.path for request in upstream_requests] == [
+        "/internal/auth/resolve_tenant_context",
+        "/internal/auth/agent_control/check_management_access",
+    ]
+    assert json.loads(upstream_requests[1].content) == {
+        "operation": Operation.CONTROL_BINDINGS_WRITE.value,
+        "context": {"target_type": "log_stream", "target_id": target_id},
+    }
 
 
 def test_binding_id_delete_rechecks_the_authorized_namespace(
@@ -378,6 +503,8 @@ def test_binding_id_delete_rechecks_the_authorized_namespace(
     authorized_namespace = "other-namespace"
 
     class NamespaceAuthorizer:
+        binding_target_authorization = True
+
         async def resolve_identity(self, request: Any, operation: Operation) -> Principal:
             del request, operation
             return Principal(namespace_key=authorized_namespace, is_admin=True)
@@ -412,6 +539,8 @@ def test_binding_id_patch_rechecks_the_authorized_namespace(
     authorized_namespace = "other-namespace"
 
     class NamespaceAuthorizer:
+        binding_target_authorization = True
+
         async def resolve_identity(self, request: Any, operation: Operation) -> Principal:
             del request, operation
             return Principal(namespace_key=authorized_namespace, is_admin=True)
@@ -448,6 +577,8 @@ def test_binding_id_path_validation_runs_before_authorization(
     calls: list[Operation] = []
 
     class RecordingAuthorizer:
+        binding_target_authorization = True
+
         async def resolve_identity(self, request: Any, operation: Operation) -> Principal:
             del request
             calls.append(operation)

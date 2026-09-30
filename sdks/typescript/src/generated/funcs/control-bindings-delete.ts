@@ -33,8 +33,9 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Delete a control binding by surrogate ID.
  *
- * Authorization uses the binding's stored target identifiers. The deletion
- * remains scoped to the namespace resolved by the authorizer.
+ * Target-aware authorizers use the binding's stored target identifiers.
+ * Other authorizers retain namespace-wide authorization. The deletion
+ * remains scoped to the authorized namespace.
  */
 export function controlBindingsDelete(
   client: AgentControlSDKCore,

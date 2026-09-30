@@ -33,9 +33,9 @@ import { Result } from "../types/fp.js";
  * @remarks
  * Read a single control binding by surrogate ID.
  *
- * Authorization uses the binding's stored target identifiers. After
- * authorization succeeds, the row is loaded again using the namespace
- * resolved by the authorizer before any binding data is returned.
+ * Target-aware authorizers use the binding's stored target identifiers.
+ * Other authorizers retain namespace-wide authorization. The row is loaded
+ * using the authorized namespace before any binding data is returned.
  */
 export function controlBindingsGet(
   client: AgentControlSDKCore,

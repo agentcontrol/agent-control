@@ -111,9 +111,10 @@ def configure_auth_from_env() -> None:
       is unset, startup selects ``api_key`` only if local API-key validation is
       enabled; otherwise it selects ``none``.
     - ``AGENT_CONTROL_AUTH_MODE=http_upstream``: :class:`HttpUpstreamAuthProvider`
-      pointed at ``AGENT_CONTROL_AUTH_UPSTREAM_URL``. By-ID binding routes also
-      use ``AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL`` when the identity URL
-      cannot be derived from Orbit's management authorization URL.
+      pointed at ``AGENT_CONTROL_AUTH_UPSTREAM_URL``. By-ID binding routes use
+      stored-target authorization when an identity URL can be derived from
+      Orbit's management URL or ``AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL`` is
+      set. Other upstreams retain the prior namespace-wide authorization flow.
 
     Runtime flow:
 

@@ -123,8 +123,9 @@ export class ControlBindings extends ClientSDK {
    * @remarks
    * Delete a control binding by surrogate ID.
    *
-   * Authorization uses the binding's stored target identifiers. The deletion
-   * remains scoped to the namespace resolved by the authorizer.
+   * Target-aware authorizers use the binding's stored target identifiers.
+   * Other authorizers retain namespace-wide authorization. The deletion
+   * remains scoped to the authorized namespace.
    */
   async delete(
     request:
@@ -144,9 +145,9 @@ export class ControlBindings extends ClientSDK {
    * @remarks
    * Read a single control binding by surrogate ID.
    *
-   * Authorization uses the binding's stored target identifiers. After
-   * authorization succeeds, the row is loaded again using the namespace
-   * resolved by the authorizer before any binding data is returned.
+   * Target-aware authorizers use the binding's stored target identifiers.
+   * Other authorizers retain namespace-wide authorization. The row is loaded
+   * using the authorized namespace before any binding data is returned.
    */
   async get(
     request:
@@ -166,8 +167,9 @@ export class ControlBindings extends ClientSDK {
    * @remarks
    * Update the ``enabled`` flag on a control binding.
    *
-   * Authorization uses the binding's stored target identifiers. The mutation
-   * remains scoped to the namespace resolved by the authorizer.
+   * Target-aware authorizers use the binding's stored target identifiers.
+   * Other authorizers retain namespace-wide authorization. The mutation
+   * remains scoped to the authorized namespace.
    */
   async update(
     request:

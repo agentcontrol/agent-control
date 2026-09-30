@@ -117,11 +117,16 @@ class RequestAuthorizer(Protocol):
 
 @runtime_checkable
 class IdentityResolver(Protocol):
-    """Optional credential and namespace lookup for target-bound authorizers.
+    """Opt-in credential and namespace lookup for target-bound authorizers.
 
-    It does not grant resource access. The route still calls ``authorize``
-    with the stored target after the namespace-scoped lookup.
+    Providers opt in only when they can resolve an identity without changing
+    the authorization behavior of existing namespace-wide binding ID routes.
+    The route then calls ``authorize`` with the stored target after the
+    namespace-scoped lookup.
     """
+
+    @property
+    def binding_target_authorization(self) -> bool: ...
 
     async def resolve_identity(self, request: Request, operation: Operation) -> Principal: ...
 

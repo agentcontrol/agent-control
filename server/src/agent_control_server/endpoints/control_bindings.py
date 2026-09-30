@@ -77,16 +77,20 @@ async def _binding_list_context(request: Request) -> dict[str, Any]:
 def _require_binding_operation(
     operation: Operation,
 ) -> Callable[..., Awaitable[Principal]]:
-    """Authorize a by-ID route against the binding's stored target."""
+    """Use stored-target authorization when the provider opts in."""
 
     async def dependency(request: Request, binding_id: int) -> Principal:
         authorizer = get_authorizer(operation)
-        if isinstance(authorizer, IdentityResolver):
-            identity = await authorizer.resolve_identity(request, operation)
-        else:
-            # Legacy providers can still resolve namespace-wide operations.
-            # Target-bound providers should implement IdentityResolver.
-            identity = await authorizer.authorize(request, operation)
+        if (
+            not isinstance(authorizer, IdentityResolver)
+            or not authorizer.binding_target_authorization
+        ):
+            # Preserve the existing single namespace-wide authorization call
+            # for providers without an independent identity lookup. Their
+            # operation contract may reject a new target context altogether.
+            return await authorizer.authorize(request, operation)
+
+        identity = await authorizer.resolve_identity(request, operation)
         # Use a short-lived session so no database connection is held while the
         # authorization provider performs a potentially remote request.
         async with AsyncSessionLocal() as db:
@@ -236,9 +240,9 @@ async def get_control_binding(
 ) -> GetControlBindingResponse:
     """Read a single control binding by surrogate ID.
 
-    Authorization uses the binding's stored target identifiers. After
-    authorization succeeds, the row is loaded again using the namespace
-    resolved by the authorizer before any binding data is returned.
+    Target-aware authorizers use the binding's stored target identifiers.
+    Other authorizers retain namespace-wide authorization. The row is loaded
+    using the authorized namespace before any binding data is returned.
     """
     service = ControlBindingsService(db)
     binding = await service.get_binding_or_404(
@@ -295,8 +299,9 @@ async def patch_control_binding(
 ) -> PatchControlBindingResponse:
     """Update the ``enabled`` flag on a control binding.
 
-    Authorization uses the binding's stored target identifiers. The mutation
-    remains scoped to the namespace resolved by the authorizer.
+    Target-aware authorizers use the binding's stored target identifiers.
+    Other authorizers retain namespace-wide authorization. The mutation
+    remains scoped to the authorized namespace.
     """
     service = ControlBindingsService(db)
     binding = await service.set_enabled(
@@ -321,8 +326,9 @@ async def delete_control_binding(
 ) -> DeleteControlBindingResponse:
     """Delete a control binding by surrogate ID.
 
-    Authorization uses the binding's stored target identifiers. The deletion
-    remains scoped to the namespace resolved by the authorizer.
+    Target-aware authorizers use the binding's stored target identifiers.
+    Other authorizers retain namespace-wide authorization. The deletion
+    remains scoped to the authorized namespace.
     """
     service = ControlBindingsService(db)
     await service.delete_binding(namespace_key=principal.namespace_key, binding_id=binding_id)

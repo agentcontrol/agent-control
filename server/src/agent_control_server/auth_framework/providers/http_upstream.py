@@ -238,6 +238,11 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 client_kwargs["verify"] = ssl.create_default_context(cafile=config.ca_file)
             self._client = httpx.AsyncClient(**client_kwargs)
 
+    @property
+    def binding_target_authorization(self) -> bool:
+        """Use stored-target checks only when a separate identity URL exists."""
+        return self._identity_url is not None
+
     async def aclose(self) -> None:
         """Release the HTTP client if this provider created it."""
         if self._owns_client:
