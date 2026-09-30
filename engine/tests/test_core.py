@@ -340,6 +340,22 @@ async def test_engine_passes_opaque_extensions_to_evaluator() -> None:
 
 
 @pytest.mark.asyncio
+async def test_default_extension_hook_preserves_existing_evaluator_behavior() -> None:
+    # Given: an evaluator that implements only the original evaluate method
+    evaluator = AllowEvaluator(SimpleConfig())
+    step = Step(type="llm", name="test-step", input="question")
+
+    # When: the new hook is called with opaque extensions
+    result = await evaluator.evaluate_with_extensions(
+        "question", step, {"provider_field": "opaque_value"}
+    )
+
+    # Then: the existing evaluation method still handles the request
+    assert result.message == "Allowed"
+    assert _execution_log == ["allow:default:start", "allow:default:end"]
+
+
+@pytest.mark.asyncio
 async def test_cached_context_evaluator_handles_concurrent_steps_without_retaining_state() -> None:
     # Given: one cached evaluator configuration and two independent requests
     engine = ControlEngine(

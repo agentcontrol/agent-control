@@ -121,6 +121,19 @@ class TestEvaluator:
         assert result.matched is True
         assert result.metadata == {"data": "selected data"}
 
+    @pytest.mark.asyncio
+    async def test_extension_evaluation_delegates_to_existing_context_hook(self):
+        """The extension hook preserves behavior for legacy evaluators."""
+        evaluator = MockEvaluator.from_dict({"should_match": True})
+        step = Step(type="llm", name="answer", input="full input")
+
+        result = await evaluator.evaluate_with_extensions(
+            "selected data", step, {"provider_field": "opaque_value"}
+        )
+
+        assert result.matched is True
+        assert result.metadata == {"data": "selected data"}
+
     def test_evaluator_config_stored(self):
         """Test that evaluator stores config."""
         evaluator = MockEvaluator.from_dict({"should_match": True})
