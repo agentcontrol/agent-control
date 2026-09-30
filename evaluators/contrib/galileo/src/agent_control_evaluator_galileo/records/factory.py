@@ -6,25 +6,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from agent_control_models import Step
+from galileo_core.schemas.logging.session import Session
+from galileo_core.schemas.logging.span import LlmSpan, RetrieverSpan, ToolSpan
+from galileo_core.schemas.logging.trace import Trace
 from pydantic import BaseModel
-from splunk_ao import (  # type: ignore[import-untyped]
-    LlmSpan,
-    RetrieverSpan,
-    Session,
-    ToolSpan,
-    Trace,
-)
 
-from .normalization import (
-    documents,
-    message_value,
-    session_value,
-    string_metadata,
-    text_value,
-    tool_value,
-    trace_input_value,
-    trace_output_value,
-)
+from .normalization import GalileoRecordNormalizer
 
 type GalileoRecord = LlmSpan | ToolSpan | RetrieverSpan | Trace | Session
 type GalileoSpan = LlmSpan | ToolSpan | RetrieverSpan
@@ -111,7 +98,9 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
     context = _mapping(raw.get("context")) or {}
     common = {
         "name": "" if raw.get("name") is None else str(raw["name"]),
-        "user_metadata": string_metadata(raw.get("user_metadata", raw.get("metadata"))),
+        "user_metadata": GalileoRecordNormalizer.metadata(
+            raw.get("user_metadata", raw.get("metadata"))
+        ),
     }
     for field in (
         "tags",
@@ -126,9 +115,9 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
     ):
         if raw.get(field) is not None:
             common[field] = (
-                text_value(raw[field])
+                GalileoRecordNormalizer.json_text(raw[field])
                 if field in {"dataset_input", "dataset_output"}
-                else string_metadata(raw[field])
+                else GalileoRecordNormalizer.metadata(raw[field])
                 if field == "dataset_metadata"
                 else raw[field]
             )
@@ -138,39 +127,55 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
     if record_type == "llm":
         kwargs = {
             **common,
-            "input": message_value(input_value),
-            "output": message_value(output_value, output=True),
+            "input": GalileoRecordNormalizer.llm_input(input_value),
+            "output": GalileoRecordNormalizer.llm_output(output_value),
         }
         if raw.get("tools") is not None:
-            kwargs["tools"] = raw["tools"]
+            kwargs["tools"] = GalileoRecordNormalizer.llm_tools(raw["tools"])
         for field in ("events", "model", "temperature", "finish_reason"):
             if raw.get(field) is not None:
                 kwargs[field] = raw[field]
         if raw.get("redacted_input") is not None:
-            kwargs["redacted_input"] = message_value(raw["redacted_input"])
+            kwargs["redacted_input"] = GalileoRecordNormalizer.llm_redacted_input(
+                raw["redacted_input"]
+            )
         if raw.get("redacted_output") is not None:
-            kwargs["redacted_output"] = message_value(raw["redacted_output"], output=True)
+            kwargs["redacted_output"] = GalileoRecordNormalizer.llm_redacted_output(
+                raw["redacted_output"]
+            )
         return LlmSpan(**kwargs)
     if record_type == "tool":
         kwargs = {
             **common,
-            "input": tool_value(input_value) or "",
-            "output": tool_value(output_value),
+            "input": GalileoRecordNormalizer.tool_input(input_value),
+            "output": GalileoRecordNormalizer.tool_output(output_value),
         }
         if raw.get("tool_call_id") is not None:
             kwargs["tool_call_id"] = str(raw["tool_call_id"])
         if raw.get("redacted_input") is not None:
-            kwargs["redacted_input"] = tool_value(raw["redacted_input"])
+            kwargs["redacted_input"] = GalileoRecordNormalizer.tool_redacted_input(
+                raw["redacted_input"]
+            )
         if raw.get("redacted_output") is not None:
-            kwargs["redacted_output"] = tool_value(raw["redacted_output"])
+            kwargs["redacted_output"] = GalileoRecordNormalizer.tool_redacted_output(
+                raw["redacted_output"]
+            )
         kwargs["spans"] = [_nested_span(item) for item in _span_payloads(raw, context)]
         return ToolSpan(**kwargs)
     if record_type == "retriever":
-        kwargs = {**common, "input": text_value(input_value), "output": documents(output_value)}
+        kwargs = {
+            **common,
+            "input": GalileoRecordNormalizer.retriever_input(input_value),
+            "output": GalileoRecordNormalizer.retriever_output(output_value),
+        }
         if raw.get("redacted_input") is not None:
-            kwargs["redacted_input"] = text_value(raw["redacted_input"])
+            kwargs["redacted_input"] = GalileoRecordNormalizer.retriever_redacted_input(
+                raw["redacted_input"]
+            )
         if raw.get("redacted_output") is not None:
-            kwargs["redacted_output"] = documents(raw["redacted_output"])
+            kwargs["redacted_output"] = GalileoRecordNormalizer.retriever_redacted_output(
+                raw["redacted_output"]
+            )
         kwargs["spans"] = [_nested_span(item) for item in _span_payloads(raw, context)]
         return RetrieverSpan(**kwargs)
     if record_type == "trace":
@@ -179,34 +184,45 @@ def _record_from_mapping(raw: Mapping[str, Any], record_type: str) -> GalileoRec
             raise RecordFactoryError("Galileo trace context must include a 'spans' list.")
         trace_kwargs: dict[str, Any] = {
             **common,
-            "input": trace_input_value(input_value),
-            "output": trace_output_value(output_value),
+            "input": GalileoRecordNormalizer.trace_input(input_value),
+            "output": GalileoRecordNormalizer.trace_output(output_value),
             "spans": [_nested_span(item) for item in spans],
         }
         if raw.get("redacted_input") is not None:
-            trace_kwargs["redacted_input"] = trace_input_value(raw["redacted_input"])
+            trace_kwargs["redacted_input"] = GalileoRecordNormalizer.trace_redacted_input(
+                raw["redacted_input"]
+            )
         if raw.get("redacted_output") is not None:
-            trace_kwargs["redacted_output"] = trace_output_value(raw["redacted_output"])
+            trace_kwargs["redacted_output"] = GalileoRecordNormalizer.trace_redacted_output(
+                raw["redacted_output"]
+            )
         return Trace(
             **trace_kwargs,
         )
     traces = raw.get("traces", context.get("traces"))
     if not isinstance(traces, Sequence) or isinstance(traces, str | bytes | bytearray):
         raise RecordFactoryError("Galileo session context must include a 'traces' list.")
-    nested_records = [_nested_record(item) for item in traces]
+    nested_records = GalileoRecordNormalizer.session_traces(
+        traces,
+        normalize_record=_nested_record,
+    )
     nested_traces = [item for item in nested_records if isinstance(item, Trace)]
     if len(nested_traces) != len(nested_records):
         raise RecordFactoryError("Galileo session 'traces' must contain trace records.")
     session_kwargs: dict[str, Any] = {
         **common,
-        "input": session_value(input_value),
-        "output": session_value(output_value),
+        "input": GalileoRecordNormalizer.session_input(input_value),
+        "output": GalileoRecordNormalizer.session_output(output_value),
         "traces": cast(list[Trace], nested_traces),
     }
     if raw.get("redacted_input") is not None:
-        session_kwargs["redacted_input"] = session_value(raw["redacted_input"])
+        session_kwargs["redacted_input"] = GalileoRecordNormalizer.session_redacted_input(
+            raw["redacted_input"]
+        )
     if raw.get("redacted_output") is not None:
-        session_kwargs["redacted_output"] = session_value(raw["redacted_output"])
+        session_kwargs["redacted_output"] = GalileoRecordNormalizer.session_redacted_output(
+            raw["redacted_output"]
+        )
     return Session(
         **session_kwargs,
     )
