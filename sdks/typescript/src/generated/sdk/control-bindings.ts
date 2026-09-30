@@ -118,15 +118,13 @@ export class ControlBindings extends ClientSDK {
   }
 
   /**
-   * Delete a control binding (namespace-wide)
+   * Delete a control binding
    *
    * @remarks
    * Delete a control binding by surrogate ID.
    *
-   * See the GET-by-id docstring for the authorization scope: this route
-   * is namespace-wide because the target identifiers are not available
-   * before the binding is loaded. Use ``POST /by-key:delete`` for
-   * target-scoped detach that includes the target in the request context.
+   * Authorization uses the binding's stored target identifiers. The deletion
+   * remains scoped to the namespace resolved by the authorizer.
    */
   async delete(
     request:
@@ -141,17 +139,14 @@ export class ControlBindings extends ClientSDK {
   }
 
   /**
-   * Get a control binding (namespace-wide)
+   * Get a control binding
    *
    * @remarks
    * Read a single control binding by surrogate ID.
    *
-   * Authorization is namespace-wide: the binding's target identifiers
-   * are not available until after the row is loaded.
-   * Callers whose authorization model requires per-target permissions
-   * should use the natural-key endpoints (``PUT /by-key``,
-   * ``POST /by-key:delete``) and the target-filtered list endpoint, all
-   * of which include ``(target_type, target_id)`` in the request context.
+   * Authorization uses the binding's stored target identifiers. After
+   * authorization succeeds, the row is loaded again using the namespace
+   * resolved by the authorizer before any binding data is returned.
    */
   async get(
     request:
@@ -166,15 +161,13 @@ export class ControlBindings extends ClientSDK {
   }
 
   /**
-   * Update a control binding (namespace-wide)
+   * Update a control binding
    *
    * @remarks
    * Update the ``enabled`` flag on a control binding.
    *
-   * See the GET-by-id docstring for the authorization scope: this route
-   * is namespace-wide because the target identifiers are not available
-   * before the binding is loaded. Use ``PUT /by-key`` for target-scoped
-   * upserts that include the target in the request context.
+   * Authorization uses the binding's stored target identifiers. The mutation
+   * remains scoped to the namespace resolved by the authorizer.
    */
   async update(
     request:

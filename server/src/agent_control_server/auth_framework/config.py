@@ -53,6 +53,7 @@ _logger = get_logger(__name__)
 # Default flow.
 _MODE_ENV = "AGENT_CONTROL_AUTH_MODE"
 _UPSTREAM_URL_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_URL"
+_UPSTREAM_IDENTITY_URL_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL"
 _UPSTREAM_TIMEOUT_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_TIMEOUT_SECONDS"
 _UPSTREAM_TOKEN_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN"
 _UPSTREAM_TOKEN_HEADER_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_SERVICE_TOKEN_HEADER"
@@ -110,7 +111,9 @@ def configure_auth_from_env() -> None:
       is unset, startup selects ``api_key`` only if local API-key validation is
       enabled; otherwise it selects ``none``.
     - ``AGENT_CONTROL_AUTH_MODE=http_upstream``: :class:`HttpUpstreamAuthProvider`
-      pointed at ``AGENT_CONTROL_AUTH_UPSTREAM_URL``.
+      pointed at ``AGENT_CONTROL_AUTH_UPSTREAM_URL``. By-ID binding routes also
+      use ``AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL`` when the identity URL
+      cannot be derived from Orbit's management authorization URL.
 
     Runtime flow:
 
@@ -245,6 +248,7 @@ def _build_default_provider() -> RequestAuthorizer:
         try:
             upstream_config = HttpUpstreamConfig(
                 url=url,
+                identity_url=(os.environ.get(_UPSTREAM_IDENTITY_URL_ENV) or "").strip() or None,
                 timeout_seconds=timeout,
                 service_token=token,
                 service_token_header=token_header,
