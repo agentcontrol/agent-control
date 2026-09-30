@@ -7,10 +7,10 @@ from agent_control_evaluator_galileo.luna.client import (
     ScorerInvokeRequest,
     ScorerInvokeResponse,
 )
+from agent_control_evaluator_galileo._shared.config import ScorerInvokeConfig
 from agent_control_evaluator_galileo.luna.config import (
     LunaEvaluatorConfig,
     LunaOperator,
-    ScorerInvokeConfig,
 )
 from agent_control_evaluator_galileo.luna.evaluator import LUNA_AVAILABLE, LunaEvaluator
 

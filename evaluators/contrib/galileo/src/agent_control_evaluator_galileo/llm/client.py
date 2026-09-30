@@ -1,4 +1,9 @@
-"""Direct HTTP client for Galileo Luna scorer invocation."""
+"""Direct HTTP client for Galileo LLM-as-judge scorer invocation.
+
+Extends the Luna wire contract by embedding caller identity (user_id,
+organization_id) in the internal JWT so runners-api can resolve the
+caller's LLM provider credentials and build a trusted ExecutionContext.
+"""
 
 from __future__ import annotations
 
@@ -25,22 +30,21 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_SECS = 10.0
 SERVER_TIMEOUT_RATIO = 0.8
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
-DEFAULT_LUNA_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
-LUNA_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
-LUNA_INVOKE_CA_FILE_ENV = "GALILEO_LUNA_INVOKE_CA_FILE"
+DEFAULT_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
+SCORER_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
+SCORER_INVOKE_CA_FILE_ENV = "GALILEO_LUNA_INVOKE_CA_FILE"
 AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
-# Headers that must never be forwarded to the Luna invoke endpoint (checked case-insensitively).
 _BLOCKED_REQUEST_HEADERS = frozenset({"galileo-api-key"})
 
 DEFAULT_KEEPALIVE_EXPIRY_SECS = 1.0
 DEFAULT_MAX_CONNECTIONS = 100
 DEFAULT_MAX_KEEPALIVE_CONNECTIONS = 20
 DEFAULT_CLIENT_POOL_SIZE = 1
-LUNA_KEEPALIVE_EXPIRY_ENV = "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS"
-LUNA_MAX_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_CONNECTIONS"
-LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS"
-LUNA_CLIENT_POOL_SIZE_ENV = "GALILEO_LUNA_CLIENT_POOL_SIZE"
+KEEPALIVE_EXPIRY_ENV = "GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS"
+MAX_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_CONNECTIONS"
+MAX_KEEPALIVE_CONNECTIONS_ENV = "GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS"
+CLIENT_POOL_SIZE_ENV = "GALILEO_LUNA_CLIENT_POOL_SIZE"
 
 ScorerInvokeRecordType = Literal[
     "llm",
@@ -62,16 +66,28 @@ def _b64url(data: bytes) -> str:
 def _internal_auth_token(
     api_secret: str,
     ttl_seconds: int = DEFAULT_INTERNAL_TOKEN_TTL_SECS,
+    *,
+    user_id: str | None = None,
+    organization_id: str | None = None,
 ) -> str:
-    """Create the internal JWT expected by Luna scorer invoke routes."""
+    """Create the internal JWT for LLM scorer invoke routes.
+
+    Embeds ``user_id`` and ``organization_id`` as claims so runners-api can
+    resolve the caller's LLM provider credentials and build a trusted
+    ``ExecutionContext`` without a separate identity lookup.
+    """
     now = int(time())
     header = {"alg": "HS256", "typ": "JWT"}
-    payload = {
+    payload: dict[str, object] = {
         "internal": True,
         "scope": "scorers.invoke",
         "iat": now,
         "exp": now + ttl_seconds,
     }
+    if user_id is not None:
+        payload["user_id"] = user_id
+    if organization_id is not None:
+        payload["organization_id"] = organization_id
     signing_input = ".".join(
         [
             _b64url(dumps(header, separators=(",", ":")).encode("utf-8")),
@@ -82,13 +98,12 @@ def _internal_auth_token(
     return f"{signing_input}.{_b64url(signature)}"
 
 
-def _normalize_luna_invoke_url(raw_url: str) -> str:
-    """Use full invoke URLs as-is and append the default path to bare service roots."""
+def _normalize_invoke_url(raw_url: str) -> str:
     url = raw_url.strip().rstrip("/")
     parsed = urlsplit(url)
     if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
         return url
-    return f"{url}{DEFAULT_LUNA_SCORER_INVOKE_PATH}"
+    return f"{url}{DEFAULT_SCORER_INVOKE_PATH}"
 
 
 def _load_float_env(env_name: str, default: float) -> float:
@@ -120,23 +135,23 @@ def _validate_connection_config(
 ) -> None:
     if keepalive_expiry_seconds < 0:
         raise ValueError(
-            f"{LUNA_KEEPALIVE_EXPIRY_ENV}={keepalive_expiry_seconds} "
+            f"{KEEPALIVE_EXPIRY_ENV}={keepalive_expiry_seconds} "
             "must be greater than or equal to 0."
         )
     if max_connections <= 0:
-        raise ValueError(f"{LUNA_MAX_CONNECTIONS_ENV}={max_connections} must be greater than 0.")
+        raise ValueError(f"{MAX_CONNECTIONS_ENV}={max_connections} must be greater than 0.")
     if max_keepalive_connections < 0:
         raise ValueError(
-            f"{LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
+            f"{MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
             "must be greater than or equal to 0."
         )
     if max_keepalive_connections > max_connections:
         raise ValueError(
-            f"{LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
-            f"must be less than or equal to {LUNA_MAX_CONNECTIONS_ENV}={max_connections}."
+            f"{MAX_KEEPALIVE_CONNECTIONS_ENV}={max_keepalive_connections} "
+            f"must be less than or equal to {MAX_CONNECTIONS_ENV}={max_connections}."
         )
     if client_pool_size <= 0:
-        raise ValueError(f"{LUNA_CLIENT_POOL_SIZE_ENV}={client_pool_size} must be greater than 0.")
+        raise ValueError(f"{CLIENT_POOL_SIZE_ENV}={client_pool_size} must be greater than 0.")
 
 
 def _as_float_or_none(value: JSONValue) -> float | None:
@@ -167,7 +182,6 @@ def _effective_scorer_timeout(
     *,
     http_timeout_seconds: float,
 ) -> ScorerInvokeConfig:
-    """Resolve an Orbit execution timeout that expires before the HTTP request."""
     if http_timeout_seconds <= 0:
         raise ValueError("HTTP timeout must be greater than 0 seconds.")
 
@@ -184,8 +198,6 @@ def _effective_scorer_timeout(
 
 
 class ScorerInvokeInputs(BaseModel):
-    """Input values sent to the Luna scorer invoke endpoint."""
-
     query: JSONValue = ""
     response: JSONValue = ""
     ground_truth: JSONValue = None
@@ -193,8 +205,6 @@ class ScorerInvokeInputs(BaseModel):
 
 
 class ScorerInvokeRecord(BaseModel):
-    """Caller-controlled subset of Orbit's partial runtime-record contract."""
-
     type: ScorerInvokeRecordType
     name: str | None = None
     input: JSONValue = None
@@ -205,8 +215,6 @@ class ScorerInvokeRecord(BaseModel):
 
 
 class ScorerInvokeRequest(BaseModel):
-    """Request payload for Luna scorer invocation."""
-
     scorer_id: str = Field(min_length=1)
     scorer_version_id: str | None = Field(default=None, min_length=1)
     scorer_label: str | None = Field(default=None, min_length=1)
@@ -230,7 +238,6 @@ def _orbit_record_from_step(
     selected_input: JSONValue,
     selected_output: JSONValue,
 ) -> ScorerInvokeRecord | None:
-    """Translate a generic Agent Control step into Orbit's record contract."""
     if step is None or step.type not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
         return None
     record_type = cast(ScorerInvokeRecordType, step.type)
@@ -246,8 +253,6 @@ def _orbit_record_from_step(
 
 
 class ScorerInvokeResponse(BaseModel):
-    """Response from Luna scorer invocation."""
-
     scorer_label: str | None = None
     score: JSONValue
     status: str = "unknown"
@@ -268,49 +273,64 @@ class ScorerInvokeResponse(BaseModel):
         return response
 
 
-class GalileoLunaClient:
-    """Thin HTTP client for Galileo Luna scorer invocation."""
+class GalileoLLMClient:
+    """Thin HTTP client for Galileo LLM-as-judge scorer invocation.
+
+    Extends the Luna wire contract by embedding caller identity claims
+    (``user_id``, ``organization_id``) in the internal JWT so runners-api
+    can resolve LLM provider credentials for the calling user.
+
+    Environment Variables:
+        GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: JWT signing secret.
+        GALILEO_LUNA_INVOKE_URL: Scorer invoke URL or service root (required).
+        GALILEO_LUNA_INVOKE_CA_FILE: CA bundle for TLS verification.
+        AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE: Shared internal CA fallback.
+        GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS: HTTP pooled connection expiry.
+        GALILEO_LUNA_MAX_CONNECTIONS: Maximum outbound HTTP connections.
+        GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS: Maximum idle pooled connections.
+        GALILEO_LUNA_CLIENT_POOL_SIZE: Number of HTTP clients to rotate across.
+    """
 
     def __init__(
         self,
         api_secret: str | None = None,
-        luna_invoke_url: str | None = None,
-        luna_invoke_ca_file: str | None = None,
+        invoke_url: str | None = None,
+        invoke_ca_file: str | None = None,
     ) -> None:
         resolved_api_secret = (
             api_secret or os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
         )
         if not resolved_api_secret:
             raise ValueError(
-                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for Luna "
+                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for LLM "
                 "scorer invocation. Set one as an environment variable or pass it "
                 "to the constructor."
             )
 
-        resolved_luna_invoke_url = luna_invoke_url or os.getenv(LUNA_INVOKE_URL_ENV)
-        if resolved_luna_invoke_url is None or resolved_luna_invoke_url.strip() == "":
+        resolved_invoke_url = invoke_url or os.getenv(SCORER_INVOKE_URL_ENV)
+        if resolved_invoke_url is None or resolved_invoke_url.strip() == "":
             raise ValueError(
-                "GALILEO_LUNA_INVOKE_URL is required for Luna scorer invocation. "
+                "GALILEO_LUNA_INVOKE_URL is required for LLM scorer invocation. "
                 "Set it as an environment variable or pass it to the constructor."
             )
 
         self.api_secret = resolved_api_secret
-        self.luna_invoke_url = _normalize_luna_invoke_url(resolved_luna_invoke_url)
-        self.luna_invoke_ca_file = (
-            luna_invoke_ca_file
-            or os.getenv(LUNA_INVOKE_CA_FILE_ENV)
+        self.invoke_url = _normalize_invoke_url(resolved_invoke_url)
+        self.invoke_ca_file = (
+            invoke_ca_file
+            or os.getenv(SCORER_INVOKE_CA_FILE_ENV)
             or os.getenv(AUTH_UPSTREAM_CA_FILE_ENV)
             or ""
         ).strip() or None
-        self._ssl_context = self._load_ssl_context(self.luna_invoke_ca_file)
+        self._ssl_context = self._load_ssl_context(self.invoke_ca_file)
         self.keepalive_expiry_seconds = _load_float_env(
-            LUNA_KEEPALIVE_EXPIRY_ENV, DEFAULT_KEEPALIVE_EXPIRY_SECS
+            KEEPALIVE_EXPIRY_ENV, DEFAULT_KEEPALIVE_EXPIRY_SECS
         )
-        self.max_connections = _load_int_env(LUNA_MAX_CONNECTIONS_ENV, DEFAULT_MAX_CONNECTIONS)
+        self.max_connections = _load_int_env(MAX_CONNECTIONS_ENV, DEFAULT_MAX_CONNECTIONS)
         self.max_keepalive_connections = _load_int_env(
-            LUNA_MAX_KEEPALIVE_CONNECTIONS_ENV, DEFAULT_MAX_KEEPALIVE_CONNECTIONS
+            MAX_KEEPALIVE_CONNECTIONS_ENV, DEFAULT_MAX_KEEPALIVE_CONNECTIONS
         )
-        self.client_pool_size = _load_int_env(LUNA_CLIENT_POOL_SIZE_ENV, DEFAULT_CLIENT_POOL_SIZE)
+        self.client_pool_size = _load_int_env(CLIENT_POOL_SIZE_ENV, DEFAULT_CLIENT_POOL_SIZE)
         _validate_connection_config(
             keepalive_expiry_seconds=self.keepalive_expiry_seconds,
             max_connections=self.max_connections,
@@ -366,9 +386,18 @@ class GalileoLunaClient:
 
             return self._select_pooled_client()
 
-    def _endpoint_and_auth_header(self) -> tuple[str, str]:
-        token = _internal_auth_token(self.api_secret)
-        return self.luna_invoke_url, f"Bearer {token}"
+    def _endpoint_and_auth_header(
+        self,
+        *,
+        user_id: str | None,
+        organization_id: str | None,
+    ) -> tuple[str, str]:
+        token = _internal_auth_token(
+            self.api_secret,
+            user_id=user_id,
+            organization_id=organization_id,
+        )
+        return self.invoke_url, f"Bearer {token}"
 
     async def invoke(
         self,
@@ -382,19 +411,25 @@ class GalileoLunaClient:
         config: ScorerInvokeConfig | JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
+        user_id: str | None = None,
+        organization_id: str | None = None,
     ) -> ScorerInvokeResponse:
-        """Invoke a Galileo Luna scorer.
+        """Invoke a Galileo LLM-as-judge scorer.
 
         Args:
             scorer_id: Required scorer identifier.
-            scorer_version_id: Deprecated optional compatibility identifier.
+            scorer_version_id: Optional pinned scorer version identifier.
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
-            step: Optional complete runtime step used for structured dual-write.
+            step: Optional complete runtime step for structured dual-write.
             config: Optional Orbit-supported scorer invocation configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
+            user_id: Caller's Galileo user UUID. Embedded in the JWT so
+                runners-api can resolve LLM provider credentials.
+            organization_id: Caller's Galileo organisation UUID. Embedded
+                for org-scoped authorization checks in runners-api.
         """
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
@@ -426,14 +461,17 @@ class GalileoLunaClient:
             config=invoke_config,
         ).to_dict()
 
-        endpoint, auth_header = self._endpoint_and_auth_header()
+        endpoint, auth_header = self._endpoint_and_auth_header(
+            user_id=user_id,
+            organization_id=organization_id,
+        )
         request_headers = {
             k: v for k, v in (headers or {}).items() if k.lower() not in _BLOCKED_REQUEST_HEADERS
         }
         request_headers["Authorization"] = auth_header
 
-        logger.debug("[GalileoLunaClient] POST %s", endpoint)
-        logger.debug("[GalileoLunaClient] Request body: %s", request_body)
+        logger.debug("[GalileoLLMClient] POST %s", endpoint)
+        logger.debug("[GalileoLLMClient] Request body: %s", request_body)
 
         try:
             client = await self._get_client()
@@ -449,17 +487,17 @@ class GalileoLunaClient:
                 raise RuntimeError("Invalid response payload: not a JSON object")
 
             parsed = ScorerInvokeResponse.from_dict(response_data)
-            logger.debug("[GalileoLunaClient] Response: %s", parsed.raw_response)
+            logger.debug("[GalileoLLMClient] Response: %s", parsed.raw_response)
             return parsed
         except httpx.HTTPStatusError as exc:
             logger.error(
-                "[GalileoLunaClient] API error: %s - %s",
+                "[GalileoLLMClient] API error: %s - %s",
                 exc.response.status_code,
                 exc.response.text,
             )
             raise
         except httpx.RequestError as exc:
-            logger.error("[GalileoLunaClient] Request failed: %s", exc)
+            logger.error("[GalileoLLMClient] Request failed: %s", exc)
             raise
 
     async def close(self) -> None:
@@ -481,7 +519,7 @@ class GalileoLunaClient:
                 if not client.is_closed:
                     await client.aclose()
 
-    async def __aenter__(self) -> GalileoLunaClient:
+    async def __aenter__(self) -> GalileoLLMClient:
         return self
 
     async def __aexit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:

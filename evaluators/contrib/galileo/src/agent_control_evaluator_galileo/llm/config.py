@@ -1,4 +1,4 @@
-"""Configuration model for direct Galileo Luna scorer evaluation."""
+"""Configuration model for direct Galileo LLM-as-judge scorer evaluation."""
 
 from __future__ import annotations
 
@@ -7,54 +7,34 @@ from agent_control_models import JSONValue
 from pydantic import Field, model_validator
 
 from agent_control_evaluator_galileo._shared.config import (
-    ScorerInvokeConfig,
     ScorerOperator,
     ScorerPayloadField,
     _NUMERIC_OPERATORS,
     coerce_number,
 )
 
-# Luna-specific aliases kept for backward compatibility and clear naming.
-LunaOperator = ScorerOperator
-LunaPayloadField = ScorerPayloadField
 
-__all__ = [
-    "ScorerInvokeConfig",
-    "LunaOperator",
-    "LunaPayloadField",
-    "_NUMERIC_OPERATORS",
-    "coerce_number",
-    "LunaEvaluatorConfig",
-]
-
-
-class LunaEvaluatorConfig(EvaluatorConfig):
-    """Configuration for direct Luna scorer evaluation.
+class LlmEvaluatorConfig(EvaluatorConfig):
+    """Configuration for direct LLM-as-judge scorer evaluation.
 
     Attributes:
-        scorer_id: Required scorer identifier for Luna scorer invocation.
-        scorer_version_id: Deprecated optional compatibility identifier. Orbit
-            currently invokes the scorer's current default version.
+        scorer_id: Required scorer identifier for LLM scorer invocation.
+        scorer_version_id: Optional pinned scorer version identifier.
         scorer_label: Optional display/metadata label.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
-        scorer_config: Optional Orbit-supported scorer invocation config sent
-            as ``config``.
         payload_field: Explicit scorer input side for scalar selected data.
         timeout_ms: Request timeout in milliseconds.
     """
 
     scorer_id: str = Field(
         min_length=1,
-        description="Required scorer identifier for Luna scorer invocation.",
+        description="Required scorer identifier for LLM scorer invocation.",
     )
     scorer_version_id: str | None = Field(
         default=None,
         min_length=1,
-        description=(
-            "Deprecated optional compatibility identifier. Orbit currently invokes "
-            "the scorer's current default version."
-        ),
+        description="Optional pinned scorer version identifier.",
     )
     scorer_label: str | None = Field(
         default=None,
@@ -65,19 +45,11 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         default=0.5,
         description="Local threshold used to decide whether the control matches.",
     )
-    operator: LunaOperator = Field(
+    operator: ScorerOperator = Field(
         default="gte",
-        description="Local comparison operator applied to the raw Luna score.",
+        description="Local comparison operator applied to the raw LLM scorer score.",
     )
-    scorer_config: ScorerInvokeConfig | None = Field(
-        default=None,
-        alias="config",
-        serialization_alias="config",
-        description=(
-            "Optional Orbit-supported configuration sent to the Luna scorer invoke endpoint."
-        ),
-    )
-    payload_field: LunaPayloadField = Field(
+    payload_field: ScorerPayloadField = Field(
         default="input",
         description=(
             "Which scorer input side to use when selector output is a scalar value. "
@@ -92,7 +64,7 @@ class LunaEvaluatorConfig(EvaluatorConfig):
     )
 
     @model_validator(mode="after")
-    def validate_threshold(self) -> LunaEvaluatorConfig:
+    def validate_threshold(self) -> LlmEvaluatorConfig:
         """Validate threshold compatibility with the configured operator."""
         if self.operator in _NUMERIC_OPERATORS and coerce_number(self.threshold) is None:
             raise ValueError(f"operator '{self.operator}' requires a numeric threshold")

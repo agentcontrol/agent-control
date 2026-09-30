@@ -1,7 +1,7 @@
 [project]
 name = "agent-control-evaluator-galileo"
 version = "8.8.0"
-description = "Galileo Luna evaluator for agent-control"
+description = "Galileo Luna and LLM-as-judge evaluators for agent-control"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
@@ -25,6 +25,7 @@ dev = [
 
 [project.entry-points."agent_control.evaluators"]
 "galileo.luna" = "agent_control_evaluator_galileo.luna:LunaEvaluator"
+"galileo.llm"  = "agent_control_evaluator_galileo.llm:LlmEvaluator"
 
 [build-system]
 requires = ["hatchling"]

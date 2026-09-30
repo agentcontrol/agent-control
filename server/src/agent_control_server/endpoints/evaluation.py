@@ -1,6 +1,7 @@
 """Evaluation analysis endpoints."""
 
 import json
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from agent_control_engine.core import ControlEngine
@@ -24,6 +25,12 @@ from ..services.controls import ControlService
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
 
 _logger = get_logger(__name__)
+
+# Request-scoped caller identity propagated into evaluator coroutines via
+# contextvars. Set once per evaluation request from the resolved Principal
+# so evaluators can embed the caller's identity in outbound scorer JWTs
+# without the engine or Evaluator base class needing to thread it through.
+_caller_context: ContextVar[dict[str, str]] = ContextVar("_caller_context", default={})
 
 SAFE_EVALUATOR_ERROR = "Evaluation failed due to an internal evaluator error."
 SAFE_EVALUATOR_TIMEOUT_ERROR = "Evaluation timed out before completion."
@@ -198,6 +205,13 @@ async def evaluate(
     """
     engine_controls = await _load_engine_controls(request, principal)
     engine = ControlEngine(engine_controls)
+
+    caller_ctx: dict[str, str] = {}
+    if principal.caller_id is not None:
+        caller_ctx["user_id"] = principal.caller_id
+    if principal.namespace_key is not None:
+        caller_ctx["organization_id"] = principal.namespace_key
+    _token = _caller_context.set(caller_ctx)
     try:
         raw_response = await engine.process(request)
     except ValueError:
@@ -216,5 +230,7 @@ async def evaluate(
                 )
             ],
         )
+    finally:
+        _caller_context.reset(_token)
 
     return _sanitize_evaluation_response(raw_response)

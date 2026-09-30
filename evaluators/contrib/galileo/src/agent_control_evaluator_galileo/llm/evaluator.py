@@ -1,4 +1,4 @@
-"""Direct Galileo Luna evaluator implementation."""
+"""Direct Galileo LLM-as-judge evaluator implementation."""
 
 from __future__ import annotations
 
@@ -11,11 +11,10 @@ import httpx
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult, Step
 
-from agent_control_evaluator_galileo.luna.client import GalileoLunaClient, ScorerInvokeResponse
+from agent_control_evaluator_galileo.llm.client import GalileoLLMClient, ScorerInvokeResponse
 from agent_control_evaluator_galileo._shared.evaluator_helpers import (
     _coerce_payload_text,
     _confidence_from_score,
-    _contains,
     _extract_dict_text,
     _has_text,
     _http_status_error_metadata,
@@ -24,14 +23,18 @@ from agent_control_evaluator_galileo._shared.evaluator_helpers import (
     score_matches,
 )
 
-from .config import LunaEvaluatorConfig
+from .config import LlmEvaluatorConfig
+
+LLM_AVAILABLE = True
 
 logger = logging.getLogger(__name__)
 
 # The caller-identity ContextVar is set by the AC server's evaluation endpoint
-# before engine.process() runs. Luna does not embed identity in its JWT (SLM
-# scorers need no user credentials), but reading it here lets you observe the
-# identity that is in scope during a luna evaluation — useful for debugging.
+# before engine.process() runs. It is read here to embed user_id and
+# organization_id in the outbound scorer JWT so runners-api can resolve LLM
+# provider credentials. The import is deferred to avoid a hard dependency on
+# the server package — if the ContextVar is not available (e.g. in tests or
+# direct SDK usage) the evaluator falls back to an identity-free JWT.
 def _get_caller_context() -> dict[str, str]:
     try:
         from agent_control_server.endpoints.evaluation import _caller_context  # type: ignore[import]
@@ -49,32 +52,31 @@ def _resolve_package_version() -> str:
 
 
 _PACKAGE_VERSION = _resolve_package_version()
-LUNA_AVAILABLE = True
 
 
 @register_evaluator
-class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
-    """Galileo Luna evaluator using the direct scorer invocation API."""
+class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
+    """Galileo LLM-as-judge evaluator using the direct scorer invocation API."""
 
     metadata = EvaluatorMetadata(
-        name="galileo.luna",
+        name="galileo.llm",
         version=_PACKAGE_VERSION,
-        description="Galileo Luna direct scorer evaluation",
+        description="Galileo LLM-as-judge direct scorer evaluation",
         requires_api_key=True,
         timeout_ms=10000,
     )
-    config_model = LunaEvaluatorConfig
+    config_model = LlmEvaluatorConfig
 
     @classmethod
     def is_available(cls) -> bool:
         """Check whether required runtime dependencies are available."""
-        return LUNA_AVAILABLE
+        return LLM_AVAILABLE
 
-    def __init__(self, config: LunaEvaluatorConfig) -> None:
-        """Initialize the direct Luna evaluator.
+    def __init__(self, config: LlmEvaluatorConfig) -> None:
+        """Initialize the direct LLM-as-judge evaluator.
 
         Args:
-            config: Validated LunaEvaluatorConfig instance.
+            config: Validated LlmEvaluatorConfig instance.
 
         Raises:
             ValueError: If neither GALILEO_API_SECRET_KEY nor GALILEO_API_SECRET is set.
@@ -82,16 +84,16 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         has_secret = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET")
         if not has_secret:
             raise ValueError(
-                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for Luna "
+                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for LLM "
                 "scorer invocation. Set one as an environment variable before using "
-                "galileo.luna."
+                "galileo.llm."
             )
 
         super().__init__(config)
-        self._client = GalileoLunaClient()
+        self._client = GalileoLLMClient()
 
-    def _get_client(self) -> GalileoLunaClient:
-        """Get the Galileo Luna client."""
+    def _get_client(self) -> GalileoLLMClient:
+        """Get the Galileo LLM scorer client."""
         return self._client
 
     def _prepare_payload(self, data: Any) -> tuple[str | None, str | None]:
@@ -108,11 +110,11 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         return text, None
 
     def _score_matches(self, score: Any) -> bool:
-        """Apply the configured local threshold comparison to a raw Luna score."""
+        """Apply the configured local threshold comparison to a raw LLM scorer score."""
         return score_matches(score, operator=self.config.operator, threshold=self.config.threshold)
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
-        """Evaluate selected data with Galileo Luna direct scorer invocation.
+        """Evaluate selected data with Galileo LLM-as-judge direct scorer invocation.
 
         Args:
             data: The data selected from the runtime step.
@@ -135,13 +137,13 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         return await self._evaluate(data, step=step)
 
     async def _evaluate(self, data: Any, *, step: Step | None) -> EvaluatorResult:
-        """Run a Luna evaluation with optional structured runtime context."""
+        """Run an LLM scorer evaluation with optional structured runtime context."""
         input_text, output_text = self._prepare_payload(data)
         if not (_has_text(input_text) or _has_text(output_text)):
             return EvaluatorResult(
                 matched=False,
                 confidence=1.0,
-                message="No data to score with Luna",
+                message="No data to score with LLM scorer",
                 metadata=self._base_metadata(),
             )
 
@@ -149,18 +151,19 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             scorer_kwargs = self._scorer_kwargs()
             if step is not None:
                 scorer_kwargs["step"] = step
-            caller_ctx = _get_caller_context()  # debug: inspect identity in scope (not used by luna)
-            logger.debug("Luna evaluate caller_ctx=%r", caller_ctx)
+            caller_ctx = _get_caller_context()
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,
                 output=output_text if _has_text(output_text) else None,
-                config=self.config.scorer_config,
+                config=None,
                 timeout=self.get_timeout_seconds(),
+                user_id=caller_ctx.get("user_id"),
+                organization_id=caller_ctx.get("organization_id"),
             )
 
             if response.status.lower() != "success":
-                message = response.error_message or f"Luna scorer status: {response.status}"
+                message = response.error_message or f"LLM scorer status: {response.status}"
                 raise RuntimeError(message)
 
             matched = self._score_matches(response.score)
@@ -172,17 +175,16 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 matched=matched,
                 confidence=_confidence_from_score(response.score),
                 message=(
-                    f"Luna score {response.score!r} {operator} threshold "
+                    f"LLM scorer score {response.score!r} {operator} threshold "
                     f"{threshold!r}: control {state}."
                 ),
                 metadata=metadata,
             )
         except Exception as exc:
-            logger.error("Luna evaluation error: %s", exc, exc_info=True)
+            logger.error("LLM scorer evaluation error: %s", exc, exc_info=True)
             return self._handle_error(exc)
 
     def _base_metadata(self) -> dict[str, Any]:
-        """Build result metadata without implying a requested version executed."""
         return base_metadata(
             self.config.scorer_id,
             scorer_version_id=self.config.scorer_version_id,
@@ -219,11 +221,11 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         return EvaluatorResult(
             matched=False,
             confidence=0.0,
-            message=f"Luna evaluation error: {error_detail}",
+            message=f"LLM scorer evaluation error: {error_detail}",
             metadata=metadata,
             error=error_detail,
         )
 
     async def aclose(self) -> None:
-        """Close the underlying Galileo Luna client."""
+        """Close the underlying Galileo scorer client."""
         await self._client.close()
