@@ -27,6 +27,7 @@ from galileo_core.schemas.logging.step import BaseStep
 from galileo_core.schemas.logging.trace import Trace
 from galileo_core.schemas.shared.content_parts import FileContentPart, TextContentPart
 from galileo_core.schemas.shared.document import Document
+from galileo_core.schemas.shared.records import BaseRecord, RecordTypeAdapter
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -105,6 +106,54 @@ def test_factory_records_are_serializable_concrete_base_steps() -> None:
     assert isinstance(rebuilt[4], Session)
     assert isinstance(rebuilt[3].spans[0], LlmSpan)
     assert isinstance(rebuilt[4].traces[0].spans[0], LlmSpan)
+
+
+def test_factory_steps_convert_to_core_records_after_execution_ids_are_added() -> None:
+    # Given: each root step subtype emitted by the factory, plus the IDs the execution caller supplies
+    steps = [
+        record_from_step(Step(type="llm", name="answer", input="question", output="answer")),
+        record_from_step(Step(type="tool", name="search", input={"query": "q"}, output="result")),
+        record_from_step(
+            Step(type="retriever", name="retrieve", input="question", output=["document"])
+        ),
+        record_from_step(
+            Step(type="trace", name="request", input="question", context={"spans": []})
+        ),
+        record_from_step(
+            Step(type="session", name="conversation", input="question", context={"traces": []})
+        ),
+    ]
+    project_id = uuid4()
+    run_id = uuid4()
+    session_id = uuid4()
+    trace_id = uuid4()
+    rebuilt_records: list[BaseRecord] = []
+
+    # When: add execution IDs and relationships, then apply Galileo Core's record discriminator
+    for step in steps:
+        step_id = uuid4()
+        values = step.model_dump(
+            mode="python",
+            exclude={"id", "project_id", "run_id", "session_id", "trace_id", "parent_id", "spans", "traces"},
+        )
+        values.update(id=step_id, project_id=project_id, run_id=run_id, type=step.type)
+        if isinstance(step, Session):
+            values["session_id"] = step_id
+        elif isinstance(step, Trace):
+            values.update(session_id=session_id, trace_id=step_id)
+        else:
+            values.update(session_id=session_id, trace_id=trace_id, parent_id=trace_id)
+        rebuilt_records.append(RecordTypeAdapter.validate_python(values))
+
+    # Then: the concrete step payloads satisfy Galileo Core's stored-record schemas
+    assert all(isinstance(record, BaseRecord) for record in rebuilt_records)
+    assert [record.type.value for record in rebuilt_records] == [
+        "llm",
+        "tool",
+        "retriever",
+        "trace",
+        "session",
+    ]
 
 
 def test_llm_messages_use_public_canonical_validation() -> None:
