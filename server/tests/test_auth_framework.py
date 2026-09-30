@@ -1187,11 +1187,13 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
         lambda req: httpx.Response(
             200,
             json={
-                "namespace_key": "org-1",
+                "namespace_key": "namespace-1",
                 "is_admin": False,
                 "scopes": ["runtime.use", "runtime.read_only"],
-                "target_type": "log_stream",
-                "target_id": "ls-1",
+                "target_type": "custom_target",
+                "target_id": "target-1",
+                "provider_field": "opaque_value",
+                "nested": {"opaque": "metadata"},
                 "expires_at": iso_expiry,
             },
         )
@@ -1199,12 +1201,16 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
     principal = await provider.authorize(
         _build_request(),
         Operation.RUNTIME_TOKEN_EXCHANGE,
-        context={"target_type": "log_stream", "target_id": "ls-1"},
+        context={"target_type": "custom_target", "target_id": "target-1"},
     )
-    assert principal.namespace_key == "org-1"
+    assert principal.namespace_key == "namespace-1"
     assert principal.scopes == ("runtime.use", "runtime.read_only")
-    assert principal.target_type == "log_stream"
-    assert principal.target_id == "ls-1"
+    assert principal.target_type == "custom_target"
+    assert principal.target_id == "target-1"
+    assert principal.extensions == {
+        "provider_field": "opaque_value",
+        "nested": {"opaque": "metadata"},
+    }
     assert principal.grant_expires_at is not None
     assert principal.grant_expires_at.isoformat() == iso_expiry
 

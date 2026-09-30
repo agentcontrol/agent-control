@@ -48,6 +48,7 @@ from time import perf_counter
 from typing import Any
 
 import httpx
+from agent_control_models import JSONObject
 from agent_control_models.errors import ErrorCode, ErrorReason
 from fastapi import Request
 from prometheus_client import Counter, Histogram
@@ -55,6 +56,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     ValidationError,
     field_validator,
     model_validator,
@@ -78,6 +80,7 @@ _AUTH_UPSTREAM_ATTEMPT_DURATION = Histogram(
     "Duration of auth upstream HTTP attempts made by Agent Control.",
     ("operation", "outcome"),
 )
+_JSON_OBJECT_ADAPTER: TypeAdapter[JSONObject] = TypeAdapter(JSONObject)
 
 
 class _UpstreamGrant(BaseModel):
@@ -89,7 +92,7 @@ class _UpstreamGrant(BaseModel):
     with a 502.
     """
 
-    model_config = ConfigDict(extra="ignore", strict=True)
+    model_config = ConfigDict(extra="allow", strict=True)
 
     namespace_key: str = Field(min_length=1)
     is_admin: bool = False
@@ -408,6 +411,21 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 hint="Contact the operator.",
             ) from exc
 
+        try:
+            extensions = _JSON_OBJECT_ADAPTER.validate_python(grant.model_extra or {})
+        except ValidationError as exc:
+            _logger.error(
+                "Auth upstream returned malformed extension metadata: %s",
+                exc.errors(),
+            )
+            raise APIError(
+                status_code=502,
+                error_code=ErrorCode.AUTH_MISCONFIGURED,
+                reason=ErrorReason.INTERNAL_ERROR,
+                detail="Authorization service returned malformed extension metadata.",
+                hint="Contact the operator.",
+            ) from exc
+
         return Principal(
             namespace_key=grant.namespace_key,
             is_admin=grant.is_admin,
@@ -416,6 +434,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             target_id=grant.target_id,
             scopes=grant.scopes,
             grant_expires_at=grant.expires_at,
+            extensions=extensions or None,
         )
 
 

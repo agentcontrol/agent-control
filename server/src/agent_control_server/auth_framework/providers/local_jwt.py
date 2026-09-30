@@ -118,6 +118,7 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
             target_id=claims.target_id,
             scopes=claims.scopes,
             grant_expires_at=claims.expires_at,
+            extensions=claims.extensions,
         )
 
     def _extract_bearer_token(self, request: Request) -> str:

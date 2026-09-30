@@ -228,6 +228,15 @@ class ScorerInvokeRecord(BaseModel):
     dataset_output: JSONValue = None
 
 
+class GalileoExecutionContext(BaseModel):
+    """Authenticated identity fields required by Galileo scorer invocation."""
+
+    organization_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1)
+    project_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+
+
 class ScorerInvokeRequest(BaseModel):
     """Request payload for Luna scorer invocation.
 
@@ -246,6 +255,7 @@ class ScorerInvokeRequest(BaseModel):
     scorer_label: str | None = Field(default=None, min_length=1)
     inputs: ScorerInvokeInputs
     record: ScorerInvokeRecord | None = None
+    execution_context: GalileoExecutionContext | None = None
     config: ScorerInvokeConfig = Field(default_factory=ScorerInvokeConfig)
 
     @model_validator(mode="after")
@@ -474,6 +484,7 @@ class GalileoLunaClient:
         input: JSONValue = None,
         output: JSONValue = None,
         step: Step | None = None,
+        execution_context: GalileoExecutionContext | None = None,
         config: ScorerInvokeConfig | JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
@@ -488,6 +499,7 @@ class GalileoLunaClient:
             input: Optional user/system prompt text.
             output: Optional model response text.
             step: Optional complete runtime step used for structured dual-write.
+            execution_context: Optional authenticated Galileo scorer context.
             config: Optional Orbit-supported scorer invocation configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
@@ -531,6 +543,7 @@ class GalileoLunaClient:
                 selected_input=input,
                 selected_output=output,
             ),
+            execution_context=execution_context,
             config=invoke_config,
         ).to_dict()
 
