@@ -242,7 +242,10 @@ def record_from_step(
     values override only the corresponding input/output fields, preserving the
     selected evaluator payload while the unselected side comes from ``step``.
     Trace and session records require structured child context; scalar selected
-    values are never promoted into those record types.
+    values are never promoted into those record types. The result is a concrete
+    Galileo Core step model (a ``BaseStep`` subclass) that can be JSON-serialized
+    and revalidated using that subtype's schema. The factory doesn't assign
+    execution IDs or storage ownership fields.
     """
     if not isinstance(step, Step):
         raise RecordFactoryError("A complete Agent Control Step is required.")
