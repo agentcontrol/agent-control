@@ -473,7 +473,8 @@ def test_binding_id_orbit_http_upstream_authorizes_stored_target(client: TestCli
     set_authorizer(
         HttpUpstreamAuthProvider(
             HttpUpstreamConfig(
-                url="https://orbit.example/internal/auth/agent_control/check_management_access"
+                url="https://orbit.example/internal/auth/agent_control/check_management_access",
+                identity_url="https://orbit.example/internal/auth/resolve_tenant_context",
             ),
             client=upstream_client,
         )

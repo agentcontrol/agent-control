@@ -32,6 +32,7 @@ from __future__ import annotations
 import os
 import ssl
 from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 from ..config import auth_settings
 from ..logging_utils import get_logger
@@ -64,6 +65,8 @@ _UPSTREAM_MAX_CONNECTIONS_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_MAX_CONNECTIONS"
 _UPSTREAM_MAX_KEEPALIVE_CONNECTIONS_ENV = (
     "AGENT_CONTROL_AUTH_UPSTREAM_MAX_KEEPALIVE_CONNECTIONS"
 )
+_ORBIT_MANAGEMENT_PATH = "/internal/auth/agent_control/check_management_access"
+_ORBIT_IDENTITY_PATH = "/internal/auth/resolve_tenant_context"
 
 # Runtime flow.
 _RUNTIME_MODE_ENV = "AGENT_CONTROL_RUNTIME_AUTH_MODE"
@@ -246,10 +249,14 @@ def _build_default_provider() -> RequestAuthorizer:
             max_keepalive_connections=max_keepalive_connections,
         )
         _logger.info("Default auth provider: http_upstream url=%s", url)
+        # Only the known Orbit management route has a predictable identity route.
+        # Other upstreams keep their existing namespace-wide authorization flow.
+        explicit_identity_url = (os.environ.get(_UPSTREAM_IDENTITY_URL_ENV) or "").strip()
+        identity_url = explicit_identity_url or _derive_orbit_identity_url(url)
         try:
             upstream_config = HttpUpstreamConfig(
                 url=url,
-                identity_url=(os.environ.get(_UPSTREAM_IDENTITY_URL_ENV) or "").strip() or None,
+                identity_url=identity_url,
                 timeout_seconds=timeout,
                 service_token=token,
                 service_token_header=token_header,
@@ -274,6 +281,17 @@ def _build_default_provider() -> RequestAuthorizer:
     raise RuntimeError(
         f"Unknown {_MODE_ENV}={mode!r}; expected 'none', 'api_key', 'header', "
         "or 'http_upstream'."
+    )
+
+
+def _derive_orbit_identity_url(url: str) -> str | None:
+    """Resolve Orbit's existing identity route from its management route."""
+    parts = urlsplit(url)
+    if not parts.path.endswith(_ORBIT_MANAGEMENT_PATH):
+        return None
+    prefix = parts.path[: -len(_ORBIT_MANAGEMENT_PATH)]
+    return urlunsplit(
+        (parts.scheme, parts.netloc, prefix + _ORBIT_IDENTITY_PATH, parts.query, parts.fragment)
     )
 
 

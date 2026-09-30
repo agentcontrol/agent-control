@@ -46,7 +46,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from agent_control_models.errors import ErrorCode, ErrorReason
@@ -68,9 +67,8 @@ from ..core import Operation, Principal, RequestAuthorizer
 _logger = get_logger(__name__)
 
 _DEFAULT_FORWARDED_HEADERS = ("X-API-Key", "Authorization", "Cookie")
-_ORBIT_MANAGEMENT_PATH = "/internal/auth/agent_control/check_management_access"
-_ORBIT_IDENTITY_PATH = "/internal/auth/resolve_tenant_context"
-_IDENTITY_OPERATION = "identity.resolve"
+# Diagnostic label only; the identity POST has no operation payload.
+_IDENTITY_LOOKUP_LABEL = "identity.resolve"
 
 _AUTH_UPSTREAM_ATTEMPTS = Counter(
     "agent_control_server_auth_upstream_attempts_total",
@@ -185,8 +183,7 @@ class HttpUpstreamConfig:
     """Maximum idle connections retained for the auth upstream."""
 
     identity_url: str | None = None
-    """URL for credential and namespace resolution. If omitted, the Orbit
-    identity URL is derived from the known management authorization path."""
+    """Optional URL for credential and namespace resolution before target authorization."""
 
     def __post_init__(self) -> None:
         if self.keepalive_expiry_seconds < 0:
@@ -221,7 +218,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._config = config
-        self._identity_url = config.identity_url or _derive_orbit_identity_url(config.url)
+        self._identity_url = config.identity_url
         self._owns_client = client is None
         if client is not None:
             self._client = client
@@ -274,7 +271,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 hint="Set AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL.",
             )
         response = await self._post_upstream(
-            _IDENTITY_OPERATION,
+            _IDENTITY_LOOKUP_LABEL,
             None,
             self._forward_headers(request),
             url=self._identity_url,
@@ -287,7 +284,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 detail="Authorization identity endpoint was not found.",
                 hint="Check the configured authorization identity URL.",
             )
-        principal = self._handle_response(response, _IDENTITY_OPERATION, None)
+        principal = self._handle_response(response, _IDENTITY_LOOKUP_LABEL, None)
         return Principal(namespace_key=principal.namespace_key, caller_id=principal.caller_id)
 
     async def _post_upstream(
@@ -490,17 +487,6 @@ def _authorization_service_unavailable_error() -> APIError:
         reason=ErrorReason.SERVICE_UNAVAILABLE,
         detail="Authorization service unavailable.",
         hint="Retry the request; if the failure persists, contact the operator.",
-    )
-
-
-def _derive_orbit_identity_url(url: str) -> str | None:
-    """Resolve Orbit's existing identity route from its management route."""
-    parts = urlsplit(url)
-    if not parts.path.endswith(_ORBIT_MANAGEMENT_PATH):
-        return None
-    prefix = parts.path[: -len(_ORBIT_MANAGEMENT_PATH)]
-    return urlunsplit(
-        (parts.scheme, parts.netloc, prefix + _ORBIT_IDENTITY_PATH, parts.query, parts.fragment)
     )
 
 

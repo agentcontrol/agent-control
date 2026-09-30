@@ -280,7 +280,7 @@ async def test_http_upstream_returns_principal_on_200():
 
 
 @pytest.mark.asyncio
-async def test_http_upstream_resolves_identity_at_derived_orbit_url():
+async def test_http_upstream_resolves_identity_at_configured_url():
     captured: dict[str, Any] = {}
 
     def factory(request: httpx.Request) -> httpx.Response:
@@ -300,7 +300,10 @@ async def test_http_upstream_resolves_identity_at_derived_orbit_url():
     provider = _build_upstream(
         factory,
         config_overrides={
-            "url": ("https://orbit.example/prefix/internal/auth/agent_control/check_management_access"),
+            "url": (
+                "https://orbit.example/prefix/internal/auth/agent_control/check_management_access"
+            ),
+            "identity_url": "https://orbit.example/prefix/internal/auth/resolve_tenant_context",
             "service_token": "service-secret",
             "extra_forward_headers": ("X-Deployer-Auth",),
         },
@@ -1671,13 +1674,51 @@ async def test_configure_http_upstream_extra_forward_headers_env(monkeypatch):
         await auth_config.teardown_auth()
 
 
+@pytest.mark.parametrize(
+    ("upstream_url", "expected_identity_url"),
+    [
+        (
+            "https://orbit.example/prefix/internal/auth/agent_control/check_management_access",
+            "https://orbit.example/prefix/internal/auth/resolve_tenant_context",
+        ),
+        ("https://auth.example.test/check", None),
+    ],
+)
 @pytest.mark.asyncio
-async def test_configure_http_upstream_identity_url_env(monkeypatch):
+async def test_configure_http_upstream_selects_identity_url(
+    monkeypatch, upstream_url: str, expected_identity_url: str | None
+):
     from agent_control_server.auth_framework import config as auth_config
 
     clear_authorizers()
     monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
-    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", "https://auth.example.test/check")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", upstream_url)
+    monkeypatch.delenv("AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL", raising=False)
+
+    try:
+        auth_config.configure_auth_from_env()
+        provider = get_authorizer(Operation.CONTROL_BINDINGS_READ)
+        assert isinstance(provider, HttpUpstreamAuthProvider)
+        assert provider._config.identity_url == expected_identity_url
+        assert provider.binding_target_authorization is (expected_identity_url is not None)
+    finally:
+        await auth_config.teardown_auth()
+
+
+@pytest.mark.parametrize(
+    "upstream_url",
+    [
+        "https://auth.example.test/check",
+        "https://orbit.example/internal/auth/agent_control/check_management_access",
+    ],
+)
+@pytest.mark.asyncio
+async def test_configure_http_upstream_identity_url_env(monkeypatch, upstream_url: str):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", upstream_url)
     monkeypatch.setenv(
         "AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL",
         " https://identity.example.test/resolve ",
@@ -1688,6 +1729,7 @@ async def test_configure_http_upstream_identity_url_env(monkeypatch):
         provider = get_authorizer(Operation.CONTROL_BINDINGS_READ)
         assert isinstance(provider, HttpUpstreamAuthProvider)
         assert provider._config.identity_url == "https://identity.example.test/resolve"
+        assert provider.binding_target_authorization is True
     finally:
         await auth_config.teardown_auth()
 
