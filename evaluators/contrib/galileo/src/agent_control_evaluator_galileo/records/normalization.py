@@ -33,7 +33,7 @@ class _GalileoJSONEncoder(json.JSONEncoder):
             )
         if isinstance(value, datetime):
             if value.tzinfo is None:
-                value = value.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                value = value.astimezone()
             serialized = value.isoformat()
             if value.tzinfo is not None and value.tzinfo.tzname(None) == UTC.tzname(None):
                 return serialized.replace("+00:00", "Z")
@@ -43,7 +43,7 @@ class _GalileoJSONEncoder(json.JSONEncoder):
         if isinstance(value, UUID | Path):
             return str(value)
         if isinstance(value, Enum):
-            return value.value
+            return _sdk_json_value(value.value)
         if isinstance(value, bytes):
             try:
                 return value.decode("utf-8")
@@ -51,8 +51,6 @@ class _GalileoJSONEncoder(json.JSONEncoder):
                 return "<not serializable bytes>"
         if is_dataclass(value) and not isinstance(value, type):
             return asdict(value)
-        if isinstance(value, int) and not isinstance(value, bool):
-            return value if -_MAX_SAFE_INTEGER <= value <= _MAX_SAFE_INTEGER else str(value)
         if isinstance(value, set | frozenset):
             return list(value)
         return f"<{type(value).__name__}>"
@@ -123,20 +121,20 @@ def _json_text(value: Any) -> str:
     """Return the Galileo text representation of a structured value."""
     if isinstance(value, str):
         return value
-    if value is None or isinstance(value, bool | int | float):
-        return json.dumps(value)
     return json.dumps(_sdk_json_value(value))
 
 
 def _json_compatible(value: Any) -> Any:
     """Convert models and containers into values accepted by Galileo Pydantic models."""
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="python", exclude_none=True)
+        return _json_compatible(value.model_dump(mode="python", exclude_none=True))
     if isinstance(value, Mapping):
         return {key: _json_compatible(item) for key, item in value.items()}
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return [_json_compatible(item) for item in value]
-    if isinstance(value, UUID | datetime | date | Enum):
+    if isinstance(value, set | frozenset):
+        return [_json_compatible(item) for item in value]
+    if isinstance(value, UUID | datetime | date | Enum | Path | bytes):
         return _GalileoJSONEncoder().default(value)
     return value
 
@@ -157,7 +155,7 @@ def _content_part(value: Any) -> dict[str, Any] | None:
 def _message_content(value: Any) -> Any:
     if isinstance(value, Message):
         return value.content
-    if isinstance(value, Mapping) and ("role" in value or "content" in value):
+    if isinstance(value, Mapping) and "role" in value:
         return value.get("content", "")
     return None
 
@@ -177,7 +175,7 @@ def _normalize_content_items(value: Any) -> list[dict[str, Any]] | None:
 def _message_sequence(value: Any) -> bool:
     return isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray) and all(
         isinstance(item, Message)
-        or (isinstance(item, Mapping) and ("role" in item or "content" in item))
+        or (isinstance(item, Mapping) and "role" in item)
         for item in value
     )
 
@@ -451,9 +449,7 @@ class GalileoRecordNormalizer:
             content_parts = _normalize_content_items(value)
             if content_parts is not None:
                 return content_parts
-            if all(isinstance(item, Mapping) for item in value):
-                return [_json_compatible(item) for item in value]
-            return [_json_compatible(item) for item in value]
+            return cls.json_text(value)
         return cls.json_text(value)
 
     @classmethod
