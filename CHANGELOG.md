@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v8.10.0 (2026-10-01)
+
+### Features
+
+- **evaluators**: Add extensions/metadata for additional fields that we want to pass as context to
+  execution of evaluator ([#276](https://github.com/agentcontrol/agent-control/pull/276),
+  [`4e6b025`](https://github.com/agentcontrol/agent-control/commit/4e6b02530559baec320b3f7b25a9fe37969f6202))
+
+
 ## v8.9.0 (2026-10-01)
 
 ### Bug Fixes
