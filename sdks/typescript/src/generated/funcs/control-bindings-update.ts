@@ -28,15 +28,14 @@ import { APICall, APIPromise } from "../types/async.js";
 import { Result } from "../types/fp.js";
 
 /**
- * Update a control binding (namespace-wide)
+ * Update a control binding
  *
  * @remarks
  * Update the ``enabled`` flag on a control binding.
  *
- * See the GET-by-id docstring for the authorization scope: this route
- * is namespace-wide because the target identifiers are not available
- * before the binding is loaded. Use ``PUT /by-key`` for target-scoped
- * upserts that include the target in the request context.
+ * Target-aware authorizers use the binding's stored target identifiers.
+ * Other authorizers retain namespace-wide authorization. The mutation
+ * remains scoped to the authorized namespace.
  */
 export function controlBindingsUpdate(
   client: AgentControlSDKCore,

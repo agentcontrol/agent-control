@@ -53,6 +53,8 @@ def validate_http_field_name(name: str) -> str:
 class LocalJwtVerifyProvider(RequestAuthorizer):
     """Verifies a runtime Bearer token and emits a target-bound :class:`Principal`."""
 
+    binding_target_authorization = True
+
     def __init__(
         self,
         *,
@@ -70,12 +72,8 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
         # sync with AgentControlClient._runtime_token_use_bearer in the SDK.
         self._require_bearer = self._header_name.lower() == "authorization"
 
-    async def authorize(
-        self,
-        request: Request,
-        operation: Operation,
-        context: dict[str, Any] | None = None,
-    ) -> Principal:
+    async def resolve_identity(self, request: Request, operation: Operation) -> Principal:
+        """Verify the runtime token and return its bound identity."""
         token = self._extract_bearer_token(request)
         try:
             claims = verify_runtime_token(token, self._secret)
@@ -96,21 +94,6 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
                 hint="Request a token with the required scope.",
             )
 
-        requested_target_type = context.get("target_type") if context is not None else None
-        requested_target_id = context.get("target_id") if context is not None else None
-        if requested_target_type != claims.target_type:
-            raise ForbiddenError(
-                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                detail="Runtime token target_type does not match the request.",
-                hint="Re-exchange a token bound to the request target.",
-            )
-        if requested_target_id != claims.target_id:
-            raise ForbiddenError(
-                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                detail="Runtime token target_id does not match the request.",
-                hint="Re-exchange a token bound to the request target.",
-            )
-
         return Principal(
             namespace_key=claims.namespace_key,
             caller_id=claims.actor_id,
@@ -120,6 +103,31 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
             grant_expires_at=claims.expires_at,
             extensions=claims.extensions,
         )
+
+    async def authorize(
+        self,
+        request: Request,
+        operation: Operation,
+        context: dict[str, Any] | None = None,
+    ) -> Principal:
+        principal = await self.resolve_identity(request, operation)
+
+        requested_target_type = context.get("target_type") if context is not None else None
+        requested_target_id = context.get("target_id") if context is not None else None
+        if requested_target_type != principal.target_type:
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail="Runtime token target_type does not match the request.",
+                hint="Re-exchange a token bound to the request target.",
+            )
+        if requested_target_id != principal.target_id:
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail="Runtime token target_id does not match the request.",
+                hint="Re-exchange a token bound to the request target.",
+            )
+
+        return principal
 
     def _extract_bearer_token(self, request: Request) -> str:
         header = request.headers.get(self._header_name)

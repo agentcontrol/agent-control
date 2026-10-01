@@ -26,7 +26,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from agent_control_models import JSONObject
 from fastapi import Request
@@ -117,6 +117,22 @@ class RequestAuthorizer(Protocol):
         operation: Operation,
         context: dict[str, Any] | None = None,
     ) -> Principal: ...
+
+
+@runtime_checkable
+class IdentityResolver(Protocol):
+    """Opt-in credential and namespace lookup for target-bound authorizers.
+
+    Providers opt in only when they can resolve an identity without changing
+    the authorization behavior of existing namespace-wide binding ID routes.
+    The route then calls ``authorize`` with the stored target after the
+    namespace-scoped lookup.
+    """
+
+    @property
+    def binding_target_authorization(self) -> bool: ...
+
+    async def resolve_identity(self, request: Request, operation: Operation) -> Principal: ...
 
 
 _default_authorizer: RequestAuthorizer | None = None

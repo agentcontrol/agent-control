@@ -238,14 +238,33 @@ class ControlBindingsService:
         result = await self._db.execute(stmt)
         binding = cast(ControlBinding | None, result.scalars().first())
         if binding is None:
-            raise NotFoundError(
-                error_code=ErrorCode.CONTROL_BINDING_NOT_FOUND,
-                detail=f"Control binding with ID '{binding_id}' not found",
-                resource="ControlBinding",
-                resource_id=str(binding_id),
-                hint="Verify the binding ID and that it belongs to this namespace.",
-            )
+            raise self.binding_not_found(binding_id)
         return binding
+
+    async def get_binding_target_for_authorization_or_404(
+        self, *, namespace_key: str, binding_id: int
+    ) -> tuple[str, str]:
+        """Load a binding's target within the authenticated namespace."""
+        stmt = select(ControlBinding.target_type, ControlBinding.target_id).where(
+            ControlBinding.id == binding_id,
+            ControlBinding.namespace_key == namespace_key,
+        )
+        result = await self._db.execute(stmt)
+        target = result.tuples().first()
+        if target is None:
+            raise self.binding_not_found(binding_id)
+        target_type, target_id = target
+        return target_type, target_id
+
+    @staticmethod
+    def binding_not_found(binding_id: int) -> NotFoundError:
+        return NotFoundError(
+            error_code=ErrorCode.CONTROL_BINDING_NOT_FOUND,
+            detail=f"Control binding with ID '{binding_id}' not found",
+            resource="ControlBinding",
+            resource_id=str(binding_id),
+            hint="Verify the binding ID and that it belongs to this namespace.",
+        )
 
     async def list_bindings(
         self,
