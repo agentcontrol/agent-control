@@ -1203,6 +1203,30 @@ class TestLunaEvaluator:
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio
+    async def test_evaluator_rejects_missing_organization_id(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+        evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123"})
+        extensions = {
+            "target_type": "log_stream",
+            "target_id": "run-4",
+            "metadata": {"project_id": "project-3"},
+        }
+
+        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            result = await evaluator.evaluate_with_extensions(
+                "selected input",
+                Step(type="llm", name="answer", input="prompt"),
+                extensions,
+            )
+
+        assert result.error is not None
+        assert "organization_id" in result.error
+        mock_invoke.assert_not_called()
+
+    @patch.dict(os.environ, LUNA_ENV)
+    @pytest.mark.asyncio
     async def test_evaluator_labels_forwarded_scorer_version_id_as_requested(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
