@@ -102,11 +102,15 @@ def _require_binding_operation(
 
         context = {"target_type": target_type, "target_id": target_id}
         try:
-            return await authorizer.authorize(request, operation, context)
+            principal = await authorizer.authorize(request, operation, context)
         except (ForbiddenError, NotFoundError) as exc:
             # A caller cannot distinguish a binding it cannot access from a
             # missing binding in its namespace.
             raise ControlBindingsService.binding_not_found(binding_id) from exc
+        if principal.namespace_key != identity.namespace_key:
+            # The target grant must apply to the namespace used for the lookup.
+            raise ControlBindingsService.binding_not_found(binding_id)
+        return principal
 
     return dependency
 

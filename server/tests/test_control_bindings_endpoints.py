@@ -9,9 +9,6 @@ from typing import Any
 import httpx
 import pytest
 from agent_control_models.errors import ErrorCode, ErrorReason
-from fastapi.testclient import TestClient
-from httpx import Response
-
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.auth_framework.providers import (
     HeaderAuthProvider,
@@ -20,6 +17,8 @@ from agent_control_server.auth_framework.providers import (
 from agent_control_server.auth_framework.providers.http_upstream import HttpUpstreamConfig
 from agent_control_server.errors import APIError, ForbiddenError, NotFoundError
 from agent_control_server.models import DEFAULT_NAMESPACE_KEY
+from fastapi.testclient import TestClient
+from httpx import Response
 
 from .utils import VALID_CONTROL_PAYLOAD
 
@@ -354,6 +353,56 @@ def test_binding_id_target_denial_looks_like_missing_binding(
     assert denied.json()["error_code"] == missing.json()["error_code"] == (
         "CONTROL_BINDING_NOT_FOUND"
     )
+
+
+@pytest.mark.parametrize("method", ["get", "patch", "delete"])
+def test_binding_id_rejects_namespace_changed_by_target_authorization(
+    method: str, client: TestClient
+) -> None:
+    # Given: identity resolves to the binding namespace, but target auth changes it.
+    control_id = _create_control(client)
+    binding_id = _create_binding(client, control_id=control_id)["binding_id"]
+
+    class MismatchedNamespaceAuthorizer:
+        binding_target_authorization = True
+        authorization_namespace = "other-namespace"
+
+        async def resolve_identity(self, request: Any, operation: Operation) -> Principal:
+            del request, operation
+            return Principal(namespace_key=DEFAULT_NAMESPACE_KEY)
+
+        async def authorize(
+            self,
+            request: Any,
+            operation: Operation,
+            context: dict[str, Any] | None = None,
+        ) -> Principal:
+            del request, operation, context
+            return Principal(namespace_key=self.authorization_namespace)
+
+    authorizer = MismatchedNamespaceAuthorizer()
+    set_authorizer(authorizer)
+
+    # When: the caller reads or mutates the binding by ID.
+    url = f"{_BINDINGS_URL}/{binding_id}"
+    if method == "get":
+        response = client.get(url)
+    elif method == "patch":
+        response = client.patch(url, json={"enabled": False})
+    else:
+        response = client.delete(url)
+
+    # Then: it looks missing, and PATCH/DELETE leave the row untouched.
+    missing = client.get(f"{_BINDINGS_URL}/999999")
+    assert response.status_code == missing.status_code == 404
+    assert response.json()["error_code"] == missing.json()["error_code"] == (
+        "CONTROL_BINDING_NOT_FOUND"
+    )
+
+    authorizer.authorization_namespace = DEFAULT_NAMESPACE_KEY
+    stored = client.get(url)
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["enabled"] is True
 
 
 def test_binding_id_legacy_authorizer_preserves_namespace_wide_check(client: TestClient) -> None:
