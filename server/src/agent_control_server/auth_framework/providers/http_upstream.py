@@ -69,6 +69,8 @@ from ..core import Operation, Principal, RequestAuthorizer
 _logger = get_logger(__name__)
 
 _DEFAULT_FORWARDED_HEADERS = ("X-API-Key", "Authorization", "Cookie")
+# Diagnostic label only; the identity POST has no operation payload.
+_IDENTITY_LOOKUP_LABEL = "identity.resolve"
 
 _AUTH_UPSTREAM_ATTEMPTS = Counter(
     "agent_control_server_auth_upstream_attempts_total",
@@ -183,6 +185,9 @@ class HttpUpstreamConfig:
     max_keepalive_connections: int = 20
     """Maximum idle connections retained for the auth upstream."""
 
+    identity_url: str | None = None
+    """Optional URL for credential and namespace resolution before target authorization."""
+
     def __post_init__(self) -> None:
         if self.keepalive_expiry_seconds < 0:
             raise ValueError("keepalive_expiry_seconds must be greater than or equal to 0")
@@ -216,6 +221,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._config = config
+        self._identity_url = config.identity_url
         self._owns_client = client is None
         if client is not None:
             self._client = client
@@ -231,6 +237,11 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             if config.ca_file is not None:
                 client_kwargs["verify"] = ssl.create_default_context(cafile=config.ca_file)
             self._client = httpx.AsyncClient(**client_kwargs)
+
+    @property
+    def binding_target_authorization(self) -> bool:
+        """Use stored-target checks only when a separate identity URL exists."""
+        return self._identity_url is not None
 
     async def aclose(self) -> None:
         """Release the HTTP client if this provider created it."""
@@ -248,19 +259,49 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         if context:
             payload["context"] = context
 
-        response = await self._post_upstream(operation, payload, headers)
-        return self._handle_response(response, operation, context)
+        response = await self._post_upstream(operation.value, payload, headers)
+        return self._handle_response(response, operation.value, context)
+
+    async def resolve_identity(self, request: Request, operation: Operation) -> Principal:
+        """Authenticate with the upstream before a namespace-scoped lookup."""
+        del operation  # Target-specific permission is checked by authorize afterward.
+        if self._identity_url is None:
+            raise APIError(
+                status_code=500,
+                error_code=ErrorCode.AUTH_MISCONFIGURED,
+                reason=ErrorReason.INTERNAL_ERROR,
+                detail="Authorization identity endpoint is not configured.",
+                hint="Set AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL.",
+            )
+        response = await self._post_upstream(
+            _IDENTITY_LOOKUP_LABEL,
+            None,
+            self._forward_headers(request),
+            url=self._identity_url,
+        )
+        if response.status_code == 404:
+            raise APIError(
+                status_code=502,
+                error_code=ErrorCode.AUTH_UPSTREAM_REJECTED,
+                reason=ErrorReason.INTERNAL_ERROR,
+                detail="Authorization identity endpoint was not found.",
+                hint="Check the configured authorization identity URL.",
+            )
+        principal = self._handle_response(response, _IDENTITY_LOOKUP_LABEL, None)
+        return Principal(namespace_key=principal.namespace_key, caller_id=principal.caller_id)
 
     async def _post_upstream(
         self,
-        operation: Operation,
-        payload: dict[str, Any],
+        operation: str,
+        payload: dict[str, Any] | None,
         headers: dict[str, str],
+        *,
+        url: str | None = None,
     ) -> httpx.Response:
         started = perf_counter()
         try:
             response = await self._client.post(
-                self._config.url,
+                url or self._config.url,
                 json=payload,
                 headers=headers,
             )
@@ -273,7 +314,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             )
             _logger.warning(
                 "Auth upstream unreachable for operation %s: %s",
-                operation.value,
+                operation,
                 exc,
             )
             raise _authorization_service_unavailable_error() from exc
@@ -304,7 +345,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
     def _handle_response(
         self,
         response: httpx.Response,
-        operation: Operation,
+        operation: str,
         context: dict[str, Any] | None,
     ) -> Principal:
         status = response.status_code
@@ -321,7 +362,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         if status == 403:
             raise ForbiddenError(
                 error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-                detail=f"Not authorized to perform {operation.value!r}.",
+                detail=f"Not authorized to perform {operation!r}.",
                 hint="Contact your administrator if you expected access.",
             )
         if status == 404:
@@ -346,7 +387,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 hint = f"{hint} Retry-After: {retry_after}."
             _logger.warning(
                 "Upstream returned 429 for operation %s",
-                operation.value,
+                operation,
             )
             raise APIError(
                 status_code=503,
@@ -358,7 +399,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         if 400 <= status < 500:
             _logger.warning(
                 "Authorization upstream rejected operation %s with status %d",
-                operation.value,
+                operation,
                 status,
             )
             raise APIError(
@@ -378,7 +419,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         _logger.warning(
             "Unexpected upstream status %d for operation %s",
             status,
-            operation.value,
+            operation,
         )
         raise APIError(
             status_code=503,
@@ -439,7 +480,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
 
 
 def _observe_upstream_attempt(
-    operation: Operation,
+    operation: str,
     duration_seconds: float,
     *,
     outcome: str,
@@ -447,13 +488,13 @@ def _observe_upstream_attempt(
     error: httpx.HTTPError | None = None,
 ) -> None:
     _AUTH_UPSTREAM_ATTEMPTS.labels(
-        operation=operation.value,
+        operation=operation,
         outcome=outcome,
         status_code=str(status_code) if status_code is not None else "none",
         error_type=type(error).__name__ if error is not None else "none",
     ).inc()
     _AUTH_UPSTREAM_ATTEMPT_DURATION.labels(
-        operation=operation.value,
+        operation=operation,
         outcome=outcome,
     ).observe(duration_seconds)
 

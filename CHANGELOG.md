@@ -2,6 +2,42 @@
 
 <!-- version list -->
 
+## v8.9.0 (2026-10-01)
+
+### Bug Fixes
+
+- **evaluators**: Normalize records with galileo-core
+  ([#277](https://github.com/agentcontrol/agent-control/pull/277),
+  [`a0d2660`](https://github.com/agentcontrol/agent-control/commit/a0d266074c69344abd1d323f5262f9cddfc4a858))
+
+- **sdk**: Resolve all condition leaf selectors into control event input
+  ([#269](https://github.com/agentcontrol/agent-control/pull/269),
+  [`b7a76cf`](https://github.com/agentcontrol/agent-control/commit/b7a76cf83d8ba6896dcd735ecd239de267ba381b))
+
+- **server**: Annotate SQLAlchemy result rows for 2.1 type inference [SAO-17580]
+  ([#272](https://github.com/agentcontrol/agent-control/pull/272),
+  [`ad6a257`](https://github.com/agentcontrol/agent-control/commit/ad6a257ce9055c384ab6d1278f85ef15fabfbf87))
+
+- **server**: Reject malformed runtime-token target context before authorization [SAO-17522]
+  ([#268](https://github.com/agentcontrol/agent-control/pull/268),
+  [`364ff45`](https://github.com/agentcontrol/agent-control/commit/364ff454d14ebf3e92cb3faaad6d0686ef541b9c))
+
+- **server**: Repair Orbit binding ID auth and preserve legacy upstreams [SAO-17527]
+  ([#273](https://github.com/agentcontrol/agent-control/pull/273),
+  [`06dc211`](https://github.com/agentcontrol/agent-control/commit/06dc2117bb299416c1afb4c84a05ca4b580f91de))
+
+### Chores
+
+- **release**: Ts sdk v3.3.0 [skip ci]
+  ([`f617522`](https://github.com/agentcontrol/agent-control/commit/f61752272d274ae4b6b1c278ff98cabd9c96a1fb))
+
+### Features
+
+- **evaluators**: Add shared galileo record factory to convert step to galileo models
+  ([#267](https://github.com/agentcontrol/agent-control/pull/267),
+  [`bd7d91f`](https://github.com/agentcontrol/agent-control/commit/bd7d91fe1bee33bfb27ac686c47d539cfe675d58))
+
+
 ## v8.8.0 (2026-09-22)
 
 ### Bug Fixes

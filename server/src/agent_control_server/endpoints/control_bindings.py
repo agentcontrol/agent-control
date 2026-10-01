@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from agent_control_models.errors import ErrorCode
@@ -23,9 +24,10 @@ from agent_control_models.server import (
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth_framework import Operation, Principal, require_operation
-from ..db import get_async_db
-from ..errors import BadRequestError
+from ..auth_framework import Operation, Principal, get_authorizer, require_operation
+from ..auth_framework.core import IdentityResolver
+from ..db import AsyncSessionLocal, get_async_db
+from ..errors import BadRequestError, ForbiddenError, NotFoundError
 from ..models import ControlBinding
 from ..services.control_bindings import ControlBindingsService
 
@@ -70,6 +72,47 @@ async def _binding_list_context(request: Request) -> dict[str, Any]:
     if target_type is None and target_id is None:
         return {}
     return {"target_type": target_type, "target_id": target_id}
+
+
+def _require_binding_operation(
+    operation: Operation,
+) -> Callable[..., Awaitable[Principal]]:
+    """Use stored-target authorization when the provider opts in."""
+
+    async def dependency(request: Request, binding_id: int) -> Principal:
+        authorizer = get_authorizer(operation)
+        if (
+            not isinstance(authorizer, IdentityResolver)
+            or not authorizer.binding_target_authorization
+        ):
+            # Preserve the existing single namespace-wide authorization call
+            # for providers without an independent identity lookup. Their
+            # operation contract may reject a new target context altogether.
+            return await authorizer.authorize(request, operation)
+
+        identity = await authorizer.resolve_identity(request, operation)
+        # Use a short-lived session so no database connection is held while the
+        # authorization provider performs a potentially remote request.
+        async with AsyncSessionLocal() as db:
+            target_type, target_id = await ControlBindingsService(
+                db
+            ).get_binding_target_for_authorization_or_404(
+                namespace_key=identity.namespace_key, binding_id=binding_id
+            )
+
+        context = {"target_type": target_type, "target_id": target_id}
+        try:
+            principal = await authorizer.authorize(request, operation, context)
+        except (ForbiddenError, NotFoundError) as exc:
+            # A caller cannot distinguish a binding it cannot access from a
+            # missing binding in its namespace.
+            raise ControlBindingsService.binding_not_found(binding_id) from exc
+        if principal.namespace_key != identity.namespace_key:
+            # The target grant must apply to the namespace used for the lookup.
+            raise ControlBindingsService.binding_not_found(binding_id)
+        return principal
+
+    return dependency
 
 
 def _to_response(binding: ControlBinding) -> GetControlBindingResponse:
@@ -191,22 +234,19 @@ async def list_control_bindings(
 @router.get(
     "/{binding_id}",
     response_model=GetControlBindingResponse,
-    summary="Get a control binding (namespace-wide)",
+    summary="Get a control binding",
     response_description="The requested binding",
 )
 async def get_control_binding(
     binding_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_READ)),
+    principal: Principal = Depends(_require_binding_operation(Operation.CONTROL_BINDINGS_READ)),
 ) -> GetControlBindingResponse:
     """Read a single control binding by surrogate ID.
 
-    Authorization is namespace-wide: the binding's target identifiers
-    are not available until after the row is loaded.
-    Callers whose authorization model requires per-target permissions
-    should use the natural-key endpoints (``PUT /by-key``,
-    ``POST /by-key:delete``) and the target-filtered list endpoint, all
-    of which include ``(target_type, target_id)`` in the request context.
+    Target-aware authorizers use the binding's stored target identifiers.
+    Other authorizers retain namespace-wide authorization. The row is loaded
+    using the authorized namespace before any binding data is returned.
     """
     service = ControlBindingsService(db)
     binding = await service.get_binding_or_404(
@@ -252,21 +292,20 @@ async def patch_control_binding_by_key(
 @router.patch(
     "/{binding_id}",
     response_model=PatchControlBindingResponse,
-    summary="Update a control binding (namespace-wide)",
+    summary="Update a control binding",
     response_description="Updated enabled flag",
 )
 async def patch_control_binding(
     binding_id: int,
     request: PatchControlBindingRequest,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_WRITE)),
+    principal: Principal = Depends(_require_binding_operation(Operation.CONTROL_BINDINGS_WRITE)),
 ) -> PatchControlBindingResponse:
     """Update the ``enabled`` flag on a control binding.
 
-    See the GET-by-id docstring for the authorization scope: this route
-    is namespace-wide because the target identifiers are not available
-    before the binding is loaded. Use ``PUT /by-key`` for target-scoped
-    upserts that include the target in the request context.
+    Target-aware authorizers use the binding's stored target identifiers.
+    Other authorizers retain namespace-wide authorization. The mutation
+    remains scoped to the authorized namespace.
     """
     service = ControlBindingsService(db)
     binding = await service.set_enabled(
@@ -281,20 +320,19 @@ async def patch_control_binding(
 @router.delete(
     "/{binding_id}",
     response_model=DeleteControlBindingResponse,
-    summary="Delete a control binding (namespace-wide)",
+    summary="Delete a control binding",
     response_description="Deletion confirmation",
 )
 async def delete_control_binding(
     binding_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROL_BINDINGS_WRITE)),
+    principal: Principal = Depends(_require_binding_operation(Operation.CONTROL_BINDINGS_WRITE)),
 ) -> DeleteControlBindingResponse:
     """Delete a control binding by surrogate ID.
 
-    See the GET-by-id docstring for the authorization scope: this route
-    is namespace-wide because the target identifiers are not available
-    before the binding is loaded. Use ``POST /by-key:delete`` for
-    target-scoped detach that includes the target in the request context.
+    Target-aware authorizers use the binding's stored target identifiers.
+    Other authorizers retain namespace-wide authorization. The deletion
+    remains scoped to the authorized namespace.
     """
     service = ControlBindingsService(db)
     await service.delete_binding(namespace_key=principal.namespace_key, binding_id=binding_id)
