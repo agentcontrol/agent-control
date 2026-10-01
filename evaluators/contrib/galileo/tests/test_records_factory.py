@@ -109,7 +109,7 @@ def test_factory_records_are_serializable_concrete_base_steps() -> None:
 
 
 def test_factory_steps_convert_to_core_records_after_execution_ids_are_added() -> None:
-    # Given: each root step subtype emitted by the factory, plus the IDs the execution caller supplies
+    # Given: each root subtype emitted by the factory, plus caller-supplied IDs
     steps = [
         record_from_step(Step(type="llm", name="answer", input="question", output="answer")),
         record_from_step(Step(type="tool", name="search", input={"query": "q"}, output="result")),
@@ -134,7 +134,16 @@ def test_factory_steps_convert_to_core_records_after_execution_ids_are_added() -
         step_id = uuid4()
         values = step.model_dump(
             mode="python",
-            exclude={"id", "project_id", "run_id", "session_id", "trace_id", "parent_id", "spans", "traces"},
+            exclude={
+                "id",
+                "project_id",
+                "run_id",
+                "session_id",
+                "trace_id",
+                "parent_id",
+                "spans",
+                "traces",
+            },
         )
         values.update(id=step_id, project_id=project_id, run_id=run_id, type=step.type)
         if isinstance(step, Session):
@@ -774,7 +783,11 @@ def test_json_normalization_supports_python_value_types_and_fallbacks() -> None:
 
     assert encoder.default(NestedModel(value=3)) == {"value": 3}
     assert encoder.default(utc_timestamp) == "2025-01-02T00:00:00Z"
-    assert encoder.default(naive_timestamp) == naive_timestamp.astimezone().isoformat()
+    expected_naive_timestamp = naive_timestamp.astimezone()
+    expected_naive_serialized = expected_naive_timestamp.isoformat()
+    if expected_naive_timestamp.tzname() == UTC.tzname(None):
+        expected_naive_serialized = expected_naive_serialized.replace("+00:00", "Z")
+    assert encoder.default(naive_timestamp) == expected_naive_serialized
     assert encoder.default(offset_timestamp) == "2025-01-02T00:00:00+02:00"
     assert encoder.default(date(2025, 1, 2)) == "2025-01-02"
     assert encoder.default(identifier) == str(identifier)
