@@ -627,6 +627,7 @@ class TestGalileoLunaClient:
     @pytest.mark.asyncio
     async def test_client_posts_to_luna_invoke_scorer_invoke(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
+        from agent_control_evaluator_galileo.luna.client import GalileoExecutionContext
 
         captured: dict[str, object] = {}
 
@@ -654,6 +655,12 @@ class TestGalileoLunaClient:
                 scorer_id=SCORER_ID,
                 input="user prompt",
                 output="model answer",
+                execution_context=GalileoExecutionContext(
+                    organization_id="org-1",
+                    user_id="user-2",
+                    project_id="project-3",
+                    run_id="run-4",
+                ),
                 config={"request_timeout_seconds": 7},
                 headers={"Galileo-API-Key": "blocked", "X-Request-ID": "safe-id"},
             )
@@ -665,6 +672,12 @@ class TestGalileoLunaClient:
         assert captured["url"] == "http://luna-invoke:8090/api/v1/scorers/invoke"
         expected_body = {
             "scorer_id": SCORER_ID,
+            "execution_context": {
+                "organization_id": "org-1",
+                "user_id": "user-2",
+                "project_id": "project-3",
+                "run_id": "run-4",
+            },
             "inputs": {"query": "user prompt", "response": "model answer"},
             "config": {"request_timeout_seconds": 7.0},
         }
@@ -1048,6 +1061,71 @@ class TestLunaEvaluator:
             config=None,
             timeout=10.0,
         )
+
+    @patch.dict(os.environ, LUNA_ENV)
+    @pytest.mark.asyncio
+    async def test_evaluator_consumes_verified_opaque_extensions(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
+        from agent_control_evaluator_galileo.luna.client import (
+            GalileoExecutionContext,
+            GalileoLunaClient,
+        )
+
+        evaluator = LunaEvaluator.from_dict(
+            {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
+        )
+        extensions = {
+            "namespace_key": "org-1",
+            "caller_id": "verified-user-2",
+            "target_type": "log_stream",
+            "target_id": "run-4",
+            "metadata": {"project_id": "project-3"},
+        }
+
+        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
+            result = await evaluator.evaluate_with_extensions(
+                "selected input", Step(type="llm", name="answer", input="prompt"), extensions
+            )
+
+        assert result.matched is True
+        mock_invoke.assert_awaited_once_with(
+            scorer_id="scorer-123",
+            step=Step(type="llm", name="answer", input="prompt"),
+            execution_context=GalileoExecutionContext(
+                organization_id="org-1",
+                user_id="verified-user-2",
+                project_id="project-3",
+                run_id="run-4",
+            ),
+            input="selected input",
+            output=None,
+            config=None,
+            timeout=10.0,
+        )
+
+    @patch.dict(os.environ, LUNA_ENV)
+    @pytest.mark.asyncio
+    async def test_evaluator_requires_authenticated_caller_id(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+
+        evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123"})
+        extensions = {
+            "namespace_key": "org-1",
+            "target_type": "log_stream",
+            "target_id": "run-4",
+            "metadata": {"project_id": "project-3"},
+        }
+
+        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+            result = await evaluator.evaluate_with_extensions(
+                "selected input", Step(type="llm", name="answer", input="prompt"), extensions
+            )
+
+        assert result.error is not None
+        assert "user_id" in result.error
+        mock_invoke.assert_not_called()
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio

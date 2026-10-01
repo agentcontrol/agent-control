@@ -101,6 +101,7 @@ class LocalJwtVerifyProvider(RequestAuthorizer):
             target_id=claims.target_id,
             scopes=claims.scopes,
             grant_expires_at=claims.expires_at,
+            extensions=claims.extensions,
         )
 
     async def authorize(

@@ -10,9 +10,9 @@ from typing import Any
 
 import httpx
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
-from agent_control_models import EvaluatorResult, JSONValue, Step
+from agent_control_models import EvaluatorResult, JSONObject, JSONValue, Step
 
-from .client import GalileoLunaClient, ScorerInvokeResponse
+from .client import GalileoExecutionContext, GalileoLunaClient, ScorerInvokeResponse
 from .config import LunaEvaluatorConfig, coerce_number
 
 logger = logging.getLogger(__name__)
@@ -212,7 +212,72 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         """
         return await self._evaluate(data, step=step)
 
-    async def _evaluate(self, data: Any, *, step: Step | None) -> EvaluatorResult:
+    async def evaluate_with_extensions(
+        self,
+        data: Any,
+        step: Step,
+        extensions: JSONObject | None,
+    ) -> EvaluatorResult:
+        """Evaluate using opaque authenticated metadata supplied by Agent Control."""
+        return await self._evaluate(
+            data,
+            step=step,
+            extensions=extensions,
+        )
+
+    @staticmethod
+    def _execution_context_from_extensions(
+        extensions: JSONObject | None,
+    ) -> GalileoExecutionContext | None:
+        """Translate trusted opaque auth metadata into Galileo's request context."""
+        if extensions is None:
+            return None
+
+        metadata = extensions.get("metadata")
+        metadata_obj = metadata if isinstance(metadata, dict) else {}
+        organization_id = extensions.get("namespace_key")
+        # Orbit's runtime-auth contract defines caller_id as the authenticated
+        # user ID for this flow. Keep that contract mapping inside Galileo.
+        user_id = extensions.get("caller_id")
+        project_id = metadata_obj.get("project_id")
+        target_type = extensions.get("target_type")
+        target_id = extensions.get("target_id")
+        run_id = target_id if target_type == "log_stream" else None
+
+        missing = [
+            field
+            for field, value in (
+                ("organization_id", organization_id),
+                ("user_id", user_id),
+                ("project_id", project_id),
+                ("run_id", run_id),
+            )
+            if not isinstance(value, str) or not value
+        ]
+        if missing:
+            raise ValueError(
+                "Authenticated execution metadata is missing required fields: "
+                + ", ".join(missing)
+            )
+
+        assert isinstance(organization_id, str)
+        assert isinstance(user_id, str)
+        assert isinstance(project_id, str)
+        assert isinstance(run_id, str)
+        return GalileoExecutionContext(
+            organization_id=organization_id,
+            user_id=user_id,
+            project_id=project_id,
+            run_id=run_id,
+        )
+
+    async def _evaluate(
+        self,
+        data: Any,
+        *,
+        step: Step | None,
+        extensions: JSONObject | None = None,
+    ) -> EvaluatorResult:
         """Run a Luna evaluation with optional structured runtime context."""
         input_text, output_text = self._prepare_payload(data)
         if not (_has_text(input_text) or _has_text(output_text)):
@@ -224,9 +289,12 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             )
 
         try:
+            execution_context = self._execution_context_from_extensions(extensions)
             scorer_kwargs = self._scorer_kwargs()
             if step is not None:
                 scorer_kwargs["step"] = step
+            if execution_context is not None:
+                scorer_kwargs["execution_context"] = execution_context
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,

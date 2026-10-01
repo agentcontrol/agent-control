@@ -28,6 +28,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
+from agent_control_models import JSONObject
 from fastapi import Request
 
 
@@ -83,6 +84,8 @@ class Principal:
         grant_expires_at: When the upstream grant expires. Used by the
             runtime-token exchange endpoint to bound the local token's
             lifetime.
+        extensions: Opaque trusted metadata returned by the authorizer.
+            Generic authorization code preserves this without interpreting it.
     """
 
     namespace_key: str
@@ -92,6 +95,7 @@ class Principal:
     target_id: str | None = None
     scopes: tuple[str, ...] = ()
     grant_expires_at: datetime | None = None
+    extensions: JSONObject | None = None
 
 
 ContextBuilder = Callable[[Request], dict[str, Any] | Awaitable[dict[str, Any]]]

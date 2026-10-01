@@ -842,6 +842,51 @@ def test_runtime_token_round_trips():
     assert decoded.scopes == ("runtime.use",)
 
 
+def test_runtime_token_rejects_non_json_extensions_when_minting():
+    from agent_control_server.auth_framework.runtime_token import (
+        RuntimeTokenError,
+        mint_runtime_token,
+    )
+
+    with pytest.raises(RuntimeTokenError, match="extensions must be a JSON object"):
+        mint_runtime_token(
+            namespace_key="default",
+            actor_id="actor",
+            target_type="target",
+            target_id="target-id",
+            scopes=("runtime.use",),
+            secret=_TEST_SECRET,
+            ttl_seconds=60,
+            extensions={"provider_field": object()},
+        )
+
+
+def test_runtime_token_rejects_malformed_signed_extensions():
+    import jwt
+
+    from agent_control_server.auth_framework.runtime_token import (
+        RuntimeTokenError,
+        mint_runtime_token,
+        verify_runtime_token,
+    )
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="actor",
+        target_type="target",
+        target_id="target-id",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    payload = jwt.decode(token, _TEST_SECRET, algorithms=["HS256"])
+    payload["extensions"] = []
+    malformed_token = jwt.encode(payload, _TEST_SECRET, algorithm="HS256")
+
+    with pytest.raises(RuntimeTokenError, match="malformed extensions"):
+        verify_runtime_token(malformed_token, _TEST_SECRET)
+
+
 def test_runtime_token_rejects_wrong_secret():
     from agent_control_server.auth_framework.runtime_token import (
         RuntimeTokenError,
@@ -1333,11 +1378,13 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
         lambda req: httpx.Response(
             200,
             json={
-                "namespace_key": "org-1",
+                "namespace_key": "namespace-1",
                 "is_admin": False,
                 "scopes": ["runtime.use", "runtime.read_only"],
-                "target_type": "log_stream",
-                "target_id": "ls-1",
+                "target_type": "custom_target",
+                "target_id": "target-1",
+                "provider_field": "opaque_value",
+                "nested": {"opaque": "metadata"},
                 "expires_at": iso_expiry,
             },
         )
@@ -1345,14 +1392,40 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
     principal = await provider.authorize(
         _build_request(),
         Operation.RUNTIME_TOKEN_EXCHANGE,
-        context={"target_type": "log_stream", "target_id": "ls-1"},
+        context={"target_type": "custom_target", "target_id": "target-1"},
     )
-    assert principal.namespace_key == "org-1"
+    assert principal.namespace_key == "namespace-1"
     assert principal.scopes == ("runtime.use", "runtime.read_only")
-    assert principal.target_type == "log_stream"
-    assert principal.target_id == "ls-1"
+    assert principal.target_type == "custom_target"
+    assert principal.target_id == "target-1"
+    assert principal.extensions == {
+        "provider_field": "opaque_value",
+        "nested": {"opaque": "metadata"},
+    }
     assert principal.grant_expires_at is not None
     assert principal.grant_expires_at.isoformat() == iso_expiry
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_invalid_extension_metadata(monkeypatch):
+    from pydantic import TypeAdapter
+
+    from agent_control_server.auth_framework.providers import http_upstream
+
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={"namespace_key": "namespace-1", "provider_field": "opaque_value"},
+        )
+    )
+    # Force the defensive conversion error path for invalid extension payloads.
+    monkeypatch.setattr(http_upstream, "_JSON_OBJECT_ADAPTER", TypeAdapter(str))
+
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
+
+    assert exc_info.value.status_code == 502
+    assert "malformed extension metadata" in exc_info.value.detail
 
 
 @pytest.mark.asyncio

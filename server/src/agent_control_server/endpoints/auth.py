@@ -211,6 +211,7 @@ async def runtime_token_exchange(
             secret=config.secret,
             ttl_seconds=config.ttl_seconds,
             upstream_expires_at=principal.grant_expires_at,
+            extensions=principal.extensions,
         )
     except UpstreamGrantExpiredError as exc:
         # Upstream returned a grant whose ``expires_at`` is already in
