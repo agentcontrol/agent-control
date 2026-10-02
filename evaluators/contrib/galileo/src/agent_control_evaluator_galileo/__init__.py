@@ -32,6 +32,7 @@ from agent_control_evaluator_galileo.luna import (
 )
 from agent_control_evaluator_galileo.records import (
     GalileoRecord,
+    GalileoRecordNormalizer,
     RecordFactoryError,
     UnsupportedStepTypeError,
     build_galileo_record,
@@ -51,6 +52,7 @@ __all__ = [
     "LunaOperator",
     "LUNA_AVAILABLE",
     "GalileoRecord",
+    "GalileoRecordNormalizer",
     "RecordFactoryError",
     "UnsupportedStepTypeError",
     "build_galileo_record",

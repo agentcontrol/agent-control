@@ -1,12 +1,13 @@
 """Tests for @control decorator."""
 
+from copy import deepcopy
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-from agent_control_telemetry import clear_trace_context_provider, set_trace_context_provider
-
 from agent_control.control_decorators import ControlSteerError, ControlViolationError, control
+from agent_control_telemetry import clear_trace_context_provider, set_trace_context_provider
+from pydantic import ValidationError
 
 # =============================================================================
 # FIXTURES
@@ -217,6 +218,212 @@ class TestControl:
             "top_k": 5,
             "filters": {"language": "en"},
         }
+
+    @pytest.mark.asyncio
+    async def test_omitted_tools_preserves_legacy_payload(self, mock_agent, mock_safe_response):
+        payloads = []
+
+        async def capture_payload(*args, **kwargs):
+            payloads.append(args[1])
+            return mock_safe_response
+
+        with (
+            patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent),
+            patch("agent_control.control_decorators._evaluate", side_effect=capture_payload),
+        ):
+
+            @control()
+            async def answer(message: str) -> str:
+                return "answer"
+
+            await answer("question")
+
+        assert payloads == [
+            {"type": "llm", "name": "answer", "input": "question", "output": None},
+            {"type": "llm", "name": "answer", "input": "question", "output": "answer"},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_static_tools_are_copied_into_pre_and_post_payloads(
+        self, mock_agent, mock_safe_response
+    ):
+        original_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search",
+                    "description": "Search documents",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                    },
+                },
+            }
+        ]
+        expected_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search",
+                    "description": "Search documents",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                    },
+                },
+            }
+        ]
+        payloads = []
+
+        async def capture_payload(*args, **kwargs):
+            payload = args[1]
+            payloads.append(
+                {
+                    "type": payload["type"],
+                    "name": payload["name"],
+                    "input": payload["input"],
+                    "output": payload["output"],
+                    "tools": deepcopy(payload["tools"]),
+                }
+            )
+            payload["tools"][0]["function"]["parameters"]["properties"]["query"][
+                "type"
+            ] = "integer"
+            return mock_safe_response
+
+        with (
+            patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent),
+            patch("agent_control.control_decorators._evaluate", side_effect=capture_payload),
+        ):
+            @control(tools=original_tools)
+            async def answer(message: str) -> str:
+                return "answer"
+
+            original_tools[0]["function"]["description"] = "caller mutation"
+            await answer("question")
+
+        assert [payload["tools"] for payload in payloads] == [expected_tools, expected_tools]
+        assert original_tools[0]["function"]["description"] == "caller mutation"
+        assert original_tools[0]["function"]["parameters"]["properties"]["query"][
+            "type"
+        ] == "string"
+
+    @pytest.mark.asyncio
+    async def test_dynamic_tools_receive_call_arguments(self, mock_agent, mock_safe_response):
+        calls = []
+        payloads = []
+        available_tools = [{"name": "lookup", "parameters": {"type": "object"}}]
+
+        def provide_tools(args, kwargs):
+            calls.append((args, dict(kwargs)))
+            return available_tools
+
+        async def capture_payload(*args, **kwargs):
+            payloads.append(args[1])
+            return mock_safe_response
+
+        with (
+            patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent),
+            patch("agent_control.control_decorators._evaluate", side_effect=capture_payload),
+        ):
+
+            @control(tools=provide_tools)
+            async def answer(message: str, *, language: str) -> str:
+                return "answer"
+
+            await answer("question", language="en")
+
+        assert calls == [
+            (("question",), {"language": "en"}),
+            (("question",), {"language": "en"}),
+        ]
+        assert payloads[0]["tools"] == available_tools
+        assert payloads[1]["tools"] == available_tools
+
+    @pytest.mark.asyncio
+    async def test_dynamic_tool_provider_can_return_none(self, mock_agent, mock_safe_response):
+        payloads = []
+
+        async def capture_payload(*args, **kwargs):
+            payloads.append(args[1])
+            return mock_safe_response
+
+        with (
+            patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent),
+            patch("agent_control.control_decorators._evaluate", side_effect=capture_payload),
+        ):
+
+            @control(tools=lambda args, kwargs: None)
+            async def answer(message: str) -> str:
+                return "answer"
+
+            await answer("question")
+
+        assert all("tools" not in payload for payload in payloads)
+
+    @pytest.mark.asyncio
+    async def test_invalid_tool_definitions_use_step_validation(
+        self, mock_agent
+    ):
+        with (
+            patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent),
+            patch("agent_control.control_decorators._evaluate") as mock_evaluate,
+        ):
+
+            @control(tools=[{"name": "invalid", "schema": object()}])
+            async def answer(message: str) -> str:
+                return "should not run"
+
+            with pytest.raises(RuntimeError) as exc_info:
+                await answer("question")
+
+        assert isinstance(exc_info.value.__cause__, ValidationError)
+        assert "tools" in str(exc_info.value.__cause__)
+        mock_evaluate.assert_not_called()
+
+    @pytest.mark.parametrize("step_type", ["tool", "retriever"])
+    @pytest.mark.asyncio
+    async def test_tools_are_rejected_for_non_llm_steps(
+        self, mock_agent, step_type
+    ):
+        with (
+            patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent),
+            patch("agent_control.control_decorators._evaluate") as mock_evaluate,
+        ):
+
+            @control(step_type=step_type, tools=[])
+            async def answer(message: str) -> str:
+                return "should not run"
+
+            with pytest.raises(ValueError, match="requires an LLM step"):
+                await answer("question")
+
+        mock_evaluate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dynamic_tool_provider_failure_blocks_execution(self, mock_agent):
+        executed = False
+
+        def provider(args, kwargs):
+            raise ValueError("provider failed")
+
+        with (
+            patch("agent_control.control_decorators._get_current_agent", return_value=mock_agent),
+            patch("agent_control.control_decorators._evaluate") as mock_evaluate,
+        ):
+
+            @control(tools=provider)
+            async def answer(message: str) -> str:
+                nonlocal executed
+                executed = True
+                return "answer"
+
+            with pytest.raises(RuntimeError, match="Execution blocked for safety") as exc_info:
+                await answer("question")
+
+        assert str(exc_info.value.__cause__) == "provider failed"
+        assert executed is False
+        mock_evaluate.assert_not_called()
 
     def test_explicit_step_type_overrides_tool_inference(
         self, mock_agent, mock_safe_response

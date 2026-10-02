@@ -31,11 +31,12 @@ import asyncio
 import functools
 import inspect
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
-from agent_control_models import Step, normalize_action
+from agent_control_models import JSONObject, Step, normalize_action
 from agent_control_telemetry import get_trace_context_from_provider
 
 from agent_control import AgentControlClient
@@ -58,6 +59,10 @@ from agent_control.validation import ensure_step_type
 logger = get_logger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
+type ToolsProvider = Callable[
+    [tuple[Any, ...], Mapping[str, Any]], Sequence[JSONObject] | None
+]
+type ToolsConfiguration = Sequence[JSONObject] | ToolsProvider | None
 
 
 def _resolve_control_trace_context() -> tuple[str, str]:
@@ -98,6 +103,7 @@ class ControlContext:
     start_time: float
     step_name: str | None = None
     step_type: str | None = None
+    tools: ToolsConfiguration = None
 
     # Stats (mutually exclusive: errors vs matches vs non_matches)
     total_executions: int = 0
@@ -134,6 +140,7 @@ class ControlContext:
             output=None,
             step_name=self.step_name,
             explicit_step_type=self.step_type,
+            tools=self.tools,
         )
 
     def post_payload(self, output: Any) -> dict[str, Any]:
@@ -145,6 +152,7 @@ class ControlContext:
             output=output,
             step_name=self.step_name,
             explicit_step_type=self.step_type,
+            tools=self.tools,
         )
 
     def process_result(self, result: dict[str, Any], check_stage: str) -> None:
@@ -245,6 +253,10 @@ class ControlSteerError(Exception):
             f"Control steering [{self.control_name}]: {message}\n"
             f"Steering context: {self.steering_context}"
         )
+
+
+class _InvalidToolsConfigurationError(ValueError):
+    """Raised when decorator tools are configured for a non-LLM step."""
 
 
 def _get_current_agent() -> Any | None:
@@ -433,11 +445,13 @@ def _unexpected_control_failure_message(stage: str, error: Exception) -> str:
 async def _run_control_check(
     ctx: ControlContext,
     stage: str,
-    payload: dict[str, Any],
+    payload: dict[str, Any] | Callable[[], dict[str, Any]],
     controls: list[dict[str, Any]] | None,
 ) -> None:
     """Run one control stage and enforce fail-closed behavior on unexpected errors."""
     try:
+        if callable(payload):
+            payload = payload()
         result = await _evaluate(
             ctx.agent_name,
             payload,
@@ -450,6 +464,8 @@ async def _run_control_check(
         )
         ctx.process_result(result, stage)
     except (ControlViolationError, ControlSteerError):
+        raise
+    except _InvalidToolsConfigurationError:
         raise
     except Exception as e:
         stage_name = "Pre" if stage == "pre" else "Post"
@@ -492,6 +508,7 @@ def _create_evaluation_payload(
     output: Any = None,
     step_name: str | None = None,
     explicit_step_type: str | None = None,
+    tools: ToolsConfiguration = None,
 ) -> dict[str, Any]:
     """
     Create evaluation payload for server, detecting if it's a tool step or LLM step.
@@ -505,6 +522,7 @@ def _create_evaluation_payload(
         output: Function output (None for pre-execution)
         step_name: Optional explicit step name to override auto-detection
         explicit_step_type: Optional explicit step type to override inference
+        tools: Optional static tool definitions or a provider called with args/kwargs
     """
     sig = inspect.signature(func)
     bound = sig.bind(*args, **kwargs)
@@ -536,33 +554,45 @@ def _create_evaluation_payload(
         else inferred_type
     )
 
+    if tools is not None and step_type != "llm":
+        raise _InvalidToolsConfigurationError(
+            f"@control(tools=...) requires an LLM step; received step_type={step_type!r}."
+        )
+
+    resolved_tools = tools(args, kwargs) if callable(tools) else tools
+
+    def validate_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        """Validate decorator payloads against the shared runtime Step model."""
+        Step.model_validate(payload)
+        return payload
+
     if step_type not in ("llm", "tool"):
         # Custom step types use the complete bound argument mapping. Unlike an
         # LLM step, there is no generic convention for selecting one argument
         # as the prompt/input for a retriever, trace, session, etc.
-        return {
+        return validate_payload({
             "type": step_type,
             "name": determined_name,
             "input": dict(bound.arguments),
             "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
                 None if output is None else str(output)
             ),
-        }
+        })
 
     if step_type == "tool":
         # This is a tool step
-        return {
+        return validate_payload({
             "type": step_type,
             "name": determined_name,
             "input": dict(bound.arguments),
             "output": output if isinstance(output, (str, int, float, bool, dict, list)) else (
                 None if output is None else str(output)
             ),
-        }
+        })
 
     # This is an LLM step
     input_data = _extract_input_from_args(func, args, kwargs)
-    return {
+    payload = {
         "type": step_type,
         "name": determined_name,
         "input": input_data,
@@ -570,6 +600,9 @@ def _create_evaluation_payload(
             None if output is None else str(output)
         ),
     }
+    if resolved_tools is not None:
+        payload["tools"] = deepcopy(list(resolved_tools))
+    return validate_payload(payload)
 
 
 def _handle_evaluation_result(result: dict[str, Any]) -> None:
@@ -733,6 +766,7 @@ async def _execute_with_control(
     is_async: bool,
     step_name: str | None = None,
     step_type: str | None = None,
+    tools: ToolsConfiguration = None,
 ) -> Any:
     """
     Core control execution logic for both async and sync functions.
@@ -787,12 +821,13 @@ async def _execute_with_control(
         start_time=time.perf_counter(),
         step_name=step_name,
         step_type=step_type,
+        tools=tools,
     )
     ctx.log_start()
 
     try:
         # PRE-EXECUTION: Check controls with check_stage="pre"
-        await _run_control_check(ctx, "pre", ctx.pre_payload(), controls)
+        await _run_control_check(ctx, "pre", ctx.pre_payload, controls)
 
         # Execute the function
         if is_async:
@@ -801,7 +836,7 @@ async def _execute_with_control(
             output = func(*args, **kwargs)
 
         # POST-EXECUTION: Check controls with check_stage="post"
-        await _run_control_check(ctx, "post", ctx.post_payload(output), controls)
+        await _run_control_check(ctx, "post", lambda: ctx.post_payload(output), controls)
 
         return output
     finally:
@@ -812,6 +847,10 @@ def control(
     policy: str | None = None,
     step_name: str | None = None,
     step_type: str | None = None,
+    *,
+    tools: Sequence[JSONObject] | Callable[
+        [tuple[Any, ...], Mapping[str, Any]], Sequence[JSONObject] | None
+    ] | None = None,
 ) -> Callable[[F], F]:
     """
     Decorator to apply server-defined controls at this code location.
@@ -827,6 +866,10 @@ def control(
         step_type: Optional custom type for this step. If not provided, tool-like
                    functions are classified as ``tool`` and other functions as
                    ``llm``.
+        tools: Optional tool definitions for LLM steps. Static definitions are
+               copied when the decorator is created. A provider receives the
+               raw call-site positional arguments as ``args`` and keyword
+               arguments as ``kwargs`` at each pre- and post-execution check.
 
     Returns:
         Decorated function
@@ -885,6 +928,8 @@ def control(
     # controls associated with the agent via policy and direct links.
     _ = policy
 
+    configured_tools = deepcopy(list(tools)) if tools is not None and not callable(tools) else tools
+
     def decorator(func: F) -> F:
         # Register this function's step schema for auto-discovery by init()
         from agent_control._control_registry import register
@@ -900,6 +945,7 @@ def control(
                 is_async=True,
                 step_name=step_name,
                 step_type=step_type,
+                tools=configured_tools,
             )
 
         # Copy over ALL attributes from the original function (important for LangChain tools)
@@ -920,6 +966,7 @@ def control(
                     is_async=False,
                     step_name=step_name,
                     step_type=step_type,
+                    tools=configured_tools,
                 )
             )
 
