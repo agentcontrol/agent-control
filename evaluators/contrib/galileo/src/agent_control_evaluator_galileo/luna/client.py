@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue, Step
-from pydantic import BaseModel, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from .config import ScorerInvokeConfig
 
@@ -218,6 +218,8 @@ class ScorerInvokeRecord(BaseModel):
     Identity, ownership, persistence, and execution IDs are intentionally not
     represented here. Orbit hydrates those fields from trusted server context.
     """
+
+    model_config = ConfigDict(extra="allow")
 
     type: ScorerInvokeRecordType
     name: str | None = None

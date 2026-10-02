@@ -212,6 +212,8 @@ class TestGalileoLunaClient:
             context={"session_id": "session-1"},
             tools=[{"name": "search"}],
             dataset_output={"expected": "world"},
+            metrics={"duration_ns": 12},
+            custom_field={"value": "preserved"},
         )
 
         assert record.model_dump() == {
@@ -222,6 +224,8 @@ class TestGalileoLunaClient:
             "context": {"session_id": "session-1"},
             "tools": [{"name": "search"}],
             "dataset_output": {"expected": "world"},
+            "metrics": {"duration_ns": 12},
+            "custom_field": {"value": "preserved"},
         }
         with pytest.raises(ValidationError, match="type"):
             ScorerInvokeRecord(type="unsupported", name="answer")
