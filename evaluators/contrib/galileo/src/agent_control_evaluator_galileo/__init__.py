@@ -4,6 +4,7 @@ This package provides Galileo evaluators for agent-control.
 
 Available evaluators:
     - galileo.luna: Galileo Luna direct scorer evaluation
+    - galileo.llm:  Galileo LLM-as-judge direct scorer evaluation
 
 Installation:
     pip install agent-control-evaluator-galileo
@@ -30,6 +31,13 @@ from agent_control_evaluator_galileo.luna import (
     ScorerInvokeRequest,
     ScorerInvokeResponse,
 )
+from agent_control_evaluator_galileo.llm import (
+    LLM_AVAILABLE,
+    GalileoLLMClient,
+    LlmEvaluator,
+    LlmEvaluatorConfig,
+    LlmOperator,
+)
 from agent_control_evaluator_galileo.records import (
     GalileoRecord,
     RecordFactoryError,
@@ -41,6 +49,7 @@ from agent_control_evaluator_galileo.records import (
 )
 
 __all__ = [
+    # luna
     "GalileoLunaClient",
     "ScorerInvokeRequest",
     "ScorerInvokeConfig",
@@ -50,6 +59,13 @@ __all__ = [
     "LunaEvaluatorConfig",
     "LunaOperator",
     "LUNA_AVAILABLE",
+    # llm
+    "GalileoLLMClient",
+    "LlmEvaluator",
+    "LlmEvaluatorConfig",
+    "LlmOperator",
+    "LLM_AVAILABLE",
+    # records
     "GalileoRecord",
     "RecordFactoryError",
     "UnsupportedStepTypeError",
