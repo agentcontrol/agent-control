@@ -16,6 +16,7 @@ This directory contains runnable examples for Agent Control. Each example has it
 | Galileo Luna Direct | Direct Luna scorer invoke evaluation (`scorer_id` required; `scorer_label`/`scorer_version_id` optional) with a composite Agent Control condition. | `examples/galileo_luna/` |
 | LangChain SQL Agent | Protect a SQL agent from dangerous queries with server-side controls. | https://docs.agentcontrol.dev/examples/langchain-sql |
 | Steer Action Demo | Banking transfer agent showcasing observe, deny, and steer actions. | https://docs.agentcontrol.dev/examples/steer-action-demo |
+| TypeSafe Jev | Custom third-party evaluator registered by entry point, guarding a bank assistant's message, its tool calls, and its reply. | `examples/typesafe_jev/` |
 | Target Context | Bind controls to opaque external targets (e.g. `env=prod`) and let the SDK pin one target per session. | https://docs.agentcontrol.dev/examples/target-context |
 | AWS Strands | Guardrails for AWS Strands agent workflows and tool calls. | https://docs.agentcontrol.dev/examples/aws-strands |
 | TypeScript SDK | Consumer-style TypeScript example using the published npm package. | https://docs.agentcontrol.dev/examples/typescript_sdk |
