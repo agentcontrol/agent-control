@@ -1,0 +1,38 @@
+[project]
+name = "agent-control-typesafe-jev-example"
+version = "0.1.0"
+description = "Agent Control TypeSafe Jev (System One) evaluator example"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-control-evaluators>=8.7.0",
+    "agent-control-models>=8.7.0",
+    "agent-control-sdk>=8.7.0",
+    "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+# This is what makes the evaluator discoverable. Install this example into the
+# environment that runs agent-control-server, and the server finds the class
+# through this entry point. No core change, no registration call.
+[project.entry-points."agent_control.evaluators"]
+"typesafe.jev" = "jev:TypeSafeJevEvaluator"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jev"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
