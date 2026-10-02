@@ -20,6 +20,13 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0.dev"
 
+from agent_control_evaluator_galileo.llm import (
+    LLM_AVAILABLE,
+    GalileoLLMClient,
+    LlmEvaluator,
+    LlmEvaluatorConfig,
+    LlmOperator,
+)
 from agent_control_evaluator_galileo.luna import (
     LUNA_AVAILABLE,
     GalileoLunaClient,
@@ -30,13 +37,6 @@ from agent_control_evaluator_galileo.luna import (
     ScorerInvokeRecord,
     ScorerInvokeRequest,
     ScorerInvokeResponse,
-)
-from agent_control_evaluator_galileo.llm import (
-    LLM_AVAILABLE,
-    GalileoLLMClient,
-    LlmEvaluator,
-    LlmEvaluatorConfig,
-    LlmOperator,
 )
 from agent_control_evaluator_galileo.records import (
     GalileoRecord,
