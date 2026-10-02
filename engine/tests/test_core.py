@@ -20,6 +20,7 @@ from agent_control_models import (
     EvaluationRequest,
     EvaluatorResult,
     EvaluatorSpec,
+    JSONObject,
     SteeringContext,
     Step,
 )
@@ -40,14 +41,16 @@ class SimpleConfig(BaseModel):
 _execution_log: list[str] = []
 _blocker_event: asyncio.Event | None = None
 _context_calls: list[tuple[Any, Step]] = []
+_extension_calls: list[JSONObject | None] = []
 
 
 def reset_test_state() -> None:
     """Reset shared test state."""
-    global _execution_log, _blocker_event, _context_calls
+    global _execution_log, _blocker_event, _context_calls, _extension_calls
     _execution_log = []
     _blocker_event = asyncio.Event()
     _context_calls = []
+    _extension_calls = []
 
 
 class AllowEvaluator(Evaluator[SimpleConfig]):
@@ -182,6 +185,12 @@ class ContextEvaluator(Evaluator[SimpleConfig]):
         _context_calls.append((data, step))
         return EvaluatorResult(matched=False, confidence=1.0, message="context received")
 
+    async def evaluate_with_extensions(
+        self, data: Any, step: Step, extensions: JSONObject | None
+    ) -> EvaluatorResult:
+        _extension_calls.append(extensions)
+        return await self.evaluate_with_context(data, step)
+
 
 @dataclass
 class MockControlWithIdentity:
@@ -301,6 +310,49 @@ async def test_context_evaluator_receives_selected_data_and_complete_step() -> N
 
     # Then: selector behavior is unchanged and the complete Step is separate
     assert _context_calls == [("answer", step)]
+
+
+@pytest.mark.asyncio
+async def test_engine_passes_opaque_extensions_to_evaluator() -> None:
+    # Given: an authenticated extension mapping and a context-aware evaluator
+    engine = ControlEngine(
+        [make_control(1, "context", "test-context", action="observe", path="input")]
+    )
+    extensions: JSONObject = {
+        "namespace_key": "namespace-1",
+        "target_type": "custom_target",
+        "target_id": "target-9",
+        "metadata": {"provider_field": "opaque_value"},
+    }
+
+    # When: evaluating a request with the trusted extensions
+    await engine.process(
+        EvaluationRequest(
+            agent_name="00000000-0000-0000-0000-000000000001",
+            step=Step(type="llm", name="test-step", input="question"),
+            stage="pre",
+        ),
+        extensions=extensions,
+    )
+
+    # Then: the engine passes the mapping unchanged without interpreting it
+    assert _extension_calls == [extensions]
+
+
+@pytest.mark.asyncio
+async def test_default_extension_hook_preserves_existing_evaluator_behavior() -> None:
+    # Given: an evaluator that implements only the original evaluate method
+    evaluator = AllowEvaluator(SimpleConfig())
+    step = Step(type="llm", name="test-step", input="question")
+
+    # When: the new hook is called with opaque extensions
+    result = await evaluator.evaluate_with_extensions(
+        "question", step, {"provider_field": "opaque_value"}
+    )
+
+    # Then: the existing evaluation method still handles the request
+    assert result.message == "Allowed"
+    assert _execution_log == ["allow:default:start", "allow:default:end"]
 
 
 @pytest.mark.asyncio

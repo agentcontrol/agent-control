@@ -14,8 +14,11 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+import httpx
+import jwt
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from agent_control_server.auth_framework import Operation, Principal
 from agent_control_server.auth_framework.config import (
@@ -26,9 +29,8 @@ from agent_control_server.auth_framework.core import (
     clear_authorizers,
     set_authorizer,
 )
-from agent_control_server.auth_framework.providers import (
-    LocalJwtVerifyProvider,
-)
+from agent_control_server.auth_framework.providers import HttpUpstreamAuthProvider, LocalJwtVerifyProvider
+from agent_control_server.auth_framework.providers.http_upstream import HttpUpstreamConfig
 from agent_control_server.auth_framework.runtime_token import RuntimeTokenError
 
 _TEST_SECRET = "test-runtime-secret-12345678901234567890"
@@ -123,6 +125,73 @@ def test_exchange_endpoint_mints_token_when_configured(
     assert body["scopes"] == list(scopes)
     assert body["token"]
     assert body["expires_at"]
+
+
+@pytest.mark.asyncio
+async def test_upstream_extensions_round_trip_through_signed_runtime_token(
+    runtime_config_enabled,
+):
+    from agent_control_server.endpoints.auth import (
+        RuntimeTokenExchangeRequest,
+        runtime_token_exchange,
+    )
+
+    trusted_metadata = {"provider_field": "opaque_value", "nested": {"opaque": "value"}}
+
+    def authz_response(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "namespace_key": "namespace-1",
+                "caller_id": "opaque-caller",
+                "target_type": "custom_target",
+                "target_id": "target-9",
+                "scopes": ["runtime.use"],
+                **trusted_metadata,
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(authz_response)) as client:
+        provider = HttpUpstreamAuthProvider(
+            HttpUpstreamConfig(url="https://authz.test/check"), client=client
+        )
+        upstream_request = Request(
+            {"type": "http", "headers": [], "method": "POST", "path": "/"}
+        )
+        principal = await provider.authorize(
+            upstream_request,
+            Operation.RUNTIME_TOKEN_EXCHANGE,
+            context={"target_type": "custom_target", "target_id": "target-9"},
+        )
+
+    assert principal.extensions == trusted_metadata
+    response = await runtime_token_exchange(
+        RuntimeTokenExchangeRequest(target_type="custom_target", target_id="target-9"),
+        principal=principal,
+    )
+    token_payload = jwt.decode(
+        response.token,
+        _TEST_SECRET,
+        algorithms=["HS256"],
+        issuer="agent-control/server",
+    )
+    assert "provider_field" not in token_payload
+    assert token_payload["extensions"] == trusted_metadata
+
+    verify_request = Request(
+        {
+            "type": "http",
+            "headers": [(b"authorization", f"Bearer {response.token}".encode())],
+            "method": "POST",
+            "path": "/",
+        }
+    )
+    verified_principal = await LocalJwtVerifyProvider(secret=_TEST_SECRET).authorize(
+        verify_request,
+        Operation.RUNTIME_USE,
+            context={"target_type": "custom_target", "target_id": "target-9"},
+    )
+    assert verified_principal.extensions == trusted_metadata
 
 
 @pytest.mark.parametrize(

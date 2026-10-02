@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
 
-from agent_control_models import EvaluatorResult, Step
+from agent_control_models import EvaluatorResult, JSONObject, Step
 from agent_control_models.base import BaseModel
 
 if TYPE_CHECKING:
@@ -177,6 +177,19 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
             EvaluatorResult produced by this evaluator.
         """
         return await self.evaluate(data)
+
+    async def evaluate_with_extensions(
+        self,
+        data: Any,
+        step: Step,
+        extensions: JSONObject | None,
+    ) -> EvaluatorResult:
+        """Evaluate with opaque trusted request extensions.
+
+        Existing evaluators retain their behavior because the default
+        implementation delegates to :meth:`evaluate_with_context`.
+        """
+        return await self.evaluate_with_context(data, step)
 
     def get_timeout_seconds(self) -> float:
         """Get timeout in seconds from config or metadata default."""

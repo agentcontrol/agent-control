@@ -21,6 +21,7 @@ from agent_control_models import (
     EvaluationRequest,
     EvaluationResponse,
     EvaluatorResult,
+    JSONObject,
 )
 
 from .selectors import select_data
@@ -295,6 +296,7 @@ class ControlEngine:
         node: ConditionNode,
         request: EvaluationRequest,
         semaphore: asyncio.Semaphore,
+        extensions: JSONObject | None,
     ) -> _ConditionEvaluation:
         """Evaluate a leaf selector/evaluator pair.
 
@@ -320,7 +322,7 @@ class ControlEngine:
                     timeout = DEFAULT_EVALUATOR_TIMEOUT
 
                 result = await asyncio.wait_for(
-                    evaluator.evaluate_with_context(data, request.step),
+                    evaluator.evaluate_with_extensions(data, request.step, extensions),
                     timeout=timeout,
                 )
         except TimeoutError:
@@ -440,17 +442,20 @@ class ControlEngine:
         node: ConditionNode,
         request: EvaluationRequest,
         semaphore: asyncio.Semaphore,
+        extensions: JSONObject | None,
     ) -> _ConditionEvaluation:
         """Evaluate a recursive condition tree."""
         if node.is_leaf():
-            return await self._evaluate_leaf(item, node, request, semaphore)
+            return await self._evaluate_leaf(item, node, request, semaphore, extensions)
 
         kind = node.kind()
         children = node.children_in_order()
         child_evaluations: list[_ConditionEvaluation] = []
 
         if kind == "not":
-            child_eval = await self._evaluate_condition(item, children[0], request, semaphore)
+            child_eval = await self._evaluate_condition(
+                item, children[0], request, semaphore, extensions
+            )
             trace = {
                 "type": "not",
                 "evaluated": True,
@@ -478,7 +483,9 @@ class ControlEngine:
             return _ConditionEvaluation(result=result, trace=trace)
 
         for index, child in enumerate(children):
-            child_eval = await self._evaluate_condition(item, child, request, semaphore)
+            child_eval = await self._evaluate_condition(
+                item, child, request, semaphore, extensions
+            )
             child_evaluations.append(child_eval)
 
             if child_eval.result.error:
@@ -624,7 +631,11 @@ class ControlEngine:
 
         return applicable
 
-    async def process(self, request: EvaluationRequest) -> EvaluationResponse:
+    async def process(
+        self,
+        request: EvaluationRequest,
+        extensions: JSONObject | None = None,
+    ) -> EvaluationResponse:
         """Process controls in parallel with cancel-on-deny.
 
         All applicable controls are evaluated concurrently. If any control
@@ -632,6 +643,7 @@ class ControlEngine:
 
         Args:
             request: The evaluation request containing step and context
+            extensions: Opaque authenticated metadata supplied by the caller.
 
         Returns:
             EvaluationResponse with is_safe status and any matches
@@ -667,6 +679,7 @@ class ControlEngine:
                     eval_task.item.control.condition,
                     request,
                     semaphore,
+                    extensions,
                 )
                 eval_task.result = evaluation.result
 

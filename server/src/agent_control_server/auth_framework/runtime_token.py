@@ -33,10 +33,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
+from agent_control_models import JSONObject
+from pydantic import TypeAdapter, ValidationError
 
 _ALGORITHM = "HS256"
 _ISSUER = "agent-control/server"
 _DOMAIN = "runtime"
+_JSON_OBJECT_ADAPTER: TypeAdapter[JSONObject] = TypeAdapter(JSONObject)
 
 
 class RuntimeTokenError(Exception):
@@ -65,6 +68,7 @@ class RuntimeTokenClaims:
     expires_at: datetime
     issued_at: datetime
     jti: str
+    extensions: JSONObject | None = None
 
 
 def mint_runtime_token(
@@ -77,6 +81,7 @@ def mint_runtime_token(
     secret: str,
     ttl_seconds: int,
     upstream_expires_at: datetime | None = None,
+    extensions: JSONObject | None = None,
     now: datetime | None = None,
 ) -> tuple[str, RuntimeTokenClaims]:
     """Mint a runtime token. Returns ``(token, claims)``.
@@ -116,6 +121,12 @@ def mint_runtime_token(
             "(e.g., tz=UTC); naive datetimes are not supported."
         )
 
+    if extensions is not None:
+        try:
+            extensions = _JSON_OBJECT_ADAPTER.validate_python(extensions)
+        except ValidationError as exc:
+            raise RuntimeTokenError("Runtime token extensions must be a JSON object.") from exc
+
     issued_at = now or datetime.now(UTC)
     if upstream_expires_at is not None and upstream_expires_at <= issued_at:
         # Minting with an already-expired ``exp`` would return a 200 with
@@ -142,6 +153,8 @@ def mint_runtime_token(
         "exp": int(expires_at.timestamp()),
         "jti": jti,
     }
+    if extensions:
+        payload["extensions"] = extensions
     token = jwt.encode(payload, secret, algorithm=_ALGORITHM)
     claims = RuntimeTokenClaims(
         namespace_key=namespace_key,
@@ -152,6 +165,7 @@ def mint_runtime_token(
         expires_at=expires_at,
         issued_at=issued_at,
         jti=jti,
+        extensions=extensions or None,
     )
     return token, claims
 
@@ -187,6 +201,7 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
     actor_id = payload.get("actor_id")
     target_type = payload.get("target_type")
     target_id = payload.get("target_id")
+    raw_extensions = payload.get("extensions")
     if not isinstance(namespace_key, str) or not namespace_key:
         raise RuntimeTokenError("Runtime token missing namespace_key.")
     if not isinstance(actor_id, str) or not actor_id:
@@ -195,6 +210,13 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
         raise RuntimeTokenError("Runtime token missing target_type.")
     if not isinstance(target_id, str) or not target_id:
         raise RuntimeTokenError("Runtime token missing target_id.")
+
+    extensions: JSONObject | None = None
+    if raw_extensions is not None:
+        try:
+            extensions = _JSON_OBJECT_ADAPTER.validate_python(raw_extensions)
+        except ValidationError as exc:
+            raise RuntimeTokenError("Runtime token has malformed extensions.") from exc
 
     raw_scopes = payload.get("scopes", [])
     if not isinstance(raw_scopes, list) or not all(isinstance(s, str) for s in raw_scopes):
@@ -214,4 +236,5 @@ def verify_runtime_token(token: str, secret: str) -> RuntimeTokenClaims:
         expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
         issued_at=datetime.fromtimestamp(payload["iat"], tz=UTC),
         jti=jti,
+        extensions=extensions,
     )

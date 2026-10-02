@@ -235,14 +235,12 @@ class TestGalileoLunaClient:
 
         request = ScorerInvokeRequest(
             scorer_id="scorer-123",
-            scorer_version_id="version-123",
             inputs=ScorerInvokeInputs(query="hello"),
             record=ScorerInvokeRecord(type="tool", name="search", input={"q": "hello"}),
         )
 
         assert request.to_dict() == {
             "scorer_id": "scorer-123",
-            "scorer_version_id": "version-123",
             "inputs": {"query": "hello", "response": ""},
             "record": {"type": "tool", "name": "search", "input": {"q": "hello"}},
             "config": {},
@@ -629,6 +627,7 @@ class TestGalileoLunaClient:
     @pytest.mark.asyncio
     async def test_client_posts_to_luna_invoke_scorer_invoke(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
+        from agent_control_evaluator_galileo.luna.client import GalileoExecutionContext
 
         captured: dict[str, object] = {}
 
@@ -656,6 +655,12 @@ class TestGalileoLunaClient:
                 scorer_id=SCORER_ID,
                 input="user prompt",
                 output="model answer",
+                execution_context=GalileoExecutionContext(
+                    organization_id="org-1",
+                    user_id="user-2",
+                    project_id="project-3",
+                    run_id="run-4",
+                ),
                 config={"request_timeout_seconds": 7},
                 headers={"Galileo-API-Key": "blocked", "X-Request-ID": "safe-id"},
             )
@@ -667,6 +672,12 @@ class TestGalileoLunaClient:
         assert captured["url"] == "http://luna-invoke:8090/api/v1/scorers/invoke"
         expected_body = {
             "scorer_id": SCORER_ID,
+            "execution_context": {
+                "organization_id": "org-1",
+                "user_id": "user-2",
+                "project_id": "project-3",
+                "run_id": "run-4",
+            },
             "inputs": {"query": "user prompt", "response": "model answer"},
             "config": {"request_timeout_seconds": 7.0},
         }
@@ -789,15 +800,6 @@ class TestGalileoLunaClient:
                 input="selected question",
                 output="selected answer",
                 step=step,
-                record={
-                    "type": "llm",
-                    "name": "answer",
-                    "input": "selected question",
-                    "output": "selected answer",
-                    "context": {"session": {"id": "s-1", "attributes": {"region": "west"}}},
-                    "tools": [{"name": "search", "description": "Search", "input_schema": {}}],
-                    "dataset_output": {"text": "expected"},
-                },
             )
         finally:
             await client.close()
@@ -1033,12 +1035,7 @@ class TestLunaEvaluator:
 
         # Given: selected scorer data and complete structured runtime context
         evaluator = LunaEvaluator.from_dict(
-            {
-                "scorer_id": "scorer-123",
-                "scorer_version_id": "version-456",
-                "threshold": 0.5,
-                "operator": "gte",
-            }
+            {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
         )
         step = Step(
             type="llm",
@@ -1056,35 +1053,9 @@ class TestLunaEvaluator:
 
         # Then: selector-selected data and the complete Step are both forwarded
         assert result.matched is True
-        record = mock_invoke.await_args.kwargs["record"]
         mock_invoke.assert_awaited_once_with(
             scorer_id="scorer-123",
-            scorer_version_id="version-456",
             step=step,
-            input=record["input"],
-            output=record["output"],
-            record=record,
-            config=None,
-            timeout=10.0,
-        )
-        assert record["type"] == "llm"
-        assert record["input"][0]["content"] == "selected input"
-        assert record["output"]["content"] == "full output"
-
-    @patch.dict(os.environ, LUNA_ENV)
-    @pytest.mark.asyncio
-    async def test_evaluate_without_context_preserves_legacy_scalar_payload(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123"})
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-            result = await evaluator.evaluate("selected input")
-
-        assert result.matched is True
-        mock_invoke.assert_awaited_once_with(
-            scorer_id="scorer-123",
             input="selected input",
             output=None,
             config=None,
@@ -1093,397 +1064,68 @@ class TestLunaEvaluator:
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio
-    async def test_contextual_llm_direct_output_preserves_tool_call_payload(self) -> None:
+    async def test_evaluator_consumes_verified_opaque_extensions(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+        from agent_control_evaluator_galileo.luna.client import (
+            GalileoExecutionContext,
+            GalileoLunaClient,
+        )
 
         evaluator = LunaEvaluator.from_dict(
-            {
-                "scorer_id": "scorer-123",
-                "scorer_version_id": "version-456",
-                "payload_field": "output",
-                "threshold": 0.5,
-                "operator": "gte",
-            }
+            {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
         )
-        tools = [{"name": "search", "description": "Search", "input_schema": {}}]
-        output = {
-            "role": "assistant",
-            "content": "I will search.",
-            "tool_calls": [
-                {
-                    "id": "call-123",
-                    "type": "function",
-                    "function": {"name": "search", "arguments": "{\"query\":\"weather\"}"},
-                }
-            ],
+        extensions = {
+            "namespace_key": "org-1",
+            "caller_id": "verified-user-2",
+            "target_type": "log_stream",
+            "target_id": "run-4",
+            "metadata": {"project_id": "project-3"},
         }
-        step = Step(
-            type="llm",
-            name="answer",
-            input="Find the weather.",
-            output=output,
-            tools=tools,
-        )
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-            await evaluator.evaluate_with_context(output, step)
-
-        kwargs = mock_invoke.await_args.kwargs
-        assert kwargs["input"] == kwargs["record"]["input"]
-        assert kwargs["output"] == kwargs["record"]["output"]
-        assert kwargs["record"]["tools"] == tools
-        assert kwargs["record"]["output"]["tool_calls"][0]["id"] == "call-123"
-
-    @patch.dict(os.environ, LUNA_ENV)
-    @pytest.mark.asyncio
-    async def test_contextual_llm_preserves_structured_dual_written_tool_call(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        evaluator = LunaEvaluator.from_dict(
-            {
-                "scorer_id": "scorer-123",
-                "scorer_version_id": "version-456",
-                "threshold": 0.5,
-                "operator": "gte",
-            }
-        )
-        messages = [
-            {"role": "system", "content": "Follow transfer policy."},
-            {"role": "user", "content": "Review transfer 7781."},
-        ]
-        assistant = {
-            "role": "assistant",
-            "content": "I will verify the transfer.",
-            "tool_calls": [
-                {
-                    "id": "call-123",
-                    "type": "function",
-                    "function": {
-                        "name": "submit_transfer",
-                        "arguments": '{"amount": 20}',
-                    },
-                }
-            ],
-        }
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "submit_transfer",
-                    "parameters": {"type": "object", "properties": {"amount": {"type": "number"}}},
-                },
-            }
-        ]
-        step = Step(
-            type="llm",
-            name="transfer_agent",
-            input=messages,
-            output=assistant,
-            tools=tools,
-        )
-
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.return_value = ScorerInvokeResponse(
-                scorer_label="Tool Selection Quality (SLM)",
-                score=0.8,
-                status="success",
-            )
-            await evaluator.evaluate_with_context(
-                {"input": messages, "output": assistant},
-                step,
+            result = await evaluator.evaluate_with_extensions(
+                "selected input", Step(type="llm", name="answer", input="prompt"), extensions
             )
 
-        kwargs = mock_invoke.await_args.kwargs
-        record = kwargs["record"]
-        assert kwargs["input"] == messages
-        assert record["type"] == "llm"
-        assert record["input"] == messages
-        assert kwargs["output"] == record["output"]
-        assert record["output"]["role"] == "assistant"
-        assert record["output"]["content"] == assistant["content"]
-        assert record["output"]["tool_calls"][0]["id"] == "call-123"
-        assert record["output"]["tool_calls"][0]["function"]["name"] == "submit_transfer"
-        assert record["output"]["tool_calls"][0]["function"]["arguments"] == '{"amount": 20}'
-        assert record["tools"] == tools
+        assert result.matched is True
+        mock_invoke.assert_awaited_once_with(
+            scorer_id="scorer-123",
+            step=Step(type="llm", name="answer", input="prompt"),
+            execution_context=GalileoExecutionContext(
+                organization_id="org-1",
+                user_id="verified-user-2",
+                project_id="project-3",
+                run_id="run-4",
+            ),
+            input="selected input",
+            output=None,
+            config=None,
+            timeout=10.0,
+        )
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        "selected_input",
-        [
-            [{"role": "user", "content": "Review transfer 20."}],
-            {"role": "user", "content": "Review transfer 20."},
-        ],
-        ids=["message-list", "message-object"],
-    )
-    async def test_contextual_llm_direct_input_preserves_selected_shape(
-        self, selected_input: JSONValue
-    ) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        evaluator = LunaEvaluator.from_dict(
-            {
-                "scorer_id": "scorer-123",
-                "scorer_version_id": "version-456",
-                "payload_field": "input",
-            }
-        )
-        assistant = {
-            "role": "assistant",
-            "content": "I will verify the transfer.",
-            "tool_calls": [
-                {
-                    "id": "call-123",
-                    "function": {
-                        "name": "submit_transfer",
-                        "arguments": '{"amount": 20}',
-                    },
-                }
-            ],
-        }
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "submit_transfer",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"amount": {"type": "number"}},
-                    },
-                },
-            }
-        ]
-        step = Step(
-            type="llm",
-            name="transfer_agent",
-            input=selected_input,
-            output=assistant,
-            tools=tools,
-        )
-
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-            await evaluator.evaluate_with_context(selected_input, step)
-
-        kwargs = mock_invoke.await_args.kwargs
-        record = kwargs["record"]
-        expected_input = selected_input
-        if isinstance(selected_input, dict):
-            expected_input = [selected_input]
-        assert kwargs["input"] == record["input"] == expected_input
-        assert kwargs["output"] == record["output"]
-        assert record["type"] == "llm"
-        assert record["output"]["tool_calls"][0]["function"]["name"] == "submit_transfer"
-        assert record["tools"] == tools
-
-    @patch.dict(os.environ, LUNA_ENV)
-    @pytest.mark.asyncio
-    async def test_contextual_llm_direct_output_message_preserves_selected_shape(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        evaluator = LunaEvaluator.from_dict(
-            {
-                "scorer_id": "scorer-123",
-                "scorer_version_id": "version-456",
-                "payload_field": "output",
-            }
-        )
-        messages = [{"role": "user", "content": "Review transfer 20."}]
-        selected_output = {
-            "role": "assistant",
-            "content": "I will verify the transfer.",
-            "tool_calls": [
-                {
-                    "id": "call-123",
-                    "function": {
-                        "name": "submit_transfer",
-                        "arguments": '{"amount": 20}',
-                    },
-                }
-            ],
-        }
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "submit_transfer",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"amount": {"type": "number"}},
-                    },
-                },
-            }
-        ]
-        step = Step(
-            type="llm",
-            name="transfer_agent",
-            input=messages,
-            output=selected_output,
-            tools=tools,
-        )
-
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-            await evaluator.evaluate_with_context(selected_output, step)
-
-        kwargs = mock_invoke.await_args.kwargs
-        record = kwargs["record"]
-        assert kwargs["input"] == record["input"] == messages
-        assert kwargs["output"] == record["output"]
-        assert record["type"] == "llm"
-        assert record["output"]["tool_calls"][0]["id"] == "call-123"
-        assert record["output"]["tool_calls"][0]["function"]["name"] == "submit_transfer"
-        assert record["tools"] == tools
-
-    @patch.dict(os.environ, LUNA_ENV)
-    @pytest.mark.asyncio
-    async def test_contextual_trace_preserves_raw_record_and_nested_spans(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        evaluator = LunaEvaluator.from_dict(
-            {
-                "scorer_id": "scorer-123",
-                "scorer_version_id": "version-456",
-                "threshold": 0.5,
-            }
-        )
-        step = Step(
-            type="trace",
-            name="account_lookup_trace",
-            input={
-                "input": "Find my account information.",
-                "spans": [
-                    {
-                        "type": "tool",
-                        "name": "lookup",
-                        "input": {"account": "jane"},
-                        "output": "found",
-                    },
-                    {"type": "llm", "name": "answer", "input": "question", "output": "answer"},
-                ],
-            },
-            output="Your account belongs to Jane Doe.",
-        )
-        raw_data = step.input
-
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-            await evaluator.evaluate_with_context(raw_data, step)
-
-        kwargs = mock_invoke.await_args.kwargs
-        assert kwargs["input"] == "Find my account information."
-        record = kwargs["record"]
-        assert record["type"] == "trace"
-        assert record["name"] == "account_lookup_trace"
-        assert record["input"] == "Find my account information."
-        assert record["output"] == "Your account belongs to Jane Doe."
-        assert len(record["spans"]) == 2
-        assert record["spans"][0]["name"] == "lookup"
-        assert json.loads(record["spans"][0]["input"]) == {"account": "jane"}
-        assert record["spans"][1]["name"] == "answer"
-
-    @patch.dict(os.environ, LUNA_ENV)
-    @pytest.mark.asyncio
-    async def test_contextual_session_preserves_nested_traces(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        evaluator = LunaEvaluator.from_dict(
-            {"scorer_id": "scorer-123", "scorer_version_id": "version-456"}
-        )
-        step = Step(
-            type="session",
-            name="conversation",
-            input="question",
-            context={
-                "traces": [
-                    {
-                        "type": "trace",
-                        "name": "request",
-                        "input": "question",
-                        "spans": [
-                            {
-                                "type": "tool",
-                                "name": "search",
-                                "input": {"query": "question"},
-                                "output": "result",
-                            }
-                        ],
-                    }
-                ]
-            },
-        )
-
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-            await evaluator.evaluate_with_context(step.model_dump(mode="json"), step)
-
-        record = mock_invoke.await_args.kwargs["record"]
-        assert record["type"] == "session"
-        assert record["traces"][0]["type"] == "trace"
-        assert record["traces"][0]["spans"][0]["name"] == "search"
-
-    @patch.dict(os.environ, LUNA_ENV)
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        ("step_type", "expected_error"),
-        [
-            ("trace", "Galileo trace context is missing"),
-            ("session", "Galileo session context is missing"),
-        ],
-    )
-    async def test_contextual_missing_group_context_returns_factory_error(
-        self, step_type: str, expected_error: str
-    ) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        evaluator = LunaEvaluator.from_dict(
-            {"scorer_id": "scorer-123", "scorer_version_id": "version-456"}
-        )
-        step = Step(type=step_type, name="missing-context", input="question", output="answer")
-
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            result = await evaluator.evaluate_with_context(step.model_dump(mode="json"), step)
-
-        assert expected_error in (result.error or "")
-        mock_invoke.assert_not_called()
-
-    @patch.dict(os.environ, LUNA_ENV)
-    @pytest.mark.asyncio
-    async def test_structured_request_requires_explicit_scorer_version(self) -> None:
+    async def test_evaluator_requires_authenticated_caller_id(self) -> None:
         from agent_control_evaluator_galileo.luna import LunaEvaluator
         from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
         evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123"})
-        step = Step(type="llm", name="answer", input="question", output="answer")
+        extensions = {
+            "namespace_key": "org-1",
+            "target_type": "log_stream",
+            "target_id": "run-4",
+            "metadata": {"project_id": "project-3"},
+        }
 
         with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            result = await evaluator.evaluate_with_context("question", step)
+            result = await evaluator.evaluate_with_extensions(
+                "selected input", Step(type="llm", name="answer", input="prompt"), extensions
+            )
 
-        assert "scorer_version_id is required" in (result.error or "")
+        assert result.error is not None
+        assert "user_id" in result.error
         mock_invoke.assert_not_called()
-
-    @patch.dict(os.environ, LUNA_ENV)
-    @pytest.mark.asyncio
-    async def test_contextual_unsupported_step_keeps_legacy_request(self) -> None:
-        from agent_control_evaluator_galileo.luna import LunaEvaluator, ScorerInvokeResponse
-        from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
-
-        evaluator = LunaEvaluator.from_dict({"scorer_id": "scorer-123"})
-        step = Step(type="custom", name="custom", input="full input", output="full output")
-        with patch.object(GalileoLunaClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-            mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-            await evaluator.evaluate_with_context("selected input", step)
-
-        assert "record" not in mock_invoke.await_args.kwargs
-        assert mock_invoke.await_args.kwargs["input"] == "selected input"
 
     @patch.dict(os.environ, LUNA_ENV)
     @pytest.mark.asyncio

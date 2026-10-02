@@ -280,6 +280,152 @@ async def test_http_upstream_returns_principal_on_200():
 
 
 @pytest.mark.asyncio
+async def test_http_upstream_resolves_identity_at_configured_url():
+    captured: dict[str, Any] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["method"] = request.method
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-7",
+                "caller_id": "user-42",
+                "is_admin": True,
+                "scopes": ["controls.read"],
+            },
+        )
+
+    provider = _build_upstream(
+        factory,
+        config_overrides={
+            "url": (
+                "https://orbit.example/prefix/internal/auth/agent_control/check_management_access"
+            ),
+            "identity_url": "https://orbit.example/prefix/internal/auth/resolve_tenant_context",
+            "service_token": "service-secret",
+            "extra_forward_headers": ("X-Deployer-Auth",),
+        },
+    )
+    assert provider.binding_target_authorization is True
+    principal = await provider.resolve_identity(
+        _build_request(
+            headers={
+                "X-API-Key": "caller-key",
+                "Authorization": "Bearer caller-token",
+                "Cookie": "session=caller-session",
+                "X-Deployer-Auth": "deployer-key",
+            }
+        ),
+        Operation.CONTROL_BINDINGS_WRITE,
+    )
+
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://orbit.example/prefix/internal/auth/resolve_tenant_context"
+    assert captured["headers"]["x-api-key"] == "caller-key"
+    assert captured["headers"]["authorization"] == "Bearer caller-token"
+    assert captured["headers"]["cookie"] == "session=caller-session"
+    assert captured["headers"]["x-deployer-auth"] == "deployer-key"
+    assert captured["headers"]["x-agent-control-service-token"] == "service-secret"
+    assert principal == Principal(namespace_key="org-7", caller_id="user-42")
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_resolves_identity_at_explicit_url():
+    captured: dict[str, str] = {}
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"namespace_key": "tenant-1"})
+
+    provider = _build_upstream(
+        factory,
+        config_overrides={"identity_url": "https://identity.example/resolve"},
+    )
+    assert provider.binding_target_authorization is True
+    principal = await provider.resolve_identity(_build_request(), Operation.CONTROL_BINDINGS_READ)
+
+    assert captured["url"] == "https://identity.example/resolve"
+    assert principal == Principal(namespace_key="tenant-1")
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_direct_identity_lookup_requires_configured_url():
+    provider = _build_upstream(lambda request: pytest.fail("unexpected upstream call"))
+    assert provider.binding_target_authorization is False
+
+    with pytest.raises(APIError) as exc_info:
+        await provider.resolve_identity(_build_request(), Operation.CONTROL_BINDINGS_READ)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.error_code == "AUTH_MISCONFIGURED"
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_identity_preserves_401():
+    provider = _build_upstream(
+        lambda request: httpx.Response(401),
+        config_overrides={"identity_url": "https://identity.example/resolve"},
+    )
+
+    with pytest.raises(AuthenticationError) as exc_info:
+        await provider.resolve_identity(_build_request(), Operation.CONTROL_BINDINGS_READ)
+
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_identity_treats_missing_route_as_upstream_error():
+    provider = _build_upstream(
+        lambda request: httpx.Response(404),
+        config_overrides={"identity_url": "https://identity.example/resolve"},
+    )
+
+    with pytest.raises(APIError) as exc_info:
+        await provider.resolve_identity(_build_request(), Operation.CONTROL_BINDINGS_READ)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.error_code == "AUTH_UPSTREAM_REJECTED"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [429, 500, 503])
+async def test_http_upstream_identity_fails_closed_when_unavailable(status: int):
+    provider = _build_upstream(
+        lambda request: httpx.Response(status),
+        config_overrides={"identity_url": "https://identity.example/resolve"},
+    )
+
+    with pytest.raises(APIError) as exc_info:
+        await provider.resolve_identity(_build_request(), Operation.CONTROL_BINDINGS_READ)
+
+    assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "grant",
+    [
+        {},
+        {"namespace_key": ""},
+        {"namespace_key": 42},
+        {"namespace_key": "tenant-1", "is_admin": "true"},
+    ],
+)
+async def test_http_upstream_identity_rejects_malformed_grant(grant: dict[str, Any]):
+    provider = _build_upstream(
+        lambda request: httpx.Response(200, json=grant),
+        config_overrides={"identity_url": "https://identity.example/resolve"},
+    )
+
+    with pytest.raises(APIError) as exc_info:
+        await provider.resolve_identity(_build_request(), Operation.CONTROL_BINDINGS_READ)
+
+    assert exc_info.value.status_code == 502
+
+
+@pytest.mark.asyncio
 async def test_http_upstream_forwards_service_token():
     captured: dict[str, Any] = {}
 
@@ -694,6 +840,51 @@ def test_runtime_token_round_trips():
     assert decoded.target_type == "log_stream"
     assert decoded.target_id == "ls-9"
     assert decoded.scopes == ("runtime.use",)
+
+
+def test_runtime_token_rejects_non_json_extensions_when_minting():
+    from agent_control_server.auth_framework.runtime_token import (
+        RuntimeTokenError,
+        mint_runtime_token,
+    )
+
+    with pytest.raises(RuntimeTokenError, match="extensions must be a JSON object"):
+        mint_runtime_token(
+            namespace_key="default",
+            actor_id="actor",
+            target_type="target",
+            target_id="target-id",
+            scopes=("runtime.use",),
+            secret=_TEST_SECRET,
+            ttl_seconds=60,
+            extensions={"provider_field": object()},
+        )
+
+
+def test_runtime_token_rejects_malformed_signed_extensions():
+    import jwt
+
+    from agent_control_server.auth_framework.runtime_token import (
+        RuntimeTokenError,
+        mint_runtime_token,
+        verify_runtime_token,
+    )
+
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="actor",
+        target_type="target",
+        target_id="target-id",
+        scopes=("runtime.use",),
+        secret=_TEST_SECRET,
+        ttl_seconds=60,
+    )
+    payload = jwt.decode(token, _TEST_SECRET, algorithms=["HS256"])
+    payload["extensions"] = []
+    malformed_token = jwt.encode(payload, _TEST_SECRET, algorithm="HS256")
+
+    with pytest.raises(RuntimeTokenError, match="malformed extensions"):
+        verify_runtime_token(malformed_token, _TEST_SECRET)
 
 
 def test_runtime_token_rejects_wrong_secret():
@@ -1187,11 +1378,13 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
         lambda req: httpx.Response(
             200,
             json={
-                "namespace_key": "org-1",
+                "namespace_key": "namespace-1",
                 "is_admin": False,
                 "scopes": ["runtime.use", "runtime.read_only"],
-                "target_type": "log_stream",
-                "target_id": "ls-1",
+                "target_type": "custom_target",
+                "target_id": "target-1",
+                "provider_field": "opaque_value",
+                "nested": {"opaque": "metadata"},
                 "expires_at": iso_expiry,
             },
         )
@@ -1199,14 +1392,40 @@ async def test_http_upstream_accepts_iso_datetime_and_array_scopes():
     principal = await provider.authorize(
         _build_request(),
         Operation.RUNTIME_TOKEN_EXCHANGE,
-        context={"target_type": "log_stream", "target_id": "ls-1"},
+        context={"target_type": "custom_target", "target_id": "target-1"},
     )
-    assert principal.namespace_key == "org-1"
+    assert principal.namespace_key == "namespace-1"
     assert principal.scopes == ("runtime.use", "runtime.read_only")
-    assert principal.target_type == "log_stream"
-    assert principal.target_id == "ls-1"
+    assert principal.target_type == "custom_target"
+    assert principal.target_id == "target-1"
+    assert principal.extensions == {
+        "provider_field": "opaque_value",
+        "nested": {"opaque": "metadata"},
+    }
     assert principal.grant_expires_at is not None
     assert principal.grant_expires_at.isoformat() == iso_expiry
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_rejects_invalid_extension_metadata(monkeypatch):
+    from pydantic import TypeAdapter
+
+    from agent_control_server.auth_framework.providers import http_upstream
+
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            200,
+            json={"namespace_key": "namespace-1", "provider_field": "opaque_value"},
+        )
+    )
+    # Force the defensive conversion error path for invalid extension payloads.
+    monkeypatch.setattr(http_upstream, "_JSON_OBJECT_ADAPTER", TypeAdapter(str))
+
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(_build_request(), Operation.RUNTIME_TOKEN_EXCHANGE)
+
+    assert exc_info.value.status_code == 502
+    assert "malformed extension metadata" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
@@ -1524,6 +1743,66 @@ async def test_configure_http_upstream_extra_forward_headers_env(monkeypatch):
             "X-Deployer-Auth",
             "X-Deployer-Trace",
         )
+    finally:
+        await auth_config.teardown_auth()
+
+
+@pytest.mark.parametrize(
+    ("upstream_url", "expected_identity_url"),
+    [
+        (
+            "https://orbit.example/prefix/internal/auth/agent_control/check_management_access",
+            "https://orbit.example/prefix/internal/auth/resolve_tenant_context",
+        ),
+        ("https://auth.example.test/check", None),
+    ],
+)
+@pytest.mark.asyncio
+async def test_configure_http_upstream_selects_identity_url(
+    monkeypatch, upstream_url: str, expected_identity_url: str | None
+):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", upstream_url)
+    monkeypatch.delenv("AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL", raising=False)
+
+    try:
+        auth_config.configure_auth_from_env()
+        provider = get_authorizer(Operation.CONTROL_BINDINGS_READ)
+        assert isinstance(provider, HttpUpstreamAuthProvider)
+        assert provider._config.identity_url == expected_identity_url
+        assert provider.binding_target_authorization is (expected_identity_url is not None)
+    finally:
+        await auth_config.teardown_auth()
+
+
+@pytest.mark.parametrize(
+    "upstream_url",
+    [
+        "https://auth.example.test/check",
+        "https://orbit.example/internal/auth/agent_control/check_management_access",
+    ],
+)
+@pytest.mark.asyncio
+async def test_configure_http_upstream_identity_url_env(monkeypatch, upstream_url: str):
+    from agent_control_server.auth_framework import config as auth_config
+
+    clear_authorizers()
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+    monkeypatch.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", upstream_url)
+    monkeypatch.setenv(
+        "AGENT_CONTROL_AUTH_UPSTREAM_IDENTITY_URL",
+        " https://identity.example.test/resolve ",
+    )
+
+    try:
+        auth_config.configure_auth_from_env()
+        provider = get_authorizer(Operation.CONTROL_BINDINGS_READ)
+        assert isinstance(provider, HttpUpstreamAuthProvider)
+        assert provider._config.identity_url == "https://identity.example.test/resolve"
+        assert provider.binding_target_authorization is True
     finally:
         await auth_config.teardown_auth()
 

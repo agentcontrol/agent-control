@@ -6,14 +6,13 @@ import json
 import logging
 import os
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any, cast
+from typing import Any
 
 import httpx
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult, JSONObject, JSONValue, Step
 
-from ..records import build_galileo_record
-from .client import GalileoLunaClient, ScorerInvokeResponse
+from .client import GalileoExecutionContext, GalileoLunaClient, ScorerInvokeResponse
 from .config import LunaEvaluatorConfig, coerce_number
 
 logger = logging.getLogger(__name__)
@@ -48,16 +47,6 @@ def _coerce_payload_text(value: Any) -> str | None:
 
 def _has_text(value: str | None) -> bool:
     return value is not None and value.strip() != ""
-
-
-def _has_payload_value(value: JSONValue | None) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    if isinstance(value, (dict, list)):
-        return bool(value)
-    return True
 
 
 def _extract_dict_text(data: dict[str, Any], key: str) -> str | None:
@@ -155,20 +144,8 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         """Get the Galileo Luna client."""
         return self._client
 
-    def _prepare_payload(
-        self, data: Any, *, step: Step | None = None
-    ) -> tuple[JSONValue | None, JSONValue | None]:
-        """Prepare legacy scorer inputs while preserving structured LLM values."""
-        if step is not None and step.type.strip().lower() == "llm":
-            if isinstance(data, dict) and ("input" in data or "output" in data):
-                return cast(JSONValue | None, data.get("input")), cast(
-                    JSONValue | None, data.get("output")
-                )
-            selected_value = cast(JSONValue | None, data)
-            if self.config.payload_field == "output":
-                return None, selected_value
-            return selected_value, None
-
+    def _prepare_payload(self, data: Any) -> tuple[str | None, str | None]:
+        """Prepare scorer input/output fields from selected data."""
         if isinstance(data, dict):
             input_text = _extract_dict_text(data, "input")
             output_text = _extract_dict_text(data, "output")
@@ -235,10 +212,75 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
         """
         return await self._evaluate(data, step=step)
 
-    async def _evaluate(self, data: Any, *, step: Step | None) -> EvaluatorResult:
+    async def evaluate_with_extensions(
+        self,
+        data: Any,
+        step: Step,
+        extensions: JSONObject | None,
+    ) -> EvaluatorResult:
+        """Evaluate using opaque authenticated metadata supplied by Agent Control."""
+        return await self._evaluate(
+            data,
+            step=step,
+            extensions=extensions,
+        )
+
+    @staticmethod
+    def _execution_context_from_extensions(
+        extensions: JSONObject | None,
+    ) -> GalileoExecutionContext | None:
+        """Translate trusted opaque auth metadata into Galileo's request context."""
+        if extensions is None:
+            return None
+
+        metadata = extensions.get("metadata")
+        metadata_obj = metadata if isinstance(metadata, dict) else {}
+        organization_id = extensions.get("namespace_key")
+        # Orbit's runtime-auth contract defines caller_id as the authenticated
+        # user ID for this flow. Keep that contract mapping inside Galileo.
+        user_id = extensions.get("caller_id")
+        project_id = metadata_obj.get("project_id")
+        target_type = extensions.get("target_type")
+        target_id = extensions.get("target_id")
+        run_id = target_id if target_type == "log_stream" else None
+
+        missing = [
+            field
+            for field, value in (
+                ("organization_id", organization_id),
+                ("user_id", user_id),
+                ("project_id", project_id),
+                ("run_id", run_id),
+            )
+            if not isinstance(value, str) or not value
+        ]
+        if missing:
+            raise ValueError(
+                "Authenticated execution metadata is missing required fields: "
+                + ", ".join(missing)
+            )
+
+        assert isinstance(organization_id, str)
+        assert isinstance(user_id, str)
+        assert isinstance(project_id, str)
+        assert isinstance(run_id, str)
+        return GalileoExecutionContext(
+            organization_id=organization_id,
+            user_id=user_id,
+            project_id=project_id,
+            run_id=run_id,
+        )
+
+    async def _evaluate(
+        self,
+        data: Any,
+        *,
+        step: Step | None,
+        extensions: JSONObject | None = None,
+    ) -> EvaluatorResult:
         """Run a Luna evaluation with optional structured runtime context."""
-        input_text, output_text = self._prepare_payload(data, step=step)
-        if not (_has_payload_value(input_text) or _has_payload_value(output_text)):
+        input_text, output_text = self._prepare_payload(data)
+        if not (_has_text(input_text) or _has_text(output_text)):
             return EvaluatorResult(
                 matched=False,
                 confidence=1.0,
@@ -247,36 +289,16 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             )
 
         try:
+            execution_context = self._execution_context_from_extensions(extensions)
             scorer_kwargs = self._scorer_kwargs()
-            record_payload: JSONObject | None = None
             if step is not None:
                 scorer_kwargs["step"] = step
-                if step.type.strip().lower() in {"llm", "tool", "retriever", "trace", "session"}:
-                    if self.config.scorer_version_id is None:
-                        raise ValueError(
-                            "scorer_version_id is required for structured Luna requests."
-                        )
-                    record = build_galileo_record(
-                        data,
-                        step,
-                        payload_field=self.config.payload_field,
-                    )
-                    record_payload = cast(
-                        JSONObject,
-                        record.model_dump(mode="json", exclude_none=True),
-                    )
-                    if step.type.strip().lower() == "llm":
-                        # Keep the legacy inputs in the request, but derive
-                        # them from Orbit's canonical record so they cannot
-                        # conflict with normalized tool-call/message fields.
-                        input_text = cast(JSONValue | None, record_payload.get("input"))
-                        output_text = cast(JSONValue | None, record_payload.get("output"))
-            if record_payload is not None:
-                scorer_kwargs["record"] = record_payload
+            if execution_context is not None:
+                scorer_kwargs["execution_context"] = execution_context
             response = await self._get_client().invoke(
                 **scorer_kwargs,
-                input=input_text if _has_payload_value(input_text) else None,
-                output=output_text if _has_payload_value(output_text) else None,
+                input=input_text if _has_text(input_text) else None,
+                output=output_text if _has_text(output_text) else None,
                 config=self.config.scorer_config,
                 timeout=self.get_timeout_seconds(),
             )

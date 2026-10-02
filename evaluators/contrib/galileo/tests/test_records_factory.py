@@ -23,9 +23,11 @@ from agent_control_models import Step
 from galileo_core.schemas.logging.llm import Message
 from galileo_core.schemas.logging.session import Session
 from galileo_core.schemas.logging.span import LlmSpan, RetrieverSpan, ToolSpan
+from galileo_core.schemas.logging.step import BaseStep
 from galileo_core.schemas.logging.trace import Trace
 from galileo_core.schemas.shared.content_parts import FileContentPart, TextContentPart
 from galileo_core.schemas.shared.document import Document
+from galileo_core.schemas.shared.records import BaseRecord, RecordTypeAdapter
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -46,6 +48,121 @@ class _RecordPayload(BaseModel):
 
 def test_required_galileo_core_public_exports_are_importable() -> None:
     assert all((LlmSpan, ToolSpan, RetrieverSpan, Trace, Session, Document, Message))
+
+
+def test_factory_records_are_serializable_concrete_base_steps() -> None:
+    # Given: one record of each type accepted by the Galileo factory
+    records = [
+        record_from_step(Step(type="llm", name="answer", input="question", output="answer")),
+        record_from_step(Step(type="tool", name="search", input={"query": "q"}, output="result")),
+        record_from_step(
+            Step(type="retriever", name="retrieve", input="question", output=["document"])
+        ),
+        record_from_step(
+            Step(
+                type="trace",
+                name="request",
+                input="question",
+                output="answer",
+                context={"spans": [{"type": "llm", "name": "answer", "input": "question"}]},
+            )
+        ),
+        record_from_step(
+            Step(
+                type="session",
+                name="conversation",
+                input="question",
+                context={
+                    "traces": [
+                        {
+                            "type": "trace",
+                            "name": "request",
+                            "input": "question",
+                            "spans": [{"type": "llm", "name": "answer", "input": "question"}],
+                        }
+                    ]
+                },
+            )
+        ),
+    ]
+
+    # When: each concrete Galileo step is serialized and parsed back through its own schema
+    rebuilt = [
+        type(record).model_validate(record.model_dump(mode="json", exclude_none=True))
+        for record in records
+    ]
+
+    # Then: every concrete class remains a BaseStep and keeps its discriminator and children
+    assert all(isinstance(record, BaseStep) for record in records)
+    assert all(isinstance(record, BaseStep) for record in rebuilt)
+    assert [record.type.value for record in rebuilt] == [
+        "llm",
+        "tool",
+        "retriever",
+        "trace",
+        "session",
+    ]
+    assert isinstance(rebuilt[3], Trace)
+    assert isinstance(rebuilt[4], Session)
+    assert isinstance(rebuilt[3].spans[0], LlmSpan)
+    assert isinstance(rebuilt[4].traces[0].spans[0], LlmSpan)
+
+
+def test_factory_steps_convert_to_core_records_after_execution_ids_are_added() -> None:
+    # Given: each root subtype emitted by the factory, plus caller-supplied IDs
+    steps = [
+        record_from_step(Step(type="llm", name="answer", input="question", output="answer")),
+        record_from_step(Step(type="tool", name="search", input={"query": "q"}, output="result")),
+        record_from_step(
+            Step(type="retriever", name="retrieve", input="question", output=["document"])
+        ),
+        record_from_step(
+            Step(type="trace", name="request", input="question", context={"spans": []})
+        ),
+        record_from_step(
+            Step(type="session", name="conversation", input="question", context={"traces": []})
+        ),
+    ]
+    project_id = uuid4()
+    run_id = uuid4()
+    session_id = uuid4()
+    trace_id = uuid4()
+    rebuilt_records: list[BaseRecord] = []
+
+    # When: add execution IDs and relationships, then apply Galileo Core's record discriminator
+    for step in steps:
+        step_id = uuid4()
+        values = step.model_dump(
+            mode="python",
+            exclude={
+                "id",
+                "project_id",
+                "run_id",
+                "session_id",
+                "trace_id",
+                "parent_id",
+                "spans",
+                "traces",
+            },
+        )
+        values.update(id=step_id, project_id=project_id, run_id=run_id, type=step.type)
+        if isinstance(step, Session):
+            values["session_id"] = step_id
+        elif isinstance(step, Trace):
+            values.update(session_id=session_id, trace_id=step_id)
+        else:
+            values.update(session_id=session_id, trace_id=trace_id, parent_id=trace_id)
+        rebuilt_records.append(RecordTypeAdapter.validate_python(values))
+
+    # Then: the concrete step payloads satisfy Galileo Core's stored-record schemas
+    assert all(isinstance(record, BaseRecord) for record in rebuilt_records)
+    assert [record.type.value for record in rebuilt_records] == [
+        "llm",
+        "tool",
+        "retriever",
+        "trace",
+        "session",
+    ]
 
 
 def test_llm_messages_use_public_canonical_validation() -> None:
@@ -588,6 +705,16 @@ def test_session_content_parts_are_preserved_by_input_and_output_normalizers() -
     ]
 
 
+def test_session_output_serializes_unsupported_sequences_for_core_model() -> None:
+    output = GalileoRecordNormalizer.session_output([1, 2])
+
+    assert isinstance(output, str)
+    assert output == json.dumps([1, 2])
+    assert json.loads(output) == [1, 2]
+    session = Session(input=[], output=output, traces=[])
+    assert session.output == output
+
+
 def test_record_normalizer_serializes_nested_models_uuids_and_timestamps() -> None:
     identifier = uuid4()
     timestamp = datetime(2025, 1, 2, 3, 4, 5, tzinfo=UTC)
@@ -627,6 +754,9 @@ def test_json_normalization_supports_python_value_types_and_fallbacks() -> None:
         value: int
         optional: str | None = None
 
+    class NestedValuesModel(BaseModel):
+        payload: object
+
     @dataclass
     class NestedDataclass:
         identifier: object
@@ -648,20 +778,35 @@ def test_json_normalization_supports_python_value_types_and_fallbacks() -> None:
     naive_timestamp = datetime(2025, 1, 2)
     offset_timestamp = datetime(2025, 1, 2, tzinfo=timezone(timedelta(hours=2)))
 
+    class StructuredState(Enum):
+        VALUE = {"identifier": identifier, "timestamp": utc_timestamp}
+
     assert encoder.default(NestedModel(value=3)) == {"value": 3}
     assert encoder.default(utc_timestamp) == "2025-01-02T00:00:00Z"
-    assert isinstance(encoder.default(naive_timestamp), str)
+    expected_naive_timestamp = naive_timestamp.astimezone()
+    expected_naive_serialized = expected_naive_timestamp.isoformat()
+    if expected_naive_timestamp.tzname() == UTC.tzname(None):
+        expected_naive_serialized = expected_naive_serialized.replace("+00:00", "Z")
+    assert encoder.default(naive_timestamp) == expected_naive_serialized
     assert encoder.default(offset_timestamp) == "2025-01-02T00:00:00+02:00"
     assert encoder.default(date(2025, 1, 2)) == "2025-01-02"
     assert encoder.default(identifier) == str(identifier)
     assert encoder.default(Path("folder/file.txt")) == "folder/file.txt"
     assert encoder.default(State.READY) == "ready"
+    assert json.dumps(StructuredState.VALUE, cls=_GalileoJSONEncoder) == json.dumps(
+        {"identifier": str(identifier), "timestamp": "2025-01-02T00:00:00Z"}
+    )
     assert encoder.default(b"text") == "text"
     assert encoder.default(b"\xff") == "<not serializable bytes>"
     assert encoder.default(NestedDataclass(identifier)) == {"identifier": identifier}
-    assert encoder.default(2**53) == str(2**53)
     assert encoder.default({"item"}) == ["item"]
     assert encoder.default(object()) == "<object>"
+
+    assert GalileoRecordNormalizer.json_text(42) == "42"
+    assert GalileoRecordNormalizer.json_text(2**53) == json.dumps(str(2**53))
+    assert GalileoRecordNormalizer.json_text({"large_integer": 2**53}) == json.dumps(
+        {"large_integer": str(2**53)}
+    )
 
     recursive: list[object] = []
     recursive.append(recursive)
@@ -697,11 +842,33 @@ def test_json_normalization_supports_python_value_types_and_fallbacks() -> None:
     assert _json_compatible({"values": [State.READY, date(2025, 1, 2)]}) == {
         "values": ["ready", "2025-01-02"]
     }
+    nested_values = _json_compatible(
+        {
+            "nested": {
+                "set": {b"bytes"},
+                "frozenset": frozenset({Path("nested/path")}),
+                "invalid_bytes": {b"\xff"},
+            },
+            "model": NestedValuesModel(
+                payload={"set": {b"model bytes"}, "path": Path("model/path")}
+            ),
+        }
+    )
+    assert nested_values == {
+        "nested": {
+            "set": ["bytes"],
+            "frozenset": ["nested/path"],
+            "invalid_bytes": ["<not serializable bytes>"],
+        },
+        "model": {"payload": {"set": ["model bytes"], "path": "model/path"}},
+    }
+    assert json.loads(json.dumps(nested_values)) == nested_values
 
 
 def test_normalizer_preserves_message_content_and_reports_invalid_trace_inputs() -> None:
     from agent_control_evaluator_galileo.records.normalization import (
         _flatten_message_sequence,
+        _message_content,
         _message_sequence,
         _normalize_content_items,
     )
@@ -709,17 +876,18 @@ def test_normalizer_preserves_message_content_and_reports_invalid_trace_inputs()
     messages = [
         {"role": "user", "content": ""},
         {"role": "assistant", "content": ["plain", {"unsupported": True}]},
-        {"content": 7},
-        {},
     ]
     flattened = _flatten_message_sequence(messages)
 
     assert [part["text"] for part in flattened] == [
         "plain",
         '{"unsupported": true}',
-        "7",
     ]
     assert _message_sequence([{"role": "user", "content": "question"}])
+    assert not _message_sequence([{"content": "question"}])
+    retriever_document = {"content": "retrieved text", "metadata": {"source": "kb"}}
+    assert not _message_sequence([retriever_document])
+    assert _message_content(retriever_document) is None
     assert not _message_sequence([{"other": "field"}])
     assert _normalize_content_items("not a sequence") is None
     assert _normalize_content_items([{"invalid": True}]) is None

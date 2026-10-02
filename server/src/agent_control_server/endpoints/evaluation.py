@@ -9,6 +9,7 @@ from agent_control_models import (
     ControlMatch,
     EvaluationRequest,
     EvaluationResponse,
+    JSONObject,
 )
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
 from fastapi import APIRouter, Depends, Request
@@ -117,6 +118,22 @@ def _sanitize_evaluation_response(response: EvaluationResponse) -> EvaluationRes
     )
 
 
+def _principal_extensions(principal: Principal) -> JSONObject | None:
+    """Build the opaque evaluator extension from the authenticated principal."""
+    if principal.target_type is None or principal.target_id is None:
+        return None
+
+    extensions: JSONObject = {
+        "namespace_key": principal.namespace_key,
+        "target_type": principal.target_type,
+        "target_id": principal.target_id,
+        "metadata": principal.extensions or {},
+    }
+    if principal.caller_id is not None:
+        extensions["caller_id"] = principal.caller_id
+    return extensions
+
+
 async def _evaluation_context(request: Request) -> dict[str, object]:
     """Surface target identifiers to the runtime authorizer."""
     try:
@@ -199,7 +216,7 @@ async def evaluate(
     engine_controls = await _load_engine_controls(request, principal)
     engine = ControlEngine(engine_controls)
     try:
-        raw_response = await engine.process(request)
+        raw_response = await engine.process(request, extensions=_principal_extensions(principal))
     except ValueError:
         _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(
