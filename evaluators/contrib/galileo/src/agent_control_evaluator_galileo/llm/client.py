@@ -229,12 +229,12 @@ class ScorerInvokeRecord(BaseModel):
 
 
 class GalileoExecutionContext(BaseModel):
-    """Authenticated identity fields required by Galileo scorer invocation."""
+    """Authenticated organization and optional identity fields for Galileo scorer invocation."""
 
     organization_id: str = Field(min_length=1)
-    user_id: str = Field(min_length=1)
-    project_id: str = Field(min_length=1)
-    run_id: str = Field(min_length=1)
+    user_id: str | None = Field(default=None, min_length=1)
+    project_id: str | None = Field(default=None, min_length=1)
+    run_id: str | None = Field(default=None, min_length=1)
 
 
 class ScorerInvokeRequest(BaseModel):
@@ -267,7 +267,10 @@ class ScorerInvokeRequest(BaseModel):
 
     def to_dict(self) -> JSONObject:
         """Convert to the LLM scorer invoke request shape."""
-        return self.model_dump(mode="json", exclude_none=True)
+        request = self.model_dump(mode="json", exclude_none=True)
+        if self.execution_context is not None:
+            request["execution_context"] = self.execution_context.model_dump(mode="json")
+        return request
 
 
 def _orbit_record_from_step(
