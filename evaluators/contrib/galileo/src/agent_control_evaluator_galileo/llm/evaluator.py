@@ -236,38 +236,26 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
         metadata = extensions.get("metadata")
         metadata_obj = metadata if isinstance(metadata, dict) else {}
         organization_id = extensions.get("namespace_key")
-        # Orbit's runtime-auth contract defines caller_id as the authenticated
-        # user ID for this flow. Keep that contract mapping inside Galileo.
+        # The runtime envelope's caller_id is supplied by the authenticated
+        # principal and is the caller identity Galileo associates with this run.
         user_id = extensions.get("caller_id")
         project_id = metadata_obj.get("project_id")
         target_type = extensions.get("target_type")
         target_id = extensions.get("target_id")
-        run_id = target_id if target_type == "log_stream" else None
+        run_id = (
+            target_id
+            if target_type in ("log_stream", "agent_stream")
+            and isinstance(target_id, str)
+            and target_id
+            else None
+        )
+        if not isinstance(organization_id, str) or not organization_id:
+            raise ValueError("Authenticated execution metadata is missing organization_id")
 
-        missing = [
-            field
-            for field, value in (
-                ("organization_id", organization_id),
-                ("user_id", user_id),
-                ("project_id", project_id),
-                ("run_id", run_id),
-            )
-            if not isinstance(value, str) or not value
-        ]
-        if missing:
-            raise ValueError(
-                "Authenticated execution metadata is missing required fields: "
-                + ", ".join(missing)
-            )
-
-        assert isinstance(organization_id, str)
-        assert isinstance(user_id, str)
-        assert isinstance(project_id, str)
-        assert isinstance(run_id, str)
         return GalileoExecutionContext(
             organization_id=organization_id,
-            user_id=user_id,
-            project_id=project_id,
+            user_id=user_id if isinstance(user_id, str) and user_id else None,
+            project_id=project_id if isinstance(project_id, str) and project_id else None,
             run_id=run_id,
         )
 
