@@ -252,8 +252,11 @@ class BaseGalileoScorerEvaluator(Evaluator[BaseScorerEvaluatorConfig]):
     ) -> EvaluatorResult:
         """Run a scorer evaluation with optional structured runtime context."""
         display = self._display_name
+        scorer_id = self.config.scorer_id
+        logger.info("[%s] Dispatching scorer evaluation: scorer_id=%s", display, scorer_id)
         input_text, output_text = self._prepare_payload(data)
         if not (_has_text(input_text) or _has_text(output_text)):
+            logger.info("[%s] Skipping scorer invocation: no data to score", display)
             return EvaluatorResult(
                 matched=False,
                 confidence=1.0,
@@ -268,6 +271,12 @@ class BaseGalileoScorerEvaluator(Evaluator[BaseScorerEvaluatorConfig]):
                 scorer_kwargs["step"] = step
             if execution_context is not None:
                 scorer_kwargs["execution_context"] = execution_context
+            logger.info(
+                "[%s] Invoking scorer: scorer_id=%s timeout=%.1fs",
+                display,
+                scorer_id,
+                self.get_timeout_seconds(),
+            )
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,
@@ -287,6 +296,15 @@ class BaseGalileoScorerEvaluator(Evaluator[BaseScorerEvaluatorConfig]):
             operator = self.config.operator
             threshold = self.config.threshold
             state = "triggered" if matched else "not triggered"
+            logger.info(
+                "[%s] Scorer result: scorer_id=%s score=%r %s threshold=%r → %s",
+                display,
+                scorer_id,
+                response.score,
+                operator,
+                threshold,
+                state,
+            )
             return EvaluatorResult(
                 matched=matched,
                 confidence=_confidence_from_score(response.score),
@@ -297,7 +315,13 @@ class BaseGalileoScorerEvaluator(Evaluator[BaseScorerEvaluatorConfig]):
                 metadata=metadata,
             )
         except Exception as exc:
-            logger.error("%s scorer evaluation error: %s", display, exc, exc_info=True)
+            logger.error(
+                "[%s] Scorer evaluation error: scorer_id=%s error=%s",
+                display,
+                scorer_id,
+                exc,
+                exc_info=True,
+            )
             return self._handle_error(exc)
 
     def _base_metadata(self) -> dict[str, Any]:
