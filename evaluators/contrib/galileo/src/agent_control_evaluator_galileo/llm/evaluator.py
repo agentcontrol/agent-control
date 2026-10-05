@@ -252,10 +252,23 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
         if not isinstance(organization_id, str) or not organization_id:
             raise ValueError("Authenticated execution metadata is missing organization_id")
 
+        resolved_user_id = user_id if isinstance(user_id, str) and user_id else None
+        resolved_project_id = project_id if isinstance(project_id, str) and project_id else None
+        raw_api_key = os.getenv("GALILEO_API_SECRET_KEY") or os.getenv("GALILEO_API_SECRET") or ""
+        api_key_hint = f"...{raw_api_key[-4:]}" if len(raw_api_key) >= 4 else "***"
+        logger.info(
+            "[execution_context] caller_id=%r → user_id=%r org=%r project=%r run=%r api_key=%s",
+            user_id,
+            resolved_user_id,
+            organization_id,
+            resolved_project_id,
+            run_id,
+            api_key_hint,
+        )
         return GalileoExecutionContext(
             organization_id=organization_id,
-            user_id=user_id if isinstance(user_id, str) and user_id else None,
-            project_id=project_id if isinstance(project_id, str) and project_id else None,
+            user_id=resolved_user_id,
+            project_id=resolved_project_id,
             run_id=run_id,
         )
 
@@ -267,8 +280,12 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
         extensions: JSONObject | None = None,
     ) -> EvaluatorResult:
         """Run an LLM scorer evaluation with optional structured runtime context."""
+        display = self.__class__.__name__
+        scorer_id = self.config.scorer_id
+        logger.info("[%s] Dispatching scorer evaluation: scorer_id=%s", display, scorer_id)
         input_text, output_text = self._prepare_payload(data)
         if not (_has_text(input_text) or _has_text(output_text)):
+            logger.info("[%s] Skipping scorer invocation: no data to score", display)
             return EvaluatorResult(
                 matched=False,
                 confidence=1.0,
@@ -283,6 +300,12 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
                 scorer_kwargs["step"] = step
             if execution_context is not None:
                 scorer_kwargs["execution_context"] = execution_context
+            logger.info(
+                "[%s] Invoking scorer: scorer_id=%s timeout=%.1fs",
+                display,
+                scorer_id,
+                self.get_timeout_seconds(),
+            )
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,
@@ -300,6 +323,15 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
             operator = self.config.operator
             threshold = self.config.threshold
             state = "triggered" if matched else "not triggered"
+            logger.info(
+                "[%s] Scorer result: scorer_id=%s score=%r %s threshold=%r → %s",
+                display,
+                scorer_id,
+                response.score,
+                operator,
+                threshold,
+                state,
+            )
             return EvaluatorResult(
                 matched=matched,
                 confidence=_confidence_from_score(response.score),
@@ -310,7 +342,13 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
                 metadata=metadata,
             )
         except Exception as exc:
-            logger.error("LLM scorer evaluation error: %s", exc, exc_info=True)
+            logger.error(
+                "[%s] Scorer evaluation error: scorer_id=%s error=%s",
+                display,
+                scorer_id,
+                exc,
+                exc_info=True,
+            )
             return self._handle_error(exc)
 
     def _base_metadata(self) -> dict[str, Any]:
