@@ -141,6 +141,7 @@ def _build_events_for_matches(
                 action=match.action,
                 matched=matched,
                 confidence=match.result.confidence,
+                execution_duration_ms=match.execution_duration_ms,
                 timestamp=now,
                 evaluator_name=evaluator_name,
                 selector_path=selector_path,

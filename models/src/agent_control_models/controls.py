@@ -957,6 +957,11 @@ class ControlMatch(BaseModel):
     result: EvaluatorResult = Field(
         ..., description="Evaluator result (confidence, message, metadata)"
     )
+    execution_duration_ms: float | None = Field(
+        default=None,
+        ge=0,
+        description="Control evaluation wall-clock duration in milliseconds, if executed",
+    )
     steering_context: SteeringContext | None = Field(
         None,
         description="Steering context for steer actions if configured"

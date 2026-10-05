@@ -21,6 +21,47 @@ describe("AgentControlClient API wiring", () => {
     vi.restoreAllMocks();
   });
 
+  it.each([12.5, 0, null, undefined])(
+    "preserves per-control execution durations through evaluation responses (%s)",
+    async (executionDurationMs) => {
+      const match = {
+        control_id: 1,
+        control_name: "Example control",
+        action: "observe",
+        result: { matched: true, confidence: 1.0 },
+        execution_duration_ms: executionDurationMs,
+      };
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+        jsonResponse({
+          is_safe: true,
+          confidence: 1.0,
+          matches: [match],
+          non_matches: [
+            { ...match, result: { matched: false, confidence: 1.0 } },
+          ],
+          errors: [
+            {
+              ...match,
+              result: { matched: false, confidence: 0.0, error: "Evaluation failed" },
+            },
+          ],
+        }),
+      );
+      const client = new AgentControlClient();
+      client.init({ agentName: "test-agent", serverUrl: "https://api.example.com" });
+
+      const response = await client.evaluation.evaluate({
+        agentName: "test-agent",
+        stage: "pre",
+        step: { type: "llm", name: "answer", input: "hello" },
+      });
+
+      expect(response.matches?.[0]?.executionDurationMs).toBe(executionDurationMs);
+      expect(response.nonMatches?.[0]?.executionDurationMs).toBe(executionDurationMs);
+      expect(response.errors?.[0]?.executionDurationMs).toBe(executionDurationMs);
+    },
+  );
+
   it("throws when endpoint groups are accessed before init", () => {
     const client = new AgentControlClient();
 

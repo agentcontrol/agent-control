@@ -7,6 +7,7 @@ import asyncio
 import functools
 import logging
 import os
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
@@ -201,6 +202,7 @@ class _EvalTask:
     item: ControlWithIdentity
     task: asyncio.Task[None] | None = None
     result: EvaluatorResult | None = None
+    execution_duration_ms: float | None = None
 
 
 @dataclass
@@ -673,6 +675,7 @@ class ControlEngine:
 
         async def evaluate_control(eval_task: _EvalTask) -> None:
             """Evaluate a single control, respecting cancellation and timeout."""
+            started_at = time.perf_counter()
             try:
                 evaluation = await self._evaluate_condition(
                     eval_task.item,
@@ -701,6 +704,9 @@ class ControlEngine:
                     error_msg,
                     message_prefix="Condition evaluation failed",
                 )
+            finally:
+                if eval_task.result is not None:
+                    eval_task.execution_duration_ms = (time.perf_counter() - started_at) * 1000
 
         # Create and start all tasks
         for eval_task in eval_tasks:
@@ -753,6 +759,7 @@ class ControlEngine:
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        execution_duration_ms=eval_task.execution_duration_ms,
                         steering_context=eval_task.item.control.action.steering_context,
                     )
                 )
@@ -776,6 +783,7 @@ class ControlEngine:
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        execution_duration_ms=eval_task.execution_duration_ms,
                         steering_context=steer_ctx,
                     )
                 )
@@ -792,6 +800,7 @@ class ControlEngine:
                         control_name=eval_task.item.name,
                         action=eval_task.item.control.action.decision,
                         result=eval_task.result,
+                        execution_duration_ms=eval_task.execution_duration_ms,
                         steering_context=eval_task.item.control.action.steering_context,
                     )
                 )
