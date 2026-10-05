@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v8.11.0 (2026-10-02)
+
+### Features
+
+- **evaluators**: Send authenticated execution context to runners api
+  ([#278](https://github.com/agentcontrol/agent-control/pull/278),
+  [`60814a8`](https://github.com/agentcontrol/agent-control/commit/60814a8d839cb5c50262e87ff9196e41b6e7d69a))
+
+
 ## v8.10.0 (2026-10-01)
 
 ### Features

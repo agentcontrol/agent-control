@@ -13,17 +13,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from agent_control.client import AgentControlClient
+from agent_control.evaluation import (
+    _merge_results,
+    check_evaluation_with_local,
+)
 from agent_control_models import (
     ControlMatch,
     EvaluationResponse,
     EvaluatorResult,
     Step,
-)
-
-from agent_control.client import AgentControlClient
-from agent_control.evaluation import (
-    _merge_results,
-    check_evaluation_with_local,
 )
 
 # =============================================================================
@@ -1316,3 +1315,29 @@ class TestCheckEvaluationWithLocal:
         from agent_control_models.controls import SteeringContext as SteeringContextModel
         assert isinstance(match.steering_context, SteeringContextModel)
         assert match.steering_context.message == "Please rephrase your input"
+
+
+@pytest.mark.asyncio
+async def test_child_content_does_not_change_current_step_control_matching(
+    agent_name: str,
+) -> None:
+    """Local controls still select against the current step, not its children."""
+    parent = Step(
+        type="llm",
+        name="parent",
+        input="safe parent input",
+        children=[Step(type="llm", name="child", input="test secret")],
+    )
+    client = _HttpOnlyDuckClient()
+
+    result = await check_evaluation_with_local(
+        client=client,  # Given: local execution with a matching pattern only in a child
+        agent_name=agent_name,
+        step=parent,
+        stage="pre",
+        controls=[make_control_dict(1, "parent-match", execution="sdk", pattern="secret")],
+    )
+
+    assert result.is_safe is True
+    assert result.matches is None
+    client.http_client.post.assert_not_awaited()

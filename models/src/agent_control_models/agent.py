@@ -168,6 +168,11 @@ class Step(BaseModel):
     ground_truth: JSONValue | None = Field(
         None, description="Optional expected or reference output for this step"
     )
+    children: list[Step] | None = Field(
+        None,
+        exclude_if=lambda value: value is None,
+        description="Optional child steps associated with this invocation",
+    )
 
     @field_validator("type")
     @classmethod
@@ -182,3 +187,6 @@ class Step(BaseModel):
             if not isinstance(self.input, dict):
                 raise ValueError("tool steps require object input")
         return self
+
+
+Step.model_rebuild()

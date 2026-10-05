@@ -523,6 +523,7 @@ async def evaluate_controls(
     context: dict[str, Any] | None = None,
     tools: list[dict[str, JSONValue]] | None = None,
     ground_truth: JSONValue | None = None,
+    children: list[Step] | None = None,
     step_type: str = "llm",
     stage: Literal["pre", "post"] = "pre",
     agent_name: str,
@@ -561,6 +562,8 @@ async def evaluate_controls(
         step_dict["tools"] = tools
     if ground_truth is not None:
         step_dict["ground_truth"] = ground_truth
+    if children is not None:
+        step_dict["children"] = children
 
     step_obj = Step(**step_dict)  # type: ignore[arg-type]
     resolved_controls = state.server_controls or []
