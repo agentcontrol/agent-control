@@ -1,0 +1,124 @@
+"""Shared configuration models for Galileo scorer evaluators."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from agent_control_evaluators import EvaluatorConfig
+from agent_control_models import JSONValue
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+ScorerOperator = Literal["gt", "gte", "lt", "lte", "eq", "ne", "contains", "any"]
+ScorerPayloadField = Literal["input", "output"]
+
+_NUMERIC_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
+
+
+class ScorerInvokeConfig(BaseModel):
+    """Orbit-supported overrides for a synchronous scorer invocation.
+
+    Orbit owns the Galileo scorer-invoke wire contract. Keeping this model
+    strict makes an unsupported option fail locally instead of producing a
+    less actionable HTTP 422 response from Runners.
+
+    Attributes:
+        threshold: Legacy threshold accepted by Orbit. Agent Control still
+            applies its evaluator threshold locally.
+        score_threshold: Legacy score threshold accepted by Orbit.
+        request_timeout_seconds: Optional upper bound for scorer execution in
+            Orbit. The Agent Control HTTP and evaluator deadlines must remain
+            longer than this value.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    threshold: float | None = None
+    score_threshold: float | None = None
+    request_timeout_seconds: float | None = Field(default=None, gt=0)
+
+
+def coerce_number(value: JSONValue) -> float | None:
+    """Return a numeric value for JSON scalars that can be compared numerically."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+class BaseScorerEvaluatorConfig(EvaluatorConfig):
+    """Shared configuration for Galileo direct scorer evaluators.
+
+    Attributes:
+        scorer_id: Required scorer identifier for scorer invocation.
+        scorer_version_id: Deprecated optional compatibility identifier. Orbit
+            currently invokes the scorer's current default version.
+        scorer_label: Optional display/metadata label.
+        threshold: Local threshold used by the evaluator for comparison.
+        operator: Local comparison operator. Numeric operators use threshold as a number.
+        scorer_config: Optional Orbit-supported scorer invocation config sent
+            as ``config``.
+        payload_field: Explicit scorer input side for scalar selected data.
+        timeout_ms: Request timeout in milliseconds.
+    """
+
+    scorer_id: str = Field(
+        min_length=1,
+        description="Required scorer identifier for scorer invocation.",
+    )
+    scorer_version_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Deprecated optional compatibility identifier. Orbit currently invokes "
+            "the scorer's current default version."
+        ),
+    )
+    scorer_label: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Optional display/metadata label.",
+    )
+    threshold: JSONValue = Field(
+        default=0.5,
+        description="Local threshold used to decide whether the control matches.",
+    )
+    operator: ScorerOperator = Field(
+        default="gte",
+        description="Local comparison operator applied to the raw scorer score.",
+    )
+    scorer_config: ScorerInvokeConfig | None = Field(
+        default=None,
+        alias="config",
+        serialization_alias="config",
+        description=(
+            "Optional Orbit-supported configuration sent to the scorer invoke endpoint."
+        ),
+    )
+    payload_field: ScorerPayloadField = Field(
+        default="input",
+        description=(
+            "Which scorer input side to use when selector output is a scalar value. "
+            "Structured selected data with input/output keys overrides this setting."
+        ),
+    )
+    timeout_ms: int = Field(
+        default=10000,
+        ge=1000,
+        le=60000,
+        description="Request timeout in milliseconds (1-60 seconds)",
+    )
+
+    @model_validator(mode="after")
+    def validate_threshold(self) -> BaseScorerEvaluatorConfig:
+        """Validate threshold compatibility with the configured operator."""
+        if self.operator in _NUMERIC_OPERATORS and coerce_number(self.threshold) is None:
+            raise ValueError(f"operator '{self.operator}' requires a numeric threshold")
+        if self.operator != "any" and self.threshold is None:
+            raise ValueError("threshold is required unless operator is 'any'")
+        return self
