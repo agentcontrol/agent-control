@@ -11,13 +11,14 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
-from typing import Literal, cast, get_args
+from typing import Literal, get_args
 from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue, Step
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
+from ..records import UnsupportedStepTypeError, record_from_step
 from .config import ScorerInvokeConfig
 
 logger = logging.getLogger(__name__)
@@ -274,7 +275,7 @@ class ScorerInvokeRequest(BaseModel):
         return request
 
 
-def _orbit_record_from_step(
+def _scorer_invoke_record_from_step(
     step: Step | None,
     *,
     selected_input: JSONValue,
@@ -299,21 +300,20 @@ def _orbit_record_from_step(
     Returns:
         An Orbit-compatible record, or ``None`` for absent/unsupported steps.
     """
-    if step is None or step.type not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
+    if step is None:
         return None
-
-    # The membership check above narrows the runtime value to Orbit's known
-    # discriminator set, but static type checkers cannot infer that relationship.
-    record_type = cast(ScorerInvokeRecordType, step.type)
-    return ScorerInvokeRecord(
-        type=record_type,
-        name=step.name,
-        input=selected_input if selected_input is not None else step.input,
-        output=selected_output if selected_output is not None else step.output,
-        context=step.context,
-        tools=step.tools,
-        dataset_output=step.ground_truth,
-    )
+    try:
+        record = record_from_step(
+            step,
+            selected_input=selected_input,
+            selected_output=selected_output,
+        )
+    except UnsupportedStepTypeError:
+        return None
+    canonical_record = record.model_dump(mode="json", exclude_none=True)
+    if canonical_record.get("type") not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
+        return None
+    return ScorerInvokeRecord.model_validate(canonical_record)
 
 
 class ScorerInvokeResponse(BaseModel):
@@ -543,7 +543,7 @@ class GalileoLunaClient:
                 ground_truth=step.ground_truth if step is not None else None,
                 tools=step.tools if step is not None else None,
             ),
-            record=_orbit_record_from_step(
+            record=_scorer_invoke_record_from_step(
                 step,
                 selected_input=input,
                 selected_output=output,

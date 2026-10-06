@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, date, datetime
 from enum import Enum
@@ -459,12 +459,3 @@ class GalileoRecordNormalizer:
     @classmethod
     def session_redacted_output(cls, value: Any) -> Any:
         return None if value is None else cls.session_output(value)
-
-    @staticmethod
-    def session_traces(
-        values: Sequence[Any],
-        *,
-        normalize_record: Callable[[Any], Any],
-    ) -> list[Any]:
-        """Normalize every nested session trace through the shared record path."""
-        return [normalize_record(value) for value in values]

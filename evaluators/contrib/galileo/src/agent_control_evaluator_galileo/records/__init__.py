@@ -6,7 +6,6 @@ from .factory import (
     UnsupportedStepTypeError,
     build_galileo_record,
     build_record,
-    record_from_scorer_invoke_record,
     record_from_step,
 )
 from .normalization import GalileoRecordNormalizer
@@ -18,6 +17,5 @@ __all__ = [
     "UnsupportedStepTypeError",
     "build_galileo_record",
     "build_record",
-    "record_from_scorer_invoke_record",
     "record_from_step",
 ]

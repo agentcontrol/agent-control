@@ -37,7 +37,6 @@ from agent_control_evaluator_galileo.records import (
     UnsupportedStepTypeError,
     build_galileo_record,
     build_record,
-    record_from_scorer_invoke_record,
     record_from_step,
 )
 
@@ -57,6 +56,5 @@ __all__ = [
     "UnsupportedStepTypeError",
     "build_galileo_record",
     "build_record",
-    "record_from_scorer_invoke_record",
     "record_from_step",
 ]
