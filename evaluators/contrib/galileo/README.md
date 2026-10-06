@@ -2,6 +2,14 @@
 
 Integration package for Galileo Luna evaluator.
 
+## Context-limit errors
+
+If the model server rejects an input for exceeding its maximum context length,
+the evaluator returns `metadata.error_code: context_limit`. The server still
+redacts the error message. Clients can use this safe code to report an unsupported
+input separately from transient evaluator failures without exposing internal error
+details or retrying the same oversized input.
+
 ## Migrating from Luna2
 
 The `galileo.luna2` evaluator ID has been removed. Existing controls that use
