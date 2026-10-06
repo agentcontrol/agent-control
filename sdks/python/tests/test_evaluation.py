@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 from agent_control import evaluation
 from agent_control.evaluation import EvaluationResult
+from agent_control_models import Step
 from pydantic import ValidationError
 
 
@@ -226,6 +227,85 @@ async def test_evaluate_controls_preserves_explicit_tools_and_ground_truth(monke
     step = mock_check.call_args.kwargs["step"]
     assert step.tools == tools
     assert step.ground_truth == {"answer": "expected"}
+
+
+def test_step_legacy_serialization_is_unchanged_without_children():
+    """A Step without children keeps the existing serialized payload."""
+    step = Step(type="llm", name="chat", input="hello")
+
+    assert step.model_dump(mode="json") == {
+        "type": "llm",
+        "name": "chat",
+        "input": "hello",
+        "output": None,
+        "context": None,
+        "tools": None,
+        "ground_truth": None,
+    }
+    assert Step(type="llm", name="chat", input="hello", children=None).children is None
+
+
+def test_step_accepts_and_preserves_recursive_children():
+    """Nested child steps retain all provider-neutral runtime fields."""
+    child_payload = {
+        "type": "llm",
+        "name": "child",
+        "input": {"prompt": "question"},
+        "output": "answer",
+        "context": {"conversation": ["earlier"]},
+        "tools": [{"name": "lookup", "input_schema": {"type": "object"}}],
+        "ground_truth": {"answer": "expected"},
+        "children": [
+            {"type": "retriever", "name": "search", "input": {"query": "q"}}
+        ],
+    }
+    parent = Step(type="llm", name="parent", input="hello", children=[child_payload])
+
+    assert parent.children is not None
+    child = parent.children[0]
+    assert child.type == child_payload["type"]
+    assert child.name == child_payload["name"]
+    assert child.input == child_payload["input"]
+    assert child.output == child_payload["output"]
+    assert child.context == child_payload["context"]
+    assert child.tools == child_payload["tools"]
+    assert child.ground_truth == child_payload["ground_truth"]
+    assert child.children is not None
+    assert child.children[0].input == {"query": "q"}
+
+
+def test_step_rejects_invalid_child_values_clearly():
+    with pytest.raises(ValidationError, match="children"):
+        Step(type="llm", name="parent", input="hello", children=["not a step"])
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_passes_children_without_recursively_evaluating(monkeypatch):
+    """Children are data on the current Step and are not evaluated separately."""
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+    children = [
+        Step(
+            type="tool",
+            name="search",
+            input={"query": "nested"},
+            children=[Step(type="llm", name="nested", input="prompt")],
+        )
+    ]
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        await evaluation.evaluate_controls(
+            step_name="parent",
+            input="hello",
+            children=children,
+            stage="pre",
+            agent_name="test-bot",
+        )
+
+    mock_check.assert_awaited_once()
+    passed_step = mock_check.call_args.kwargs["step"]
+    assert passed_step.children == children
+    assert passed_step.children[0].children == children[0].children
 
 
 @pytest.mark.asyncio

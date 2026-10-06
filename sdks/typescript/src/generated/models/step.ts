@@ -10,6 +10,10 @@ import { remap as remap$ } from "../lib/primitives.js";
  */
 export type Step = {
   /**
+   * Optional child steps associated with this invocation
+   */
+  children?: Array<Step> | null | undefined;
+  /**
    * Optional context (conversation history, metadata, etc.)
    */
   context?: { [k: string]: any } | null | undefined;
@@ -41,6 +45,7 @@ export type Step = {
 
 /** @internal */
 export type Step$Outbound = {
+  children?: Array<Step$Outbound> | null | undefined;
   context?: { [k: string]: any } | null | undefined;
   ground_truth?: any | null | undefined;
   input: any;
@@ -53,6 +58,9 @@ export type Step$Outbound = {
 /** @internal */
 export const Step$outboundSchema: z.ZodMiniType<Step$Outbound, Step> = z.pipe(
   z.object({
+    children: z.optional(
+      z.nullable(z.array(z.lazy(() => Step$outboundSchema))),
+    ),
     context: z.optional(z.nullable(z.record(z.string(), z.any()))),
     groundTruth: z.optional(z.nullable(z.any())),
     input: z.any(),
