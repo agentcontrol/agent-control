@@ -849,7 +849,16 @@ class TestGalileoLunaClient:
             ).model_dump(mode="json", exclude_none=True),
             "config": {"request_timeout_seconds": 8.0},
         }
-        assert captured["body"] == expected_body
+        actual_body = captured["body"]
+        assert isinstance(actual_body, dict)
+        actual_record = actual_body["record"]
+        expected_record = expected_body["record"]
+        assert isinstance(actual_record, dict)
+        assert isinstance(expected_record, dict)
+        # Each factory call assigns a fresh created_at timestamp.
+        actual_record.pop("created_at", None)
+        expected_record.pop("created_at", None)
+        assert actual_body == expected_body
 
         # The emitted body also satisfies the exact additive Orbit #1720 shape.
         orbit_request = _Orbit1720Request.model_validate(expected_body)
@@ -859,7 +868,7 @@ class TestGalileoLunaClient:
         assert "selected question" in json.dumps(orbit_request.record.input)
         assert "selected answer" in json.dumps(orbit_request.record.output)
         assert orbit_request.inputs.tools == orbit_request.record.tools
-        assert orbit_request.record.dataset_output == {"text": "expected"}
+        assert json.loads(orbit_request.record.dataset_output) == {"text": "expected"}
         assert orbit_request.inputs.ground_truth == {"text": "expected"}
         assert orbit_request.record.user_metadata == {"source": "runtime"}
         assert "context" not in expected_body["record"]

@@ -880,12 +880,10 @@ def test_retriever_and_session_normalizers_accept_public_models() -> None:
 def test_llm_tool_definitions_normalize_nested_pydantic_uuid_and_datetime_values() -> None:
     identifier = uuid4()
     timestamp = datetime(2025, 1, 2, tzinfo=UTC)
-    source = LlmSpan(
-        input="question",
-        tools=[{"id": identifier, "created_at": timestamp}],
+    normalized_tools = GalileoRecordNormalizer.llm_tools(
+        [{"id": identifier, "created_at": timestamp}]
     )
-    wire_json = source.model_dump(mode="json", exclude_none=True)
-    record = LlmSpan.model_validate(wire_json)
+    record = LlmSpan.model_validate({"input": "question", "tools": normalized_tools})
 
     assert isinstance(record, LlmSpan)
     assert record.tools == [
@@ -1260,6 +1258,23 @@ def test_luna_wire_hierarchy_uses_top_level_fields_not_context() -> None:
         assert rebuilt_trace.spans[0].name == "wire tool"
         assert all(span.name != "ignored span" for span in rebuilt_trace.spans)
 
+    # Galileo Core supplies empty hierarchy defaults when top-level fields are absent.
+    # Context-only hierarchy must not be treated as canonical spans or traces.
+    context_only_trace = ScorerInvokeRecord.model_validate(
+        {
+            "type": "trace",
+            "name": "context only trace",
+            "context": {
+                "children": [{"type": "tool", "name": "ignored child"}],
+                "spans": [{"type": "tool", "name": "ignored span"}],
+            },
+        }
+    )
+    rebuilt_context_only_trace = Trace.model_validate(
+        context_only_trace.model_dump(mode="json", exclude_none=True)
+    )
+    assert rebuilt_context_only_trace.spans == []
+
     context_only_session = ScorerInvokeRecord.model_validate(
         {
             "type": "session",
@@ -1268,24 +1283,8 @@ def test_luna_wire_hierarchy_uses_top_level_fields_not_context() -> None:
         }
     )
     context_only_json = context_only_session.model_dump(mode="json", exclude_none=True)
-    with pytest.raises(ValidationError) as missing_spans:
-        Trace.model_validate(
-            ScorerInvokeRecord.model_validate(
-                {
-                    "type": "trace",
-                    "name": "context only trace",
-                    "context": {
-                        "children": [{"type": "tool", "name": "ignored child"}],
-                        "spans": [{"type": "tool", "name": "ignored span"}],
-                    },
-                }
-            ).model_dump(mode="json", exclude_none=True)
-        )
-    assert any(error["loc"] == ("spans",) for error in missing_spans.value.errors())
-
-    with pytest.raises(ValidationError) as missing_traces:
-        Session.model_validate(context_only_json)
-    assert any(error["loc"] == ("traces",) for error in missing_traces.value.errors())
+    rebuilt_context_only_session = Session.model_validate(context_only_json)
+    assert rebuilt_context_only_session.traces == []
 
 
 def test_luna_wire_round_trip_preserves_all_trace_span_types_and_nested_tool_span() -> None:
@@ -1337,8 +1336,6 @@ def test_luna_wire_round_trip_preserves_all_trace_span_types_and_nested_tool_spa
 @pytest.mark.parametrize(
     ("payload", "core_model"),
     [
-        ({"type": "trace", "name": "trace", "input": "question"}, Trace),
-        ({"type": "session", "name": "session"}, Session),
         (
             {
                 "type": "session",
@@ -1357,7 +1354,7 @@ def test_luna_wire_round_trip_preserves_all_trace_span_types_and_nested_tool_spa
         ),
     ],
 )
-def test_luna_wire_records_reject_missing_or_invalid_hierarchy(
+def test_luna_wire_records_reject_invalid_hierarchy(
     payload: dict[str, object],
     core_model: type[BaseModel],
 ) -> None:

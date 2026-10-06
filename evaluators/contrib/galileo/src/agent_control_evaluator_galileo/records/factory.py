@@ -7,13 +7,21 @@ from typing import Any
 
 from agent_control_models import Step
 from galileo_core.schemas.logging.session import Session
-from galileo_core.schemas.logging.span import LlmSpan, RetrieverSpan, ToolSpan
+from galileo_core.schemas.logging.span import (
+    AgentSpan,
+    ControlSpan,
+    LlmSpan,
+    RetrieverSpan,
+    ToolSpan,
+    WorkflowSpan,
+)
 from galileo_core.schemas.logging.trace import Trace
 
 from .normalization import GalileoRecordNormalizer
 
 type GalileoRecord = LlmSpan | ToolSpan | RetrieverSpan | Trace | Session
 type GalileoSpan = LlmSpan | ToolSpan | RetrieverSpan
+type GalileoCoreSpan = AgentSpan | WorkflowSpan | LlmSpan | RetrieverSpan | ToolSpan | ControlSpan
 _MISSING = object()
 _SPAN_TYPES = {"llm", "tool", "retriever"}
 _RECORD_TYPES = _SPAN_TYPES | {"trace", "session"}
@@ -45,8 +53,8 @@ def _selected_values(
     return selected_data, None
 
 
-def _span_children(children: list[GalileoRecord], *, parent_type: str) -> list[GalileoSpan]:
-    spans: list[GalileoSpan] = []
+def _span_children(children: list[GalileoRecord], *, parent_type: str) -> list[GalileoCoreSpan]:
+    spans: list[GalileoCoreSpan] = []
     for child in children:
         if not isinstance(child, (LlmSpan, ToolSpan, RetrieverSpan)):
             raise RecordFactoryError(f"Galileo {parent_type} children must be span steps.")
