@@ -11,13 +11,14 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
-from typing import Literal, cast, get_args
+from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue, Step
-from pydantic import BaseModel, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
+from ..records import UnsupportedStepTypeError, record_from_step
 from .config import ScorerInvokeConfig
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ ScorerInvokeRecordType = Literal[
     "session",
 ]
 SUPPORTED_SCORER_INVOKE_RECORD_TYPES = frozenset(get_args(ScorerInvokeRecordType))
+_MISSING_SELECTED_DATA = object()
 
 
 def _b64url(data: bytes) -> str:
@@ -219,6 +221,8 @@ class ScorerInvokeRecord(BaseModel):
     represented here. Orbit hydrates those fields from trusted server context.
     """
 
+    model_config = ConfigDict(extra="allow")
+
     type: ScorerInvokeRecordType
     name: str | None = None
     input: JSONValue = None
@@ -242,8 +246,8 @@ class ScorerInvokeRequest(BaseModel):
 
     Attributes:
         scorer_id: Required scorer identifier.
-        scorer_version_id: Deprecated optional compatibility identifier. Orbit
-            currently invokes the scorer's current default version.
+        scorer_version_id: Optional. When absent, contextual evaluation sends
+            legacy inputs only and skips the structured record.
         scorer_label: Optional display/metadata label.
         inputs: Selected scorer input values.
         record: Optional Orbit-compatible structured runtime record.
@@ -273,11 +277,13 @@ class ScorerInvokeRequest(BaseModel):
         return request
 
 
-def _orbit_record_from_step(
+def _scorer_invoke_record_from_step(
     step: Step | None,
     *,
     selected_input: JSONValue,
     selected_output: JSONValue,
+    selected_data: Any = _MISSING_SELECTED_DATA,
+    payload_field: str = "input",
 ) -> ScorerInvokeRecord | None:
     """Translate a generic Agent Control step into Orbit's record contract.
 
@@ -294,25 +300,37 @@ def _orbit_record_from_step(
         step: Complete Agent Control step, when contextual evaluation is used.
         selected_input: Selector-selected value sent as ``inputs.query``.
         selected_output: Selector-selected value sent as ``inputs.response``.
+        selected_data: Raw selector-selected value used to construct the record,
+            preserving its structure independently from serialized legacy inputs.
+        payload_field: Record input/output side for scalar selector values.
 
     Returns:
         An Orbit-compatible record, or ``None`` for absent/unsupported steps.
     """
-    if step is None or step.type not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
+    if step is None:
         return None
-
-    # The membership check above narrows the runtime value to Orbit's known
-    # discriminator set, but static type checkers cannot infer that relationship.
-    record_type = cast(ScorerInvokeRecordType, step.type)
-    return ScorerInvokeRecord(
-        type=record_type,
-        name=step.name,
-        input=selected_input if selected_input is not None else step.input,
-        output=selected_output if selected_output is not None else step.output,
-        context=step.context,
-        tools=step.tools,
-        dataset_output=step.ground_truth,
-    )
+    try:
+        if selected_data is _MISSING_SELECTED_DATA:
+            galileo_core_record = record_from_step(
+                step,
+                selected_input=selected_input,
+                selected_output=selected_output,
+            )
+        else:
+            galileo_core_record = record_from_step(
+                step,
+                selected_data=selected_data,
+                payload_field=payload_field,
+            )
+    except UnsupportedStepTypeError:
+        return None
+    # record_from_step() returns Galileo Core models (LlmSpan, Trace, etc.). Dumping
+    # and revalidating coerces the model into the LLM request shape while preserving
+    # extra canonical fields that Orbit accepts but ScorerInvokeRecord does not declare.
+    canonical_record = galileo_core_record.model_dump(mode="json", exclude_none=True)
+    if canonical_record.get("type") not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
+        return None
+    return ScorerInvokeRecord.model_validate(canonical_record)
 
 
 class ScorerInvokeResponse(BaseModel):
@@ -488,8 +506,10 @@ class GalileoLLMClient:
         input: JSONValue = None,
         output: JSONValue = None,
         step: Step | None = None,
+        selected_data: Any = _MISSING_SELECTED_DATA,
+        selected_data_payload_field: str = "input",
         execution_context: GalileoExecutionContext | None = None,
-        config: ScorerInvokeConfig | JSONObject | None = None,
+        config: ScorerInvokeConfig | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
         headers: dict[str, str] | None = None,
     ) -> ScorerInvokeResponse:
@@ -497,14 +517,17 @@ class GalileoLLMClient:
 
         Args:
             scorer_id: Required scorer identifier.
-            scorer_version_id: Deprecated optional compatibility identifier. Orbit
-                currently invokes the scorer's current default version.
+            scorer_version_id: Optional. When absent, contextual evaluation sends
+                legacy inputs only and skips the structured record.
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
             step: Optional complete runtime step used for structured dual-write.
+            selected_data: Raw selector-selected value used to construct the record,
+                preserving its structure independently from serialized legacy inputs.
+            selected_data_payload_field: Record input/output side for scalar selector values.
             execution_context: Optional authenticated Galileo scorer context.
-            config: Optional Orbit-supported scorer invocation configuration.
+            config: Optional scorer invocation configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
 
@@ -512,8 +535,8 @@ class GalileoLLMClient:
             Parsed scorer invocation response.
 
         Raises:
-            ValueError: If neither input nor output is provided, config contains
-                a field Orbit does not support, or the timeout ordering is invalid.
+            ValueError: If neither input nor output is provided, or the timeout
+                ordering is invalid.
             RuntimeError: If the API response is not a JSON object.
             httpx.HTTPStatusError: If the invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
@@ -521,16 +544,21 @@ class GalileoLLMClient:
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
-        # Accept dictionaries for source compatibility with the original client,
-        # but validate them against Orbit's authoritative allowlist locally.
-        invoke_config = (
-            ScorerInvokeConfig.model_validate(config)
-            if config is not None
-            else ScorerInvokeConfig()
-        )
+        invoke_config = config if config is not None else ScorerInvokeConfig()
         invoke_config = _effective_scorer_timeout(
             invoke_config,
             http_timeout_seconds=timeout,
+        )
+        record = (
+            _scorer_invoke_record_from_step(
+                step,
+                selected_input=input,
+                selected_output=output,
+                selected_data=selected_data,
+                payload_field=selected_data_payload_field,
+            )
+            if step is not None and scorer_version_id is not None
+            else None
         )
         request_body = ScorerInvokeRequest(
             scorer_id=scorer_id,
@@ -542,11 +570,7 @@ class GalileoLLMClient:
                 ground_truth=step.ground_truth if step is not None else None,
                 tools=step.tools if step is not None else None,
             ),
-            record=_orbit_record_from_step(
-                step,
-                selected_input=input,
-                selected_output=output,
-            ),
+            record=record,
             execution_context=execution_context,
             config=invoke_config,
         ).to_dict()

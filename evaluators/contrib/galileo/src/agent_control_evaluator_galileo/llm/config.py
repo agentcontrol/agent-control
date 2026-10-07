@@ -22,9 +22,6 @@ class ScorerInvokeConfig(BaseModel):
     less actionable HTTP 422 response from Runners.
 
     Attributes:
-        threshold: Legacy threshold accepted by Orbit. Agent Control still
-            applies its evaluator threshold locally.
-        score_threshold: Legacy score threshold accepted by Orbit.
         request_timeout_seconds: Optional upper bound for scorer execution in
             Orbit. The Agent Control HTTP and evaluator deadlines must remain
             longer than this value.
@@ -32,8 +29,6 @@ class ScorerInvokeConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    threshold: float | None = None
-    score_threshold: float | None = None
     request_timeout_seconds: float | None = Field(default=None, gt=0)
 
 
@@ -56,8 +51,8 @@ class LlmEvaluatorConfig(EvaluatorConfig):
 
     Attributes:
         scorer_id: Required scorer identifier for LLM scorer invocation.
-        scorer_version_id: Deprecated optional compatibility identifier. Orbit
-            currently invokes the scorer's current default version.
+        scorer_version_id: Optional. When absent, contextual evaluation sends
+            legacy inputs only and skips the structured record.
         scorer_label: Optional display/metadata label.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
@@ -75,8 +70,8 @@ class LlmEvaluatorConfig(EvaluatorConfig):
         default=None,
         min_length=1,
         description=(
-            "Deprecated optional compatibility identifier. Orbit currently invokes "
-            "the scorer's current default version."
+            "Optional. When absent, contextual evaluation sends legacy inputs only "
+            "and skips the structured record."
         ),
     )
     scorer_label: str | None = Field(

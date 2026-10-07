@@ -281,6 +281,8 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
             scorer_kwargs = self._scorer_kwargs()
             if step is not None:
                 scorer_kwargs["step"] = step
+                scorer_kwargs["selected_data"] = data
+                scorer_kwargs["selected_data_payload_field"] = self.config.payload_field
             if execution_context is not None:
                 scorer_kwargs["execution_context"] = execution_context
             response = await self._get_client().invoke(

@@ -73,6 +73,8 @@ class TestLlmEvaluator:
         mock_invoke.assert_awaited_once_with(
             scorer_id="scorer-123",
             step=Step(type="llm", name="answer", input="prompt"),
+            selected_data="selected input",
+            selected_data_payload_field="input",
             execution_context=GalileoExecutionContext(
                 organization_id="org-1",
                 user_id="verified-user-2",
@@ -113,6 +115,8 @@ class TestLlmEvaluator:
         mock_invoke.assert_awaited_once_with(
             scorer_id="scorer-123",
             step=Step(type="llm", name="answer", input="prompt"),
+            selected_data="selected input",
+            selected_data_payload_field="input",
             execution_context=GalileoExecutionContext(
                 organization_id="org-1",
                 user_id=None,
@@ -154,6 +158,8 @@ class TestLlmEvaluator:
         mock_invoke.assert_awaited_once_with(
             scorer_id="scorer-123",
             step=Step(type="llm", name="answer", input="prompt"),
+            selected_data="selected input",
+            selected_data_payload_field="input",
             execution_context=GalileoExecutionContext(
                 organization_id="org-1",
                 user_id="verified-user-2",
