@@ -105,6 +105,41 @@ def test_call_records_exception_and_reraises():
     assert child.context == {"error": "ValueError('boom')"}
 
 
+@pytest.mark.asyncio
+async def test_acall_records_exception_and_reraises():
+    """acall()'s failure path mirrors call(): record (error in context), then re-raise."""
+
+    async def flaky(x: int) -> int:
+        raise ValueError("boom")
+
+    with record_step("trace", "t") as trace:
+        with pytest.raises(ValueError, match="boom"):
+            await trace.acall(flaky, 1, step_type="tool", step_name="flaky")
+
+    [child] = trace.build().children
+    assert child.name == "flaky"
+    assert child.output is None
+    assert child.context == {"error": "ValueError('boom')"}
+
+
+def test_build_includes_context_tools_ground_truth():
+    """build() carries context/tools/ground_truth through when supplied."""
+    with record_step(
+        "llm",
+        "respond",
+        input="hi",
+        context={"locale": "en-US"},
+        tools=[{"type": "function", "function": {"name": "search"}}],
+        ground_truth="hello",
+    ) as leaf:
+        leaf.output = "hello"
+
+    step = leaf.build()
+    assert step.context == {"locale": "en-US"}
+    assert step.tools == [{"type": "function", "function": {"name": "search"}}]
+    assert step.ground_truth == "hello"
+
+
 def test_empty_trace_and_session_build_empty_children_list():
     """A trace/session with no recorded children gets children=[], not None."""
     with record_step("trace", "empty_trace") as trace:
