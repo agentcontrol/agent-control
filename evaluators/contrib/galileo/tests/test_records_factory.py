@@ -959,7 +959,7 @@ def test_trace_and_session_use_children_and_selectors_only_change_the_root() -> 
     assert isinstance(session.traces[0].spans[0], LlmSpan)
 
 
-def test_children_must_be_valid_for_parent_and_trace_session_children_are_required() -> None:
+def test_children_must_be_valid_for_parent() -> None:
     with pytest.raises(RecordFactoryError, match="cannot contain 'session'"):
         record_from_step(
             Step(type="trace", name="trace", input="q", children=[
@@ -972,14 +972,16 @@ def test_children_must_be_valid_for_parent_and_trace_session_children_are_requir
                 Step(type="tool", name="tool", input={})
             ])
         )
-    with pytest.raises(RecordFactoryError, match="missing Step.children"):
-        record_from_step(
-            Step(type="trace", name="trace", input={"input": "q", "spans": []})
-        )
-    with pytest.raises(RecordFactoryError, match="missing Step.children"):
-        record_from_step(
-            Step(type="session", name="session", input={"input": "q", "traces": []})
-        )
+
+
+def test_trace_and_session_without_children_have_empty_child_collections() -> None:
+    trace = record_from_step(Step(type="trace", name="request", input="question"))
+    session = record_from_step(Step(type="session", name="conversation", input="question"))
+
+    assert isinstance(trace, Trace)
+    assert trace.spans == []
+    assert isinstance(session, Session)
+    assert session.traces == []
 
 
 def test_nested_tool_and_retriever_children_are_recursively_converted() -> None:
@@ -1070,11 +1072,7 @@ def test_session_message_and_document_sequences_use_public_validators() -> None:
     ]
 
 
-def test_trace_and_session_require_children_and_selector_values_must_be_structured() -> None:
-    with pytest.raises(RecordFactoryError, match="missing Step.children"):
-        record_from_step(Step(type="trace", name="request", input="question"))
-    with pytest.raises(RecordFactoryError, match="missing Step.children"):
-        record_from_step(Step(type="session", name="conversation", input="question"))
+def test_trace_and_session_selector_values_must_be_structured() -> None:
     with pytest.raises(RecordFactoryError, match="untyped scalar"):
         build_record(
             "question",

@@ -108,8 +108,6 @@ def record_from_step(
         "retriever": _SPAN_TYPES,
         "llm": set(),
     }[record_type]
-    if record_type in {"trace", "session"} and step.children is None:
-        raise RecordFactoryError(f"Galileo {record_type} step is missing Step.children.")
     child_records: list[GalileoRecord] = []
     for child in children:
         if not isinstance(child, Step):
