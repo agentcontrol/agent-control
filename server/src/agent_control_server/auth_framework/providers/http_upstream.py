@@ -46,7 +46,7 @@ import ssl
 from dataclasses import dataclass
 from datetime import datetime
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 import httpx
 from agent_control_models import JSONObject
@@ -90,7 +90,7 @@ _JSON_OBJECT_ADAPTER: TypeAdapter[JSONObject] = TypeAdapter(JSONObject)
 _MAX_VALIDATION_RESPONSE_BYTES = 64 * 1024
 _MAX_LOGGED_VALIDATION_ERRORS = 5
 _MAX_LOGGED_LOCATION_PARTS = 4
-_UNKNOWN_VALIDATION_TOTAL = "unknown"
+_UNKNOWN_VALIDATION_TOTAL: Literal["unknown"] = "unknown"
 _SAFE_VALIDATION_LOCATION_PARTS = frozenset(
     {"body", "context", "operation", "target_type", "target_id"}
 )
@@ -98,6 +98,17 @@ _SAFE_VALIDATION_TYPES = frozenset(
     {"enum", "literal_error", "missing", "string_type", "uuid_parsing", "uuid_type", "uuid_version"}
 )
 _MISSING = object()
+
+
+class _ValidationDiagnostic(TypedDict):
+    type: str
+    loc: str
+
+
+class _ValidationSummary(TypedDict):
+    total: int | Literal["unknown"]
+    errors: list[_ValidationDiagnostic]
+    status: Literal["parsed", "oversized", "unusable"]
 
 
 def _field_shape(value: Any) -> str:
@@ -129,7 +140,7 @@ def _target_context_shape(context: dict[str, Any] | None) -> dict[str, str]:
     }
 
 
-def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
+def _sanitized_validation_errors(response: httpx.Response) -> _ValidationSummary:
     """Summarize an upstream validation body by field path and error kind.
 
     Keeps only known validation kinds and request fields. Dynamic location
@@ -149,7 +160,7 @@ def _sanitized_validation_errors(response: httpx.Response) -> dict[str, Any]:
     if not isinstance(detail, list):
         return {"total": _UNKNOWN_VALIDATION_TOTAL, "errors": [], "status": "unusable"}
 
-    errors = []
+    errors: list[_ValidationDiagnostic] = []
     for item in detail[:_MAX_LOGGED_VALIDATION_ERRORS]:
         if not isinstance(item, dict):
             continue

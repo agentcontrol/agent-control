@@ -380,6 +380,64 @@ async def test_http_upstream_identity_preserves_401():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", [400, 422])
+async def test_http_upstream_identity_rejection_reports_sanitized_diagnostics(
+    caplog: pytest.LogCaptureFixture,
+    status: int,
+) -> None:
+    # Given: identity resolution rejects a credential, echoing sensitive input.
+    sentinel = "SENTINEL-IDENTITY-DO-NOT-LOG"
+    provider = _build_upstream(
+        lambda request: httpx.Response(
+            status,
+            json={
+                "detail": [
+                    {
+                        "type": "missing",
+                        "loc": ["body", sentinel],
+                        "input": sentinel,
+                        "msg": sentinel,
+                        "ctx": {"credential": sentinel},
+                    }
+                ]
+            },
+        ),
+        config_overrides={
+            "identity_url": "https://identity.example/resolve",
+            "service_token": sentinel,
+        },
+    )
+
+    # When: resolving identity through the same response handler as authorization.
+    with caplog.at_level(logging.WARNING), pytest.raises(APIError) as exc_info:
+        await provider.resolve_identity(
+            _build_request(
+                headers={
+                    "X-API-Key": sentinel,
+                    "Authorization": f"Bearer {sentinel}",
+                    "Cookie": f"session={sentinel}",
+                }
+            ),
+            Operation.CONTROL_BINDINGS_READ,
+        )
+
+    # Then: the rejection stays a 502 and logs only safe identity diagnostics.
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.error_code == "AUTH_UPSTREAM_REJECTED"
+    record = _rejection_record(caplog)
+    assert record.__dict__["operation"] == "identity.resolve"
+    assert record.__dict__["status_code"] == status
+    assert record.__dict__["target_context"] == {"present": "false"}
+    assert record.__dict__["upstream_validation"] == {
+        "0": {"type": "missing", "loc": "body.<other>"}
+    }
+    assert record.__dict__["upstream_validation_total"] == 1
+    assert record.__dict__["upstream_validation_status"] == "parsed"
+    assert sentinel not in record.getMessage()
+    assert sentinel not in str(record.__dict__)
+
+
+@pytest.mark.asyncio
 async def test_http_upstream_identity_treats_missing_route_as_upstream_error():
     provider = _build_upstream(
         lambda request: httpx.Response(404),
