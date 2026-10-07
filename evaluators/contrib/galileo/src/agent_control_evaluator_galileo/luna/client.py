@@ -11,7 +11,7 @@ from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
 from time import time
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
 import httpx
@@ -58,6 +58,7 @@ ScorerInvokeRecordType = Literal[
     "session",
 ]
 SUPPORTED_SCORER_INVOKE_RECORD_TYPES = frozenset(get_args(ScorerInvokeRecordType))
+_MISSING_SELECTED_DATA = object()
 
 
 def _b64url(data: bytes) -> str:
@@ -280,6 +281,8 @@ def _scorer_invoke_record_from_step(
     *,
     selected_input: JSONValue,
     selected_output: JSONValue,
+    selected_data: Any = _MISSING_SELECTED_DATA,
+    payload_field: str = "input",
 ) -> ScorerInvokeRecord | None:
     """Translate a generic Agent Control step into Orbit's record contract.
 
@@ -303,11 +306,18 @@ def _scorer_invoke_record_from_step(
     if step is None:
         return None
     try:
-        record = record_from_step(
-            step,
-            selected_input=selected_input,
-            selected_output=selected_output,
-        )
+        if selected_data is _MISSING_SELECTED_DATA:
+            record = record_from_step(
+                step,
+                selected_input=selected_input,
+                selected_output=selected_output,
+            )
+        else:
+            record = record_from_step(
+                step,
+                selected_data=selected_data,
+                payload_field=payload_field,
+            )
     except UnsupportedStepTypeError:
         return None
     canonical_record = record.model_dump(mode="json", exclude_none=True)
@@ -489,6 +499,8 @@ class GalileoLunaClient:
         input: JSONValue = None,
         output: JSONValue = None,
         step: Step | None = None,
+        selected_data: Any = _MISSING_SELECTED_DATA,
+        selected_data_payload_field: str = "input",
         execution_context: GalileoExecutionContext | None = None,
         config: ScorerInvokeConfig | JSONObject | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECS,
@@ -504,6 +516,9 @@ class GalileoLunaClient:
             input: Optional user/system prompt text.
             output: Optional model response text.
             step: Optional complete runtime step used for structured dual-write.
+            selected_data: Raw selector-selected value used to construct the record,
+                preserving its structure independently from serialized legacy inputs.
+            selected_data_payload_field: Record input/output side for scalar selector values.
             execution_context: Optional authenticated Galileo scorer context.
             config: Optional Orbit-supported scorer invocation configuration.
             timeout: Request timeout in seconds.
@@ -547,6 +562,8 @@ class GalileoLunaClient:
                 step,
                 selected_input=input,
                 selected_output=output,
+                selected_data=selected_data,
+                payload_field=selected_data_payload_field,
             ),
             execution_context=execution_context,
             config=invoke_config,
