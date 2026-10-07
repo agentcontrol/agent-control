@@ -16,7 +16,6 @@ from agent_control_evaluator_galileo.records import (
     UnsupportedStepTypeError,
     build_galileo_record,
     build_record,
-    record_from_scorer_invoke_record,
     record_from_step,
 )
 from agent_control_models import Step
@@ -28,22 +27,7 @@ from galileo_core.schemas.logging.trace import Trace
 from galileo_core.schemas.shared.content_parts import FileContentPart, TextContentPart
 from galileo_core.schemas.shared.document import Document
 from galileo_core.schemas.shared.records import BaseRecord, RecordTypeAdapter
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class _RecordPayload(BaseModel):
-    """Flexible Pydantic boundary model used to exercise the adapter contract."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
-
-    type: str
-    name: str | None = None
-    input: object | None = None
-    output: object | None = None
-    context: object | None = None
-    spans: object | None = None
-    traces: object | None = None
-    tool_call_id: object | None = None
+from pydantic import BaseModel, Field
 
 
 def test_required_galileo_core_public_exports_are_importable() -> None:
@@ -64,7 +48,7 @@ def test_factory_records_are_serializable_concrete_base_steps() -> None:
                 name="request",
                 input="question",
                 output="answer",
-                context={"spans": [{"type": "llm", "name": "answer", "input": "question"}]},
+                children=[Step(type="llm", name="answer", input="question")],
             )
         ),
         record_from_step(
@@ -72,16 +56,14 @@ def test_factory_records_are_serializable_concrete_base_steps() -> None:
                 type="session",
                 name="conversation",
                 input="question",
-                context={
-                    "traces": [
-                        {
-                            "type": "trace",
-                            "name": "request",
-                            "input": "question",
-                            "spans": [{"type": "llm", "name": "answer", "input": "question"}],
-                        }
-                    ]
-                },
+                children=[
+                    Step(
+                        type="trace",
+                        name="request",
+                        input="question",
+                        children=[Step(type="llm", name="answer", input="question")],
+                    )
+                ],
             )
         ),
     ]
@@ -117,10 +99,10 @@ def test_factory_steps_convert_to_core_records_after_execution_ids_are_added() -
             Step(type="retriever", name="retrieve", input="question", output=["document"])
         ),
         record_from_step(
-            Step(type="trace", name="request", input="question", context={"spans": []})
+            Step(type="trace", name="request", input="question", children=[])
         ),
         record_from_step(
-            Step(type="session", name="conversation", input="question", context={"traces": []})
+            Step(type="session", name="conversation", input="question", children=[])
         ),
     ]
     project_id = uuid4()
@@ -180,6 +162,60 @@ def test_llm_messages_use_public_canonical_validation() -> None:
     assert record.input[0].role.value == "user"
     assert record.output.role.value == "assistant"
     assert record.dataset_output == json.dumps({"expected": "answer"})
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_messages"),
+    [
+        ("A plain prompt", None),
+        (
+            '[{"role": "user", "content": "question"}]',
+            [{"role": "user", "content": "question"}],
+        ),
+        (
+            "{'messages': [{'role': 'user', 'content': 'question'}]}",
+            [{"role": "user", "content": "question"}],
+        ),
+        ("{'messages': [", None),
+        ('{"content": "document without a role"}', None),
+        ('[{"content": "document without a role"}]', None),
+    ],
+)
+def test_llm_string_input_only_parses_role_bearing_message_shapes(
+    source: str,
+    expected_messages: list[dict[str, str]] | None,
+) -> None:
+    record = record_from_step(Step(type="llm", name="answer", input=source))
+
+    assert isinstance(record, LlmSpan)
+    if expected_messages is None:
+        assert len(record.input) == 1
+        assert record.input[0].content == source
+    else:
+        assert [
+            {"role": message.role.value, "content": message.content}
+            for message in record.input
+        ] == expected_messages
+
+    restored = LlmSpan.model_validate(record.model_dump(mode="json", exclude_none=True))
+    assert [message.content for message in restored.input] == [
+        message.content for message in record.input
+    ]
+
+
+def test_llm_mapping_with_messages_key_becomes_public_message_models() -> None:
+    record = record_from_step(
+        Step(
+            type="llm",
+            name="answer",
+            input={"messages": [{"role": "user", "content": "question"}]},
+        )
+    )
+
+    assert isinstance(record, LlmSpan)
+    assert [message.role.value for message in record.input] == ["user"]
+    restored = LlmSpan.model_validate(record.model_dump(mode="json", exclude_none=True))
+    assert [message.content for message in restored.input] == ["question"]
 
 
 @pytest.mark.parametrize(
@@ -314,17 +350,10 @@ def test_retriever_results_become_documents_with_scalar_metadata_only() -> None:
 
 
 def test_retriever_accepts_the_public_galileo_core_document_model() -> None:
-    from pydantic import BaseModel
-
     document = Document(content="context", metadata={"source": "kb"})
-
-    class RecordInput(BaseModel):
-        type: str = "retriever"
-        name: str = "retrieve"
-        input: str = "question"
-        output: object
-
-    record = record_from_scorer_invoke_record(RecordInput(output=document))
+    record = RetrieverSpan.model_validate(
+        {"name": "retrieve", "input": "question", "output": [document]}
+    )
 
     assert isinstance(record, RetrieverSpan)
     assert record.output[0].content == "context"
@@ -337,12 +366,11 @@ def test_public_document_metadata_variants_are_supported() -> None:
         {"content": "model metadata", "metadata": {"source": "kb"}}
     )
 
-    record = record_from_scorer_invoke_record(
-        _RecordPayload(
-            type="retriever",
-            input="question",
-            output=[document_without_metadata, document_with_model_metadata],
-        )
+    record = RetrieverSpan.model_validate(
+        {
+            "input": "question",
+            "output": [document_without_metadata, document_with_model_metadata],
+        }
     )
 
     assert isinstance(record, RetrieverSpan)
@@ -358,17 +386,15 @@ def test_nested_trace_and_session_records_are_preserved() -> None:
             type="trace",
             name="request",
             input="question",
-            context={
-                "spans": [
-                    {
-                        "type": "tool",
-                        "name": "search",
-                        "input": {"q": "x"},
-                        "spans": [{"type": "tool", "name": "nested", "input": {"q": "y"}}],
-                    },
-                    {"type": "retriever", "name": "retrieve", "input": "x", "output": []},
-                ]
-            },
+            children=[
+                Step(
+                    type="tool",
+                    name="search",
+                    input={"q": "x"},
+                    children=[Step(type="tool", name="nested", input={"q": "y"})],
+                ),
+                Step(type="retriever", name="retrieve", input="x", output=[]),
+            ],
         )
     )
     session = record_from_step(
@@ -376,7 +402,12 @@ def test_nested_trace_and_session_records_are_preserved() -> None:
             type="session",
             name="conversation",
             input="question",
-            context={"traces": [trace.model_dump(mode="json")]},
+            children=[Step(type="trace", name="request", input="question", children=[
+                Step(type="tool", name="search", input={"q": "x"}, children=[
+                    Step(type="tool", name="nested", input={"q": "y"})
+                ]),
+                Step(type="retriever", name="retrieve", input="x", output=[]),
+            ])],
         )
     )
 
@@ -438,20 +469,14 @@ def test_public_model_dump_preserves_canonical_fields() -> None:
         traces=[],
     )
 
-    rebuilt_llm = record_from_scorer_invoke_record(
-        _RecordPayload(**llm_source.model_dump(mode="json", exclude_none=True))
+    rebuilt_llm = LlmSpan.model_validate(llm_source.model_dump(mode="json", exclude_none=True))
+    rebuilt_tool = ToolSpan.model_validate(tool_source.model_dump(mode="json", exclude_none=True))
+    rebuilt_retriever = RetrieverSpan.model_validate(
+        retriever_source.model_dump(mode="json", exclude_none=True)
     )
-    rebuilt_tool = record_from_scorer_invoke_record(
-        _RecordPayload(**tool_source.model_dump(mode="json", exclude_none=True))
-    )
-    rebuilt_retriever = record_from_scorer_invoke_record(
-        _RecordPayload(**retriever_source.model_dump(mode="json", exclude_none=True))
-    )
-    rebuilt_trace = record_from_scorer_invoke_record(
-        _RecordPayload(**trace_source.model_dump(mode="json", exclude_none=True))
-    )
-    rebuilt_session = record_from_scorer_invoke_record(
-        _RecordPayload(**session_source.model_dump(mode="json", exclude_none=True))
+    rebuilt_trace = Trace.model_validate(trace_source.model_dump(mode="json", exclude_none=True))
+    rebuilt_session = Session.model_validate(
+        session_source.model_dump(mode="json", exclude_none=True)
     )
 
     assert isinstance(rebuilt_llm, LlmSpan)
@@ -491,9 +516,7 @@ def test_trace_public_content_parts_are_not_reserialized() -> None:
         spans=[],
     )
 
-    rebuilt = record_from_scorer_invoke_record(
-        _RecordPayload(**source.model_dump(mode="json", exclude_none=True))
-    )
+    rebuilt = Trace.model_validate(source.model_dump(mode="json", exclude_none=True))
 
     assert isinstance(rebuilt, Trace)
     assert rebuilt.model_dump(mode="json", exclude_none=True) == source.model_dump(
@@ -505,9 +528,7 @@ def test_trace_public_content_parts_are_not_reserialized() -> None:
         output=[{"type": "file", "file_id": str(uuid4())}],
         spans=[],
     )
-    file_rebuilt = record_from_scorer_invoke_record(
-        _RecordPayload(**file_source.model_dump(mode="json", exclude_none=True))
-    )
+    file_rebuilt = Trace.model_validate(file_source.model_dump(mode="json", exclude_none=True))
     assert isinstance(file_rebuilt, Trace)
     assert file_rebuilt.model_dump(mode="json", exclude_none=True) == file_source.model_dump(
         mode="json", exclude_none=True
@@ -515,81 +536,41 @@ def test_trace_public_content_parts_are_not_reserialized() -> None:
 
 
 def test_malformed_trace_content_parts_follow_sdk_serialization() -> None:
-    scalar_item = record_from_scorer_invoke_record(
-        _RecordPayload(type="trace", input="input", output=[1], spans=[])
-    )
-    invalid_file = record_from_scorer_invoke_record(
-        _RecordPayload(
-            type="trace",
-            input="input",
-            output=[{"type": "file", "file_id": "not-a-uuid"}],
-            spans=[],
-        )
-    )
+    from pydantic import ValidationError
 
-    assert isinstance(scalar_item, Trace)
-    assert isinstance(invalid_file, Trace)
-    assert scalar_item.output == json.dumps([1])
-    assert invalid_file.output == json.dumps([{"type": "file", "file_id": "not-a-uuid"}])
+    with pytest.raises(ValidationError):
+        Trace.model_validate({"input": "input", "output": [1], "spans": []})
+    with pytest.raises(ValidationError):
+        Trace.model_validate(
+            {
+                "input": "input",
+                "output": [{"type": "file", "file_id": "not-a-uuid"}],
+                "spans": [],
+            }
+        )
 
 
-def test_nested_record_errors_and_existing_models_are_explicit() -> None:
-    from agent_control_evaluator_galileo.records.factory import _record_from_mapping
-
-    existing_child = ToolSpan(name="existing", input="input")
-    with pytest.raises(RecordFactoryError, match="objects"):
-        record_from_scorer_invoke_record(
-            _RecordPayload(type="tool", input="input", spans=[1])
-        )
-    with pytest.raises(RecordFactoryError, match="string 'type'"):
-        record_from_scorer_invoke_record(
-            _RecordPayload(type="tool", input="input", spans=[{}])
-        )
-    with pytest.raises(UnsupportedStepTypeError, match="custom"):
-        record_from_scorer_invoke_record(
-            _RecordPayload(type="tool", input="input", spans=[{"type": "custom"}])
-        )
-    with pytest.raises(RecordFactoryError, match="span record"):
-        record_from_scorer_invoke_record(
-            _RecordPayload(
-                type="tool",
-                input="input",
-                spans=[{"type": "trace", "input": "input", "spans": []}],
+def test_context_hierarchy_fields_are_rejected_and_metadata_remains_supported() -> None:
+    for hierarchy_field in ("children", "spans", "traces"):
+        with pytest.raises(RecordFactoryError, match="Step.context cannot define.*Step.children"):
+            record_from_step(
+                Step(
+                    type="tool",
+                    name="tool",
+                    input={"q": "input"},
+                    context={hierarchy_field: []},
+                )
             )
+    metadata_record = record_from_step(
+        Step(
+            type="tool",
+            name="tool",
+            input={"q": "input"},
+            context={"metadata": {"provider": "test"}, "request_id": "abc"},
         )
-
-    record = _record_from_mapping(
-        {"type": "tool", "input": "input", "spans": [existing_child]}, "tool"
     )
-    assert isinstance(record, ToolSpan)
-    assert record.spans[0].name == existing_child.name
-
-
-def test_invalid_nested_context_shapes_are_rejected() -> None:
-    valid_context_record = record_from_step(
-        Step(type="tool", name="tool", input={"q": "input"}, context={"spans": []})
-    )
-    children_context_record = record_from_step(
-        Step(type="tool", name="tool", input={"q": "input"}, context={"children": []})
-    )
-    assert isinstance(valid_context_record, ToolSpan)
-    assert isinstance(children_context_record, ToolSpan)
-    with pytest.raises(RecordFactoryError, match="context must be a list"):
-        record_from_step(
-            Step(type="tool", name="tool", input={"q": "input"}, context={"spans": "invalid"})
-        )
-    with pytest.raises(RecordFactoryError, match="span context"):
-        record_from_scorer_invoke_record(
-            _RecordPayload(type="tool", input="input", spans="invalid")
-        )
-    with pytest.raises(RecordFactoryError, match="trace context"):
-        record_from_scorer_invoke_record(_RecordPayload(type="trace", input="input"))
-    with pytest.raises(RecordFactoryError, match="session context"):
-        record_from_scorer_invoke_record(_RecordPayload(type="session", input="input"))
-    with pytest.raises(RecordFactoryError, match="trace records"):
-        record_from_scorer_invoke_record(
-            _RecordPayload(type="session", input="input", traces=[{"type": "tool"}])
-        )
+    assert isinstance(metadata_record, ToolSpan)
+    assert metadata_record.user_metadata == {"provider": "test"}
 
 
 def test_trace_structured_values_are_normalized_without_losing_messages() -> None:
@@ -601,7 +582,7 @@ def test_trace_structured_values_are_normalized_without_losing_messages() -> Non
             name="request",
             input=trace_input,
             output=trace_output,
-            context={"spans": []},
+            children=[],
         )
     )
 
@@ -622,7 +603,7 @@ def test_trace_content_blocks_preserve_text_files_and_unrepresentable_data() -> 
             name="multimodal",
             input=blocks,
             output=blocks,
-            context={"spans": []},
+            children=[],
         )
     )
     serialized_data_block = {
@@ -636,7 +617,7 @@ def test_trace_content_blocks_preserve_text_files_and_unrepresentable_data() -> 
             name="inline-image",
             input=[serialized_data_block],
             output=[serialized_data_block],
-            context={"spans": []},
+            children=[],
         )
     )
 
@@ -665,7 +646,7 @@ def test_trace_message_sequences_flatten_every_text_and_content_part() -> None:
     ]
 
     trace = record_from_step(
-        Step(type="trace", name="messages", input="question", output=output, context={"spans": []})
+        Step(type="trace", name="messages", input="question", output=output, children=[])
     )
 
     assert isinstance(trace, Trace)
@@ -953,13 +934,10 @@ def test_retriever_and_session_normalizers_accept_public_models() -> None:
 def test_llm_tool_definitions_normalize_nested_pydantic_uuid_and_datetime_values() -> None:
     identifier = uuid4()
     timestamp = datetime(2025, 1, 2, tzinfo=UTC)
-    source = _RecordPayload(
-        type="llm",
-        input="question",
-        tools=[{"id": identifier, "created_at": timestamp}],
+    normalized_tools = GalileoRecordNormalizer.llm_tools(
+        [{"id": identifier, "created_at": timestamp}]
     )
-
-    record = record_from_scorer_invoke_record(source)
+    record = LlmSpan.model_validate({"input": "question", "tools": normalized_tools})
 
     assert isinstance(record, LlmSpan)
     assert record.tools == [
@@ -978,89 +956,149 @@ def test_retriever_dictionaries_become_canonical_documents() -> None:
     assert documents[0].metadata == {"source": "kb"}
 
 
-def test_trace_and_session_envelopes_are_supported() -> None:
+def test_retriever_input_mapping_extracts_query_and_round_trips_documents() -> None:
+    record = record_from_step(
+        Step(
+            type="retriever",
+            name="policy_search",
+            input={"query": "wire policy", "partition": "banking"},
+            output=[{"content": "Policy text", "metadata": {"source": "kb"}}],
+        )
+    )
+
+    assert isinstance(record, RetrieverSpan)
+    assert record.input == "wire policy"
+    assert len(record.output) == 1
+    assert isinstance(record.output[0], Document)
+    restored = RetrieverSpan.model_validate(record.model_dump(mode="json", exclude_none=True))
+    assert restored.input == "wire policy"
+    assert isinstance(restored.output[0], Document)
+    assert restored.output[0].content == "Policy text"
+
+
+def test_retriever_input_mapping_without_query_uses_json_fallback() -> None:
+    record = record_from_step(
+        Step(type="retriever", name="search", input={"partition": "banking"})
+    )
+
+    assert isinstance(record, RetrieverSpan)
+    assert record.input == '{"partition": "banking"}'
+    assert GalileoRecordNormalizer.retriever_input({"query": {"phrase": "wire"}}) == (
+        '{"phrase": "wire"}'
+    )
+
+
+def test_trace_and_session_use_children_and_selectors_only_change_the_root() -> None:
     trace = record_from_step(
         Step(
             type="trace",
             name="outer",
-            input={"input": "question", "spans": []},
-        )
+            input="base question",
+            children=[
+                Step(
+                    type="tool",
+                    name="child",
+                    input={"query": "child query"},
+                    output="child result",
+                    context={"metadata": {"owner": "child"}},
+                ),
+                Step(
+                    type="llm",
+                    name="child llm",
+                    input="child prompt",
+                    output="child response",
+                    tools=[{"name": "lookup"}],
+                )
+            ],
+        ),
+        selected_data={"input": "selected question", "output": "selected answer"},
     )
     session = record_from_step(
         Step(
             type="session",
-            name="outer",
-            input={"input": "question", "traces": []},
+            name="conversation",
+            input="base session",
+            children=[
+                Step(
+                    type="trace",
+                    name="child trace",
+                    input="child question",
+                    children=[Step(type="llm", name="child llm", input="child input")],
+                )
+            ],
         )
-    )
-    wrapped_trace = record_from_step(
-        Step(
-            type="trace",
-            name="outer",
-            input="ignored",
-            context={"trace": {"name": "inner", "input": "question", "spans": []}},
-        )
-    )
-    wrapped_session = record_from_step(
-        Step(
-            type="session",
-            name="outer",
-            input="ignored",
-            context={"session": {"name": "inner", "input": "question", "traces": []}},
-        )
-    )
-    selected_trace = record_from_step(
-        Step(
-            type="trace",
-            name="outer",
-            input="ignored",
-            context={
-                "trace": {
-                    "name": "inner",
-                    "input": "wrapped input",
-                    "output": "wrapped output",
-                    "spans": [],
-                }
-            },
-        ),
-        selected_data={"input": "selected input", "output": "selected output"},
-    )
-    selected_session = record_from_step(
-        Step(
-            type="session",
-            name="outer",
-            input="ignored",
-            context={
-                "session": {
-                    "name": "inner",
-                    "input": "wrapped input",
-                    "output": "wrapped output",
-                    "traces": [],
-                }
-            },
-        ),
-        selected_data={"input": "selected input", "output": "selected output"},
     )
 
     assert isinstance(trace, Trace)
+    assert trace.input == "selected question"
+    assert trace.output == "selected answer"
+    assert isinstance(trace.spans[0], ToolSpan)
+    assert json.loads(trace.spans[0].input) == {"query": "child query"}
+    assert trace.spans[0].output == "child result"
+    assert trace.spans[0].user_metadata == {"owner": "child"}
+    assert isinstance(trace.spans[1], LlmSpan)
+    assert trace.spans[1].tools == [{"name": "lookup"}]
+    assert trace.spans[1].output.content == "child response"
     assert isinstance(session, Session)
-    assert isinstance(wrapped_trace, Trace)
-    assert isinstance(wrapped_session, Session)
-    assert isinstance(selected_trace, Trace)
-    assert isinstance(selected_session, Session)
-    assert trace.input == "question"
-    assert session.input == "question"
-    assert wrapped_trace.name == "inner"
-    assert wrapped_session.name == "inner"
-    assert selected_trace.input == "selected input"
-    assert selected_trace.output == "selected output"
-    assert selected_session.input == "selected input"
-    assert selected_session.output == "selected output"
+    assert session.traces[0].name == "child trace"
+    assert session.traces[0].input == "child question"
+    assert isinstance(session.traces[0].spans[0], LlmSpan)
+
+
+def test_children_must_be_valid_for_parent() -> None:
+    with pytest.raises(RecordFactoryError, match="cannot contain 'session'"):
+        record_from_step(
+            Step(type="trace", name="trace", input="q", children=[
+                Step(type="session", name="session", input="q", children=[])
+            ])
+        )
+    with pytest.raises(RecordFactoryError, match="cannot contain 'tool'"):
+        record_from_step(
+            Step(type="session", name="session", input="q", children=[
+                Step(type="tool", name="tool", input={})
+            ])
+        )
+
+
+def test_trace_and_session_without_children_have_empty_child_collections() -> None:
+    trace = record_from_step(Step(type="trace", name="request", input="question"))
+    session = record_from_step(Step(type="session", name="conversation", input="question"))
+
+    assert isinstance(trace, Trace)
+    assert trace.spans == []
+    assert isinstance(session, Session)
+    assert session.traces == []
+
+
+def test_nested_tool_and_retriever_children_are_recursively_converted() -> None:
+    record = record_from_step(
+        Step(
+            type="tool",
+            name="outer",
+            input={},
+            children=[
+                Step(
+                    type="retriever",
+                    name="inner retriever",
+                    input="query",
+                    output=["document"],
+                    children=[Step(type="tool", name="leaf tool", input={"x": 1})],
+                )
+            ],
+        )
+    )
+
+    assert isinstance(record, ToolSpan)
+    retriever = record.spans[0]
+    assert isinstance(retriever, RetrieverSpan)
+    assert retriever.output[0].content == "document"
+    assert isinstance(retriever.spans[0], ToolSpan)
+    assert json.loads(retriever.spans[0].input) == {"x": 1}
 
 
 def test_trace_missing_output_stays_none() -> None:
     record = record_from_step(
-        Step(type="trace", name="request", input="question", context={"spans": []})
+        Step(type="trace", name="request", input="question", children=[])
     )
 
     assert isinstance(record, Trace)
@@ -1076,9 +1114,7 @@ def test_optional_fields_and_aliases_are_translated() -> None:
             tools=[{"name": "search"}],
         )
     )
-    tool = record_from_scorer_invoke_record(
-        _RecordPayload(type="tool", input="input", tool_call_id=123)
-    )
+    tool = ToolSpan.model_validate({"tool_call_id": "123"})
     alias = build_galileo_record("question", Step(type="llm", name="answer", input="base"))
 
     assert isinstance(llm, LlmSpan)
@@ -1089,7 +1125,6 @@ def test_optional_fields_and_aliases_are_translated() -> None:
 
 
 def test_session_message_and_document_sequences_use_public_validators() -> None:
-    traces = [{"type": "trace", "name": "request", "input": "question", "spans": []}]
     messages = [{"role": "user", "content": "question"}]
     documents = [{"content": "answer", "metadata": {"source": "kb"}}]
 
@@ -1099,7 +1134,7 @@ def test_session_message_and_document_sequences_use_public_validators() -> None:
             name="conversation",
             input=messages,
             output=documents,
-            context={"traces": traces},
+            children=[Step(type="trace", name="request", input="question", children=[])],
         )
     )
 
@@ -1123,15 +1158,11 @@ def test_session_message_and_document_sequences_use_public_validators() -> None:
     ]
 
 
-def test_trace_and_session_require_structured_context() -> None:
-    with pytest.raises(RecordFactoryError, match="trace context is missing"):
-        record_from_step(Step(type="trace", name="request", input="question"))
-    with pytest.raises(RecordFactoryError, match="session context is missing"):
-        record_from_step(Step(type="session", name="conversation", input="question"))
+def test_trace_and_session_selector_values_must_be_structured() -> None:
     with pytest.raises(RecordFactoryError, match="untyped scalar"):
         build_record(
             "question",
-            Step(type="trace", name="request", input="question", context={"spans": []}),
+            Step(type="trace", name="request", input="question", children=[]),
         )
 
 
@@ -1149,15 +1180,275 @@ def test_record_serialization_is_json_safe() -> None:
     assert payload["input"] == json.dumps({"q": "x"})
 
 
-def test_factory_accepts_the_existing_pydantic_luna_record() -> None:
+def test_public_core_model_validates_luna_request_record_payload() -> None:
     from agent_control_evaluator_galileo.luna import ScorerInvokeRecord
 
-    record = record_from_scorer_invoke_record(
-        ScorerInvokeRecord(type="tool", name="search", input={"query": "q"})
+    source = ToolSpan(name="search", input=json.dumps({"query": "q"}))
+    request_record = ScorerInvokeRecord.model_validate(
+        source.model_dump(mode="json", exclude_none=True)
+    )
+    record = ToolSpan.model_validate(request_record.model_dump(mode="json", exclude_none=True))
+
+    assert record == source
+
+
+def test_canonical_records_round_trip_through_luna_wire_model() -> None:
+    from agent_control_evaluator_galileo.luna import ScorerInvokeRecord
+
+    llm_step = Step(
+        type="llm",
+        name="answer",
+        input=[{"role": "user", "content": "question"}],
+        output="answer",
+        tools=[{"name": "lookup"}],
+        context={"metadata": {"source": "llm"}},
+    )
+    nested_tool = Step(
+        type="tool",
+        name="search",
+        input={"query": "q"},
+        output="result",
+        context={"metadata": {"source": "tool"}},
+        children=[llm_step],
+    )
+    records = [
+        (
+            llm_step,
+            LlmSpan,
+        ),
+        (
+            Step(type="tool", name="flat tool", input={"id": 1}, output="done"),
+            ToolSpan,
+        ),
+        (
+            Step(
+                type="retriever",
+                name="retrieve",
+                input="query",
+                output=[{"content": "document", "metadata": {"source": "kb"}}],
+            ),
+            RetrieverSpan,
+        ),
+        (
+            Step(
+                type="trace",
+                name="trace",
+                input="trace input",
+                output="trace output",
+                children=[nested_tool],
+            ),
+            Trace,
+        ),
+        (
+            Step(
+                type="session",
+                name="session",
+                input="session input",
+                output="session output",
+                children=[
+                    Step(
+                        type="trace",
+                        name="session trace",
+                        input="trace input",
+                        children=[
+                            Step(
+                                type="tool",
+                                name="session tool",
+                                input={"query": "session query"},
+                                output="session result",
+                            )
+                        ],
+                    )
+                ],
+            ),
+            Session,
+        ),
+    ]
+
+    for step, core_model in records:
+        canonical = record_from_step(step)
+        wire_json = canonical.model_dump(mode="json", exclude_none=True)
+        request_record = ScorerInvokeRecord.model_validate(wire_json)
+        reconstructed = core_model.model_validate(
+            request_record.model_dump(mode="json", exclude_none=True)
+        )
+
+        assert type(reconstructed) is type(canonical)
+        assert reconstructed.model_dump(mode="json", exclude_none=True) == wire_json
+
+    trace = record_from_step(records[3][0])
+    assert isinstance(trace, Trace)
+    assert isinstance(trace.spans[0], ToolSpan)
+    assert isinstance(trace.spans[0].spans[0], LlmSpan)
+    assert trace.spans[0].user_metadata == {"source": "tool"}
+    assert trace.spans[0].spans[0].tools == [{"name": "lookup"}]
+
+    session = record_from_step(records[4][0])
+    assert isinstance(session, Session)
+    assert isinstance(session.traces[0], Trace)
+    assert isinstance(session.traces[0].spans[0], ToolSpan)
+
+
+def test_luna_wire_hierarchy_uses_top_level_fields_not_context() -> None:
+    from agent_control_evaluator_galileo.luna import ScorerInvokeRecord
+    from pydantic import ValidationError
+
+    canonical_trace = record_from_step(
+        Step(
+            type="trace",
+            name="canonical trace",
+            input="trace input",
+            children=[Step(type="tool", name="canonical tool", input={})],
+        )
+    )
+    canonical_session = record_from_step(
+        Step(
+            type="session",
+            name="canonical session",
+            input="session input",
+            children=[
+                Step(type="trace", name="canonical child trace", input="trace input", children=[])
+            ],
+        )
+    )
+    trace_payload = canonical_trace.model_dump(mode="json", exclude_none=True)
+    session_payload = canonical_session.model_dump(mode="json", exclude_none=True)
+    assert "spans" in trace_payload
+    assert "traces" in session_payload
+    assert "context" not in trace_payload
+    assert "context" not in session_payload
+
+    wire_trace = ScorerInvokeRecord.model_validate(
+        {
+            "type": "trace",
+            "name": "trace",
+            "input": "trace input",
+            "spans": [{"type": "tool", "name": "wire tool", "input": "{}"}],
+            "context": {
+                "children": [{"type": "llm", "name": "ignored child"}],
+                "spans": [{"type": "llm", "name": "ignored span"}],
+                "traces": [{"type": "trace", "name": "ignored trace"}],
+            },
+        }
+    )
+    wire_trace_json = wire_trace.model_dump(mode="json", exclude_none=True)
+    try:
+        rebuilt_trace = Trace.model_validate(wire_trace_json)
+    except ValidationError as exc:
+        assert any("context" in error["loc"] for error in exc.errors())
+    else:
+        assert len(rebuilt_trace.spans) == 1
+        assert isinstance(rebuilt_trace.spans[0], ToolSpan)
+        assert rebuilt_trace.spans[0].name == "wire tool"
+        assert all(span.name != "ignored span" for span in rebuilt_trace.spans)
+
+    # Galileo Core supplies empty hierarchy defaults when top-level fields are absent.
+    # Context-only hierarchy must not be treated as canonical spans or traces.
+    context_only_trace = ScorerInvokeRecord.model_validate(
+        {
+            "type": "trace",
+            "name": "context only trace",
+            "context": {
+                "children": [{"type": "tool", "name": "ignored child"}],
+                "spans": [{"type": "tool", "name": "ignored span"}],
+            },
+        }
+    )
+    rebuilt_context_only_trace = Trace.model_validate(
+        context_only_trace.model_dump(mode="json", exclude_none=True)
+    )
+    assert rebuilt_context_only_trace.spans == []
+
+    context_only_session = ScorerInvokeRecord.model_validate(
+        {
+            "type": "session",
+            "name": "session",
+            "context": {"traces": [{"type": "trace", "name": "ignored trace"}]},
+        }
+    )
+    context_only_json = context_only_session.model_dump(mode="json", exclude_none=True)
+    rebuilt_context_only_session = Session.model_validate(context_only_json)
+    assert rebuilt_context_only_session.traces == []
+
+
+def test_luna_wire_round_trip_preserves_all_trace_span_types_and_nested_tool_span() -> None:
+    from agent_control_evaluator_galileo.luna import ScorerInvokeRecord
+
+    trace_step = Step(
+        type="trace",
+        name="trace",
+        input="question",
+        children=[
+            Step(type="llm", name="answer", input="question", output="answer"),
+            Step(type="tool", name="search", input={"query": "q"}, output="result"),
+            Step(
+                type="retriever",
+                name="retrieve",
+                input="query",
+                output=[{"content": "document"}],
+            ),
+        ],
+    )
+    tool_step = Step(
+        type="tool",
+        name="outer tool",
+        input={"query": "q"},
+        children=[Step(type="llm", name="inner llm", input="tool prompt")],
     )
 
-    assert isinstance(record, ToolSpan)
-    assert json.loads(record.input) == {"query": "q"}
+    for step, core_model in ((trace_step, Trace), (tool_step, ToolSpan)):
+        canonical = record_from_step(step)
+        wire_json = canonical.model_dump(mode="json", exclude_none=True)
+        request_record = ScorerInvokeRecord.model_validate(wire_json)
+        reconstructed = core_model.model_validate(
+            request_record.model_dump(mode="json", exclude_none=True)
+        )
+
+        assert type(reconstructed) is type(canonical)
+        assert reconstructed.model_dump(mode="json", exclude_none=True) == wire_json
+
+    trace = record_from_step(trace_step)
+    assert isinstance(trace, Trace)
+    assert [type(span) for span in trace.spans] == [LlmSpan, ToolSpan, RetrieverSpan]
+
+    tool = record_from_step(tool_step)
+    assert isinstance(tool, ToolSpan)
+    assert isinstance(tool.spans[0], LlmSpan)
+    assert tool.spans[0].name == "inner llm"
+
+
+@pytest.mark.parametrize(
+    ("payload", "core_model"),
+    [
+        (
+            {
+                "type": "session",
+                "name": "session",
+                "traces": [{"type": "tool", "name": "invalid child"}],
+            },
+            Session,
+        ),
+        (
+            {
+                "type": "trace",
+                "name": "trace",
+                "spans": [{"type": "session", "name": "invalid child", "traces": []}],
+            },
+            Trace,
+        ),
+    ],
+)
+def test_luna_wire_records_reject_invalid_hierarchy(
+    payload: dict[str, object],
+    core_model: type[BaseModel],
+) -> None:
+    from agent_control_evaluator_galileo.luna import ScorerInvokeRecord
+    from pydantic import ValidationError
+
+    request_record = ScorerInvokeRecord.model_validate(payload)
+
+    with pytest.raises(ValidationError):
+        core_model.model_validate(request_record.model_dump(mode="json", exclude_none=True))
 
 
 def test_factory_rejects_invalid_boundaries_and_normalizes_missing_text() -> None:
@@ -1165,8 +1456,6 @@ def test_factory_rejects_invalid_boundaries_and_normalizes_missing_text() -> Non
 
     with pytest.raises(RecordFactoryError, match="complete Agent Control Step"):
         record_from_step(object())  # type: ignore[arg-type]
-    with pytest.raises(UnsupportedStepTypeError, match="unsupported"):
-        record_from_scorer_invoke_record(_RecordPayload(type="unsupported"))
     assert GalileoRecordNormalizer.retriever_input(None) == ""
     assert GalileoRecordNormalizer.session_input(Document(content="plain")) == json.dumps(
         {"content": "plain"}

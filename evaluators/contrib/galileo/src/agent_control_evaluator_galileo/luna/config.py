@@ -56,8 +56,8 @@ class LunaEvaluatorConfig(EvaluatorConfig):
 
     Attributes:
         scorer_id: Required scorer identifier for Luna scorer invocation.
-        scorer_version_id: Deprecated optional compatibility identifier. Orbit
-            currently invokes the scorer's current default version.
+        scorer_version_id: Optional for legacy requests; required when the
+            contextual evaluator sends a structured record.
         scorer_label: Optional display/metadata label.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
@@ -75,8 +75,8 @@ class LunaEvaluatorConfig(EvaluatorConfig):
         default=None,
         min_length=1,
         description=(
-            "Deprecated optional compatibility identifier. Orbit currently invokes "
-            "the scorer's current default version."
+            "Optional for legacy requests and required when contextual evaluation "
+            "sends a structured record."
         ),
     )
     scorer_label: str | None = Field(

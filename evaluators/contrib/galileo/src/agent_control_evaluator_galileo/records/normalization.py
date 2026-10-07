@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, date, datetime
 from enum import Enum
@@ -180,6 +181,36 @@ def _message_sequence(value: Any) -> bool:
     )
 
 
+def _llm_message_sequence(value: Any) -> Sequence[Any] | None:
+    """Extract a role-bearing LLM message list from structured or string input."""
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (RecursionError, ValueError):
+            try:
+                parsed = ast.literal_eval(value)
+            except (SyntaxError, ValueError, TypeError, RecursionError):
+                return None
+        if isinstance(parsed, Mapping):
+            candidates = parsed.get("messages")
+            if not isinstance(candidates, list):
+                return None
+        elif isinstance(parsed, list):
+            candidates = parsed
+        else:
+            return None
+    else:
+        candidates = value.get("messages") if isinstance(value, Mapping) else value
+    if not isinstance(candidates, Sequence) or isinstance(candidates, str | bytes | bytearray):
+        return None
+    if not all(
+        isinstance(item, Message) or (isinstance(item, Mapping) and "role" in item)
+        for item in candidates
+    ):
+        return None
+    return candidates
+
+
 def _flatten_message_sequence(value: Sequence[Any]) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     for message in value:
@@ -246,11 +277,18 @@ class GalileoRecordNormalizer:
         if value is None:
             return ""
         if isinstance(value, str | Message):
-            return value
+            messages = _llm_message_sequence(value)
+            if messages is None:
+                return value
+            return [_json_compatible(item) for item in messages]
         if isinstance(value, Mapping):
+            messages = _llm_message_sequence(value)
+            if messages is not None:
+                return [_json_compatible(item) for item in messages]
             return _json_compatible(value)
         if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
-            if all(isinstance(item, Message | Mapping) for item in value):
+            messages = _llm_message_sequence(value)
+            if messages is not None:
                 return [_json_compatible(item) for item in value]
         return cls.json_text(value)
 
@@ -300,7 +338,11 @@ class GalileoRecordNormalizer:
 
     @classmethod
     def retriever_input(cls, value: Any) -> str:
-        return "" if value is None else cls.json_text(value)
+        if value is None:
+            return ""
+        if isinstance(value, Mapping) and "query" in value:
+            return cls.json_text(value["query"])
+        return cls.json_text(value)
 
     @staticmethod
     def retriever_output(value: Any) -> list[Document]:
@@ -459,12 +501,3 @@ class GalileoRecordNormalizer:
     @classmethod
     def session_redacted_output(cls, value: Any) -> Any:
         return None if value is None else cls.session_output(value)
-
-    @staticmethod
-    def session_traces(
-        values: Sequence[Any],
-        *,
-        normalize_record: Callable[[Any], Any],
-    ) -> list[Any]:
-        """Normalize every nested session trace through the shared record path."""
-        return [normalize_record(value) for value in values]
