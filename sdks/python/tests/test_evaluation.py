@@ -4,10 +4,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
-from agent_control import evaluation
-from agent_control.evaluation import EvaluationResult
 from agent_control_models import Step
 from pydantic import ValidationError
+
+from agent_control import evaluation
+from agent_control.evaluation import EvaluationResult
 
 
 @pytest.mark.asyncio
@@ -187,6 +188,55 @@ async def test_evaluate_controls_with_explicit_agent_name(monkeypatch):
 
     assert result.is_safe is True
     assert result.confidence == 1.0
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_delegates_to_evaluate_step(monkeypatch):
+    """evaluate_controls builds the Step then routes through evaluate_step."""
+    mock_result = EvaluationResult(is_safe=True, confidence=1.0)
+    mock_evaluate_step = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr(evaluation, "evaluate_step", mock_evaluate_step)
+
+    result = await evaluation.evaluate_controls(
+        step_name="chat",
+        input="hello",
+        stage="pre",
+        agent_name="test-bot",
+    )
+
+    assert result is mock_result
+    mock_evaluate_step.assert_awaited_once()
+    args, kwargs = mock_evaluate_step.call_args
+    step_arg = args[0]
+    assert isinstance(step_arg, Step)
+    assert step_arg.name == "chat"
+    assert step_arg.input == "hello"
+    assert kwargs["agent_name"] == "test-bot"
+    assert kwargs["stage"] == "pre"
+
+
+@pytest.mark.asyncio
+async def test_evaluate_controls_coerces_dict_children_to_step(monkeypatch):
+    """children= accepts plain dicts; pydantic coerces them to Step instances."""
+    mock_check = AsyncMock(return_value=EvaluationResult(is_safe=True, confidence=1.0))
+    monkeypatch.setattr(evaluation, "check_evaluation_with_local", mock_check)
+
+    with patch("agent_control.state.server_url", "http://localhost:8000"):
+        await evaluation.evaluate_controls(
+            step_name="trace1",
+            step_type="trace",
+            input={"request": "r1"},
+            children=[{"type": "llm", "name": "x", "input": "hi", "output": "bye"}],
+            stage="post",
+            agent_name="test-bot",
+        )
+
+    step = mock_check.call_args.kwargs["step"]
+    assert step.children is not None
+    assert len(step.children) == 1
+    assert isinstance(step.children[0], Step)
+    assert step.children[0].type == "llm"
+    assert step.children[0].name == "x"
     mock_check.assert_called_once()
 
 

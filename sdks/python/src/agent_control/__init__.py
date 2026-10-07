@@ -92,7 +92,7 @@ from ._control_registry import (
 )
 from .client import AgentControlClient
 from .control_decorators import ControlSteerError, ControlViolationError, control
-from .evaluation import check_evaluation_with_local, evaluate_controls
+from .evaluation import check_evaluation_with_local, evaluate_controls, evaluate_step
 from .observability import (
     LogConfig,
     add_event,
@@ -116,6 +116,7 @@ from .observability import (
 )
 from .otel_sink import control_event_to_otel_span
 from .runtime_auth import validate_http_field_name
+from .step_recorder import StepRecorder, record_step
 from .tracing import (
     get_current_span_id,
     get_current_trace_id,
@@ -1619,6 +1620,10 @@ __all__ = [
     # Local evaluation
     "check_evaluation_with_local",
     "evaluate_controls",
+    "evaluate_step",
+    # Step recorder (incremental trace/session Step tree builder)
+    "record_step",
+    "StepRecorder",
     # Tracing
     "get_trace_and_span_ids",
     "get_current_trace_id",
