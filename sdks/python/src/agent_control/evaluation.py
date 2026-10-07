@@ -1,6 +1,6 @@
 """Evaluation check operations for Agent Control SDK."""
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from inspect import iscoroutinefunction
 from typing import Any, Literal, cast
@@ -515,6 +515,58 @@ async def check_evaluation_with_local(
     return _with_parse_errors(EvaluationResult(is_safe=True, confidence=1.0))
 
 
+async def evaluate_step(
+    step: Step,
+    *,
+    agent_name: str,
+    stage: Literal["pre", "post"] = "pre",
+    target_type: str | None = None,
+    target_id: str | None = None,
+    trace_id: str | None = None,
+    span_id: str | None = None,
+) -> EvaluationResult:
+    """Evaluate controls for an already-built ``Step``.
+
+    This is the shared tail of :func:`evaluate_controls`: resolve the
+    session target, open a client, and run local/server evaluation. Use
+    it directly when the ``Step`` - including any ``children`` - was
+    already assembled, e.g. via :class:`~agent_control.step_recorder.StepRecorder`.
+
+    When ``target_type`` and ``target_id`` are both supplied, the request
+    is target-bearing: the server merges target bindings into the
+    effective control set. If they are omitted, the SDK falls back to the
+    target context fixed at ``init()`` time when present. A per-call
+    override that disagrees with the session target is rejected because
+    the cached controls were fetched for the session target and would
+    otherwise drive stale local-first evaluation.
+    """
+    if state.server_url is None:
+        raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
+
+    target_type, target_id = _resolve_session_target(target_type, target_id)
+    resolved_controls = state.server_controls or []
+
+    async with AgentControlClient(
+        base_url=state.server_url,
+        api_key=state.api_key,
+        api_key_header=state.api_key_header,
+        runtime_token_header=state.runtime_token_header,
+        runtime_token_cache=state.runtime_token_cache,
+    ) as client:
+        return await check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=step,
+            stage=stage,
+            controls=resolved_controls,
+            target_type=target_type,
+            target_id=target_id,
+            trace_id=trace_id,
+            span_id=span_id,
+            event_agent_name=agent_name,
+        )
+
+
 async def evaluate_controls(
     step_name: str,
     *,
@@ -523,7 +575,7 @@ async def evaluate_controls(
     context: dict[str, Any] | None = None,
     tools: list[dict[str, JSONValue]] | None = None,
     ground_truth: JSONValue | None = None,
-    children: list[Step] | None = None,
+    children: Sequence[Step | Mapping[str, Any]] | None = None,
     step_type: str = "llm",
     stage: Literal["pre", "post"] = "pre",
     agent_name: str,
@@ -544,11 +596,6 @@ async def evaluate_controls(
     """
     step_type = ensure_step_type(step_type)
 
-    if state.server_url is None:
-        raise RuntimeError("Server URL not configured. Call agent_control.init() first.")
-
-    target_type, target_id = _resolve_session_target(target_type, target_id)
-
     default_value = {} if step_type == "tool" else ""
     step_dict: dict[str, Any] = {
         "type": step_type,
@@ -566,24 +613,13 @@ async def evaluate_controls(
         step_dict["children"] = children
 
     step_obj = Step(**step_dict)  # type: ignore[arg-type]
-    resolved_controls = state.server_controls or []
 
-    async with AgentControlClient(
-        base_url=state.server_url,
-        api_key=state.api_key,
-        api_key_header=state.api_key_header,
-        runtime_token_header=state.runtime_token_header,
-        runtime_token_cache=state.runtime_token_cache,
-    ) as client:
-        return await check_evaluation_with_local(
-            client=client,
-            agent_name=agent_name,
-            step=step_obj,
-            stage=stage,
-            controls=resolved_controls,
-            target_type=target_type,
-            target_id=target_id,
-            trace_id=trace_id,
-            span_id=span_id,
-            event_agent_name=agent_name,
-        )
+    return await evaluate_step(
+        step_obj,
+        agent_name=agent_name,
+        stage=stage,
+        target_type=target_type,
+        target_id=target_id,
+        trace_id=trace_id,
+        span_id=span_id,
+    )
