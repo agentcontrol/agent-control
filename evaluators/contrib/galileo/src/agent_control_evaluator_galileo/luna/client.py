@@ -307,20 +307,23 @@ def _scorer_invoke_record_from_step(
         return None
     try:
         if selected_data is _MISSING_SELECTED_DATA:
-            record = record_from_step(
+            galileo_core_record = record_from_step(
                 step,
                 selected_input=selected_input,
                 selected_output=selected_output,
             )
         else:
-            record = record_from_step(
+            galileo_core_record = record_from_step(
                 step,
                 selected_data=selected_data,
                 payload_field=payload_field,
             )
     except UnsupportedStepTypeError:
         return None
-    canonical_record = record.model_dump(mode="json", exclude_none=True)
+    # record_from_step() returns Galileo Core models (LlmSpan, Trace, etc.). Dumping
+    # and revalidating coerces the model into the Luna request shape while preserving
+    # extra canonical fields that Orbit accepts but ScorerInvokeRecord does not declare.
+    canonical_record = galileo_core_record.model_dump(mode="json", exclude_none=True)
     if canonical_record.get("type") not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES:
         return None
     return ScorerInvokeRecord.model_validate(canonical_record)

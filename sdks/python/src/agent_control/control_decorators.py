@@ -445,13 +445,11 @@ def _unexpected_control_failure_message(stage: str, error: Exception) -> str:
 async def _run_control_check(
     ctx: ControlContext,
     stage: str,
-    payload: dict[str, Any] | Callable[[], dict[str, Any]],
+    payload: dict[str, Any],
     controls: list[dict[str, Any]] | None,
 ) -> None:
     """Run one control stage and enforce fail-closed behavior on unexpected errors."""
     try:
-        if callable(payload):
-            payload = payload()
         result = await _evaluate(
             ctx.agent_name,
             payload,
@@ -827,7 +825,14 @@ async def _execute_with_control(
 
     try:
         # PRE-EXECUTION: Check controls with check_stage="pre"
-        await _run_control_check(ctx, "pre", ctx.pre_payload, controls)
+        try:
+            pre_payload = ctx.pre_payload()
+        except _InvalidToolsConfigurationError:
+            raise
+        except Exception as e:
+            logger.error("Pre-execution control payload creation failed: %s", e, exc_info=True)
+            raise RuntimeError(_unexpected_control_failure_message("pre", e)) from e
+        await _run_control_check(ctx, "pre", pre_payload, controls)
 
         # Execute the function
         if is_async:
@@ -836,7 +841,14 @@ async def _execute_with_control(
             output = func(*args, **kwargs)
 
         # POST-EXECUTION: Check controls with check_stage="post"
-        await _run_control_check(ctx, "post", lambda: ctx.post_payload(output), controls)
+        try:
+            post_payload = ctx.post_payload(output)
+        except _InvalidToolsConfigurationError:
+            raise
+        except Exception as e:
+            logger.error("Post-execution control payload creation failed: %s", e, exc_info=True)
+            raise RuntimeError(_unexpected_control_failure_message("post", e)) from e
+        await _run_control_check(ctx, "post", post_payload, controls)
 
         return output
     finally:

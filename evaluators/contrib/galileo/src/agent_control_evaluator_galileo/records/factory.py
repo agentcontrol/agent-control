@@ -36,6 +36,7 @@ class UnsupportedStepTypeError(RecordFactoryError):
 
 
 def _mapping(value: Any) -> Mapping[str, Any] | None:
+    """Return mapping values unchanged, or ``None`` for non-mapping inputs."""
     return value if isinstance(value, Mapping) else None
 
 
