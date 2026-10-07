@@ -886,6 +886,49 @@ class TestGalileoLunaClient:
         }
 
     @pytest.mark.asyncio
+    async def test_client_omits_record_when_step_has_no_pinned_version(self) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content.decode())
+            return httpx.Response(200, json={"score": 0.5, "status": "success"})
+
+        step = Step(
+            type="llm",
+            name="answer",
+            input="complete prompt",
+            output="complete response",
+            tools=[{"name": "search", "input_schema": {}}],
+            ground_truth="expected answer",
+        )
+        with patch.dict(os.environ, LUNA_ENV, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        try:
+            await client.invoke(
+                scorer_id=SCORER_ID,
+                input="selected prompt",
+                output="selected response",
+                step=step,
+            )
+        finally:
+            await client.close()
+
+        assert captured["body"] == {
+            "scorer_id": SCORER_ID,
+            "inputs": {
+                "query": "selected prompt",
+                "response": "selected response",
+                "ground_truth": "expected answer",
+                "tools": [{"name": "search", "input_schema": {}}],
+            },
+            "config": {"request_timeout_seconds": 8.0},
+        }
+
+    @pytest.mark.asyncio
     async def test_client_omits_record_for_step_type_orbit_does_not_support(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
 
@@ -946,6 +989,7 @@ class TestGalileoLunaClient:
         try:
             await client.invoke(
                 scorer_id="scorer-123",
+                scorer_version_id=SCORER_VERSION_ID,
                 input="selected input",
                 output="selected output",
                 step=step,
@@ -1000,6 +1044,7 @@ class TestGalileoLunaClient:
         try:
             await client.invoke(
                 scorer_id="scorer-123",
+                scorer_version_id=SCORER_VERSION_ID,
                 input={"query": "selected"},
                 output={"answer": "selected"},
                 step=step,
@@ -1262,7 +1307,12 @@ class TestGalileoLunaClient:
 
         try:
             with pytest.raises(RecordFactoryError, match="Step.context cannot define"):
-                await client.invoke(scorer_id="scorer-123", input="selected", step=step)
+                await client.invoke(
+                    scorer_id="scorer-123",
+                    scorer_version_id=SCORER_VERSION_ID,
+                    input="selected",
+                    step=step,
+                )
         finally:
             await client.close()
 

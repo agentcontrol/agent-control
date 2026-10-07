@@ -548,6 +548,17 @@ class GalileoLunaClient:
             invoke_config,
             http_timeout_seconds=timeout,
         )
+        record = (
+            _scorer_invoke_record_from_step(
+                step,
+                selected_input=input,
+                selected_output=output,
+                selected_data=selected_data,
+                payload_field=selected_data_payload_field,
+            )
+            if step is not None and scorer_version_id is not None
+            else None
+        )
         request_body = ScorerInvokeRequest(
             scorer_id=scorer_id,
             scorer_version_id=scorer_version_id,
@@ -558,13 +569,7 @@ class GalileoLunaClient:
                 ground_truth=step.ground_truth if step is not None else None,
                 tools=step.tools if step is not None else None,
             ),
-            record=_scorer_invoke_record_from_step(
-                step,
-                selected_input=input,
-                selected_output=output,
-                selected_data=selected_data,
-                payload_field=selected_data_payload_field,
-            ),
+            record=record,
             execution_context=execution_context,
             config=invoke_config,
         ).to_dict()
