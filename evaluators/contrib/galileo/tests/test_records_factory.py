@@ -165,6 +165,60 @@ def test_llm_messages_use_public_canonical_validation() -> None:
 
 
 @pytest.mark.parametrize(
+    ("source", "expected_messages"),
+    [
+        ("A plain prompt", None),
+        (
+            '[{"role": "user", "content": "question"}]',
+            [{"role": "user", "content": "question"}],
+        ),
+        (
+            "{'messages': [{'role': 'user', 'content': 'question'}]}",
+            [{"role": "user", "content": "question"}],
+        ),
+        ("{'messages': [", None),
+        ('{"content": "document without a role"}', None),
+        ('[{"content": "document without a role"}]', None),
+    ],
+)
+def test_llm_string_input_only_parses_role_bearing_message_shapes(
+    source: str,
+    expected_messages: list[dict[str, str]] | None,
+) -> None:
+    record = record_from_step(Step(type="llm", name="answer", input=source))
+
+    assert isinstance(record, LlmSpan)
+    if expected_messages is None:
+        assert len(record.input) == 1
+        assert record.input[0].content == source
+    else:
+        assert [
+            {"role": message.role.value, "content": message.content}
+            for message in record.input
+        ] == expected_messages
+
+    restored = LlmSpan.model_validate(record.model_dump(mode="json", exclude_none=True))
+    assert [message.content for message in restored.input] == [
+        message.content for message in record.input
+    ]
+
+
+def test_llm_mapping_with_messages_key_becomes_public_message_models() -> None:
+    record = record_from_step(
+        Step(
+            type="llm",
+            name="answer",
+            input={"messages": [{"role": "user", "content": "question"}]},
+        )
+    )
+
+    assert isinstance(record, LlmSpan)
+    assert [message.role.value for message in record.input] == ["user"]
+    restored = LlmSpan.model_validate(record.model_dump(mode="json", exclude_none=True))
+    assert [message.content for message in restored.input] == ["question"]
+
+
+@pytest.mark.parametrize(
     ("output", "expected"),
     [
         ("answer", "answer"),
@@ -900,6 +954,38 @@ def test_retriever_dictionaries_become_canonical_documents() -> None:
     assert isinstance(documents[0], Document)
     assert documents[0].content == "document"
     assert documents[0].metadata == {"source": "kb"}
+
+
+def test_retriever_input_mapping_extracts_query_and_round_trips_documents() -> None:
+    record = record_from_step(
+        Step(
+            type="retriever",
+            name="policy_search",
+            input={"query": "wire policy", "partition": "banking"},
+            output=[{"content": "Policy text", "metadata": {"source": "kb"}}],
+        )
+    )
+
+    assert isinstance(record, RetrieverSpan)
+    assert record.input == "wire policy"
+    assert len(record.output) == 1
+    assert isinstance(record.output[0], Document)
+    restored = RetrieverSpan.model_validate(record.model_dump(mode="json", exclude_none=True))
+    assert restored.input == "wire policy"
+    assert isinstance(restored.output[0], Document)
+    assert restored.output[0].content == "Policy text"
+
+
+def test_retriever_input_mapping_without_query_uses_json_fallback() -> None:
+    record = record_from_step(
+        Step(type="retriever", name="search", input={"partition": "banking"})
+    )
+
+    assert isinstance(record, RetrieverSpan)
+    assert record.input == '{"partition": "banking"}'
+    assert GalileoRecordNormalizer.retriever_input({"query": {"phrase": "wire"}}) == (
+        '{"phrase": "wire"}'
+    )
 
 
 def test_trace_and_session_use_children_and_selectors_only_change_the_root() -> None:

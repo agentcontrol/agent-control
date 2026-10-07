@@ -928,6 +928,49 @@ class TestGalileoLunaClient:
             "config": {"request_timeout_seconds": 8.0},
         }
 
+    @patch.dict(os.environ, LUNA_ENV)
+    @pytest.mark.asyncio
+    async def test_evaluator_normalizes_record_without_changing_legacy_inputs(self) -> None:
+        from agent_control_evaluator_galileo.luna import LunaEvaluator
+
+        captured: dict[str, object] = {}
+        raw_messages = "{'messages': [{'role': 'user', 'content': 'wire policy'}]}"
+        raw_response = "{'answer': 'approved'}"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content.decode())
+            return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+        step = Step(
+            type="llm",
+            name="answer",
+            input=raw_messages,
+            output=raw_response,
+        )
+        evaluator = LunaEvaluator.from_dict(
+            {"scorer_id": SCORER_ID, "scorer_version_id": SCORER_VERSION_ID}
+        )
+        evaluator._client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        try:
+            result = await evaluator.evaluate_with_context(
+                {"input": raw_messages, "output": raw_response},
+                step,
+            )
+        finally:
+            await evaluator._client.close()
+
+        assert result.error is None
+        body = captured["body"]
+        assert isinstance(body, dict)
+        assert body["inputs"]["query"] == raw_messages
+        assert body["inputs"]["response"] == raw_response
+        assert body["scorer_version_id"] == SCORER_VERSION_ID
+        record = body["record"]
+        assert isinstance(record, dict)
+        assert record["input"] == [{"role": "user", "content": "wire policy"}]
+        assert record["output"] == {"content": raw_response, "role": "assistant"}
+
     @pytest.mark.asyncio
     async def test_client_omits_record_for_step_type_orbit_does_not_support(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
