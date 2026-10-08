@@ -22,10 +22,16 @@ counts, min, p50, p95 and max values in a machine-readable report. The
 `control` number comes from `ControlMatch.execution_duration_ms`; `sdk_call`
 is measured around the SDK call by this example.
 
+For a bounded SDK-local throughput smoke, add `--concurrency 8 --iterations 1000`.
+The table then includes observed SDK calls per second for each independent
+scenario. This uses one Python process and one event loop without a target
+request rate; it is not a production capacity number.
+
 The example disables SDK observability for its run and restores the previous
 settings afterward. An HTTP mock rejects all outbound requests. No account,
 API key, server, Luna scorer, or GPU is needed. The warmup runs are excluded
 from the reported nearest-rank p50 and p95 values.
 
-This is a sequential local demonstration. It does not establish concurrent
-SDK capacity or server/Luna3 throughput. Those require a separate load test.
+This example does not establish SDK capacity or server/Luna3 throughput. Those
+require a configured workload, stack, acceptance thresholds and a separate
+load test.

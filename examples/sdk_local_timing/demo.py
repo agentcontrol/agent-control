@@ -125,8 +125,9 @@ def reject_network(request: httpx.Request) -> httpx.Response:
 def format_table(report: dict[str, Any]) -> str:
     """Render each local control's timing beside the enclosing SDK call."""
     rows = [
-        f"iterations={report['iterations']} warmup={report['warmup']}",
-        "scenario      outcome      control p50/p95 (ms)  SDK call p50/p95 (ms)",
+        f"iterations={report['iterations']} warmup={report['warmup']} "
+        f"concurrency={report['concurrency']}",
+        "scenario      outcome      control p50/p95 (ms)  SDK call p50/p95 (ms)  calls/s",
     ]
     for name, result in report["scenarios"].items():
         control = result["control"]
@@ -134,29 +135,34 @@ def format_table(report: dict[str, Any]) -> str:
         rows.append(
             f"{name:<13} {result['outcome']:<12} "
             f"{control['p50_ms']:>8.3f}/{control['p95_ms']:>8.3f} "
-            f"{sdk_call['p50_ms']:>8.3f}/{sdk_call['p95_ms']:>8.3f}"
+            f"{sdk_call['p50_ms']:>8.3f}/{sdk_call['p95_ms']:>8.3f} "
+            f"{result['observed_calls_per_sec']:>8.1f}"
         )
     return "\n".join(rows)
 
 
-async def run(*, iterations: int, warmup: int) -> dict[str, Any]:
+async def run(*, iterations: int, warmup: int, concurrency: int = 1) -> dict[str, Any]:
     """Run each synthetic control locally and validate its measured result."""
-    if not 1 <= iterations <= 100_000 or not 0 <= warmup <= 10_000:
-        raise ValueError("iterations must be 1..100000 and warmup must be 0..10000")
+    if not (1 <= iterations <= 100_000 and 0 <= warmup <= 10_000 and 1 <= concurrency <= 64):
+        raise ValueError("iterations must be 1..100000, warmup 0..10000, and concurrency 1..64")
 
     previous_settings = get_settings().model_dump()
     configure_settings(observability_enabled=False)
     try:
-        report: dict[str, Any] = {"iterations": iterations, "warmup": warmup, "scenarios": {}}
+        report: dict[str, Any] = {
+            "iterations": iterations,
+            "warmup": warmup,
+            "concurrency": concurrency,
+            "scenarios": {},
+        }
         async with AgentControlClient(
             base_url="https://unused.invalid", transport=httpx.MockTransport(reject_network)
         ) as client:
             for control_id, scenario in enumerate(SCENARIOS, start=1):
                 control = control_payload(scenario, control_id)
                 step = Step(type="tool", name="timing_probe", input=scenario.step_input)
-                control_times: list[float] = []
-                sdk_times: list[float] = []
-                for index in range(warmup + iterations):
+
+                async def evaluate_once() -> tuple[float, float]:
                     started_at = time.perf_counter()
                     result = await check_evaluation_with_local(
                         client, "sdk-local-timing-demo", step, "pre", [control]
@@ -180,14 +186,37 @@ async def run(*, iterations: int, warmup: int) -> dict[str, Any]:
                     duration_ms = bucket[0].execution_duration_ms
                     if duration_ms is None or not math.isfinite(duration_ms) or duration_ms < 0:
                         raise RuntimeError(f"{scenario.name}: missing or invalid control duration")
-                    if index >= warmup:
-                        control_times.append(duration_ms)
-                        sdk_times.append(sdk_ms)
+                    return duration_ms, sdk_ms
+
+                for _ in range(warmup):
+                    await evaluate_once()
+
+                worker_count = min(concurrency, iterations)
+
+                async def worker(count: int) -> tuple[list[float], list[float]]:
+                    control_samples: list[float] = []
+                    sdk_samples: list[float] = []
+                    for _ in range(count):
+                        duration_ms, sdk_ms = await evaluate_once()
+                        control_samples.append(duration_ms)
+                        sdk_samples.append(sdk_ms)
+                    return control_samples, sdk_samples
+
+                counts = [
+                    iterations // worker_count + (worker_index < iterations % worker_count)
+                    for worker_index in range(worker_count)
+                ]
+                run_started_at = time.perf_counter()
+                worker_results = await asyncio.gather(*(worker(count) for count in counts))
+                elapsed_seconds = time.perf_counter() - run_started_at
+                control_times = [sample for controls, _ in worker_results for sample in controls]
+                sdk_times = [sample for _, calls in worker_results for sample in calls]
                 report["scenarios"][scenario.name] = {
                     "evaluator": scenario.evaluator,
                     "outcome": scenario.expected_bucket,
                     "control": distribution(control_times),
                     "sdk_call": distribution(sdk_times),
+                    "observed_calls_per_sec": iterations / elapsed_seconds,
                 }
         return report
     finally:
@@ -198,9 +227,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--warmup", type=int, default=5)
+    parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--json", action="store_true", help="emit machine-readable samples summary")
     args = parser.parse_args()
-    report = asyncio.run(run(iterations=args.iterations, warmup=args.warmup))
+    report = asyncio.run(
+        run(iterations=args.iterations, warmup=args.warmup, concurrency=args.concurrency)
+    )
     print(json.dumps(report, indent=2) if args.json else format_table(report))
 
 
