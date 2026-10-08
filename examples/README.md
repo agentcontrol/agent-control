@@ -14,6 +14,7 @@ This directory contains runnable examples for Agent Control. Each example has it
 | Customer Support Agent | Enterprise scenario with PII protection, prompt-injection defense, and multiple tools. | https://docs.agentcontrol.dev/examples/customer-support |
 | DeepEval | Build a custom evaluator using DeepEval GEval metrics. | https://docs.agentcontrol.dev/examples/deepeval |
 | Galileo Luna Direct | Direct Luna scorer invoke evaluation (`scorer_id` required; `scorer_label`/`scorer_version_id` optional) with a composite Agent Control condition. | `examples/galileo_luna/` |
+| SDK-local timing | Compare per-control duration with whole SDK call time using synthetic local controls and no network. | `examples/sdk_local_timing/` |
 | LangChain SQL Agent | Protect a SQL agent from dangerous queries with server-side controls. | https://docs.agentcontrol.dev/examples/langchain-sql |
 | Steer Action Demo | Banking transfer agent showcasing observe, deny, and steer actions. | https://docs.agentcontrol.dev/examples/steer-action-demo |
 | Target Context | Bind controls to opaque external targets (e.g. `env=prod`) and let the SDK pin one target per session. | https://docs.agentcontrol.dev/examples/target-context |
