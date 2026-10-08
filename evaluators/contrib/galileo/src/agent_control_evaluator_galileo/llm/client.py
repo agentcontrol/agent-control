@@ -369,6 +369,8 @@ class GalileoLLMClient:
     """Thin HTTP client for Galileo LLM-as-judge scorer invocation.
 
     Environment Variables:
+        GALILEO_FEATURE_FLAG_LLM_INVOKE_RUNTIME: Set to ``enabled`` to activate the evaluator.
+            Required; the evaluator is unavailable until this flag is set.
         GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: JWT signing secret for internal auth.
         GALILEO_LUNA_INVOKE_URL: LLM scorer invoke URL or service root (required).
         GALILEO_LUNA_INVOKE_CA_FILE: CA bundle used to verify invoke TLS.

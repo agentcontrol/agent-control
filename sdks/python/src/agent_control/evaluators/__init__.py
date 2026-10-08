@@ -16,6 +16,10 @@ Galileo evaluators:
     from agent_control.evaluators import LunaEvaluator, LunaEvaluatorConfig  # if galileo installed
     from agent_control.evaluators import LlmEvaluator, LlmEvaluatorConfig    # if galileo installed
     ```
+
+    Note: ``galileo.llm`` requires ``GALILEO_FEATURE_FLAG_LLM_INVOKE_RUNTIME=enabled`` to be set.
+    The evaluator is unavailable (``is_available()`` returns ``False``) until this flag is present,
+    as it depends on Orbit-side support for ``execution_context`` to fetch LLM credentials.
 """
 
 from agent_control_engine import (
