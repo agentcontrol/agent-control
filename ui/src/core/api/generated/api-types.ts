@@ -1664,6 +1664,11 @@ export interface components {
        * @description Name of the control
        */
       control_name: string;
+      /**
+       * Execution Duration Ms
+       * @description Control evaluation wall-clock duration in milliseconds, if executed
+       */
+      execution_duration_ms?: number | null;
       /** @description Evaluator result (confidence, message, metadata) */
       result: components['schemas']['EvaluatorResult'];
       /** @description Steering context for steer actions if configured */
