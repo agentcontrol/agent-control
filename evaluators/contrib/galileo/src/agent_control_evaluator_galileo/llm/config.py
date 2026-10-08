@@ -13,17 +13,17 @@ LlmOperator = Literal["gt", "gte", "lt", "lte", "eq", "ne", "contains", "any"]
 LlmPayloadField = Literal["input", "output"]
 
 _NUMERIC_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
-LLM_INVOKE_RUNTIME_FLAG_ENV = "GALILEO_FEATURE_FLAG_LLM_INVOKE_RUNTIME"
+LLM_EVALUATOR_FLAG_ENV = "GALILEO_FEATURE_FLAG_LLM_EVALUATOR"
 
 
-def llm_invoke_runtime_enabled() -> bool:
+def llm_evaluator_enabled() -> bool:
     """Return whether the LLM scorer invoke runtime is enabled.
 
     The LLM evaluator requires Orbit support for ``execution_context`` to fetch
-    LLM credentials. Set ``GALILEO_FEATURE_FLAG_LLM_INVOKE_RUNTIME=enabled`` once
+    LLM credentials. Set ``GALILEO_FEATURE_FLAG_LLM_EVALUATOR=enabled`` once
     the Orbit-side support is confirmed ready.
     """
-    return os.getenv(LLM_INVOKE_RUNTIME_FLAG_ENV) == "enabled"
+    return os.getenv(LLM_EVALUATOR_FLAG_ENV) == "enabled"
 
 
 class ScorerInvokeConfig(BaseModel):

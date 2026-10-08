@@ -13,7 +13,7 @@ from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_eval
 from agent_control_models import EvaluatorResult, JSONObject, JSONValue, Step
 
 from .client import GalileoExecutionContext, GalileoLLMClient, ScorerInvokeResponse
-from .config import LlmEvaluatorConfig, coerce_number, llm_invoke_runtime_enabled
+from .config import LlmEvaluatorConfig, coerce_number, llm_evaluator_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +121,9 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
 
         The LLM evaluator requires Orbit-side support for ``execution_context`` to
         fetch LLM credentials. It is unavailable until
-        ``GALILEO_FEATURE_FLAG_LLM_INVOKE_RUNTIME=enabled`` is set.
+        ``GALILEO_FEATURE_FLAG_LLM_EVALUATOR=enabled`` is set.
         """
-        return LLM_AVAILABLE and llm_invoke_runtime_enabled()
+        return LLM_AVAILABLE and llm_evaluator_enabled()
 
     def __init__(self, config: LlmEvaluatorConfig) -> None:
         """Initialize the direct LLM-as-judge evaluator.
