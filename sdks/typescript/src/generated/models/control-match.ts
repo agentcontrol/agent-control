@@ -39,6 +39,10 @@ export type ControlMatch = {
    */
   controlName: string;
   /**
+   * Control evaluation wall-clock duration in milliseconds, if executed
+   */
+  executionDurationMs?: number | null | undefined;
+  /**
    * Result from a control evaluator.
    *
    * @remarks
@@ -69,6 +73,7 @@ export const ControlMatch$inboundSchema: z.ZodMiniType<ControlMatch, unknown> =
       control_execution_id: types.optional(types.string()),
       control_id: types.number(),
       control_name: types.string(),
+      execution_duration_ms: z.optional(z.nullable(types.number())),
       result: EvaluatorResult$inboundSchema,
       steering_context: z.optional(z.nullable(SteeringContext$inboundSchema)),
     }),
@@ -77,6 +82,7 @@ export const ControlMatch$inboundSchema: z.ZodMiniType<ControlMatch, unknown> =
         "control_execution_id": "controlExecutionId",
         "control_id": "controlId",
         "control_name": "controlName",
+        "execution_duration_ms": "executionDurationMs",
         "steering_context": "steeringContext",
       });
     }),

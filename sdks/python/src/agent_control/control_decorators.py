@@ -351,6 +351,7 @@ async def _evaluate(
                                 "metadata": m.result.metadata,
                             },
                             "control_execution_id": m.control_execution_id,
+                            "execution_duration_ms": m.execution_duration_ms,
                             "steering_context": (
                                 {"message": m.steering_context.message}
                                 if m.steering_context else None
@@ -372,6 +373,7 @@ async def _evaluate(
                                 "metadata": e.result.metadata,
                             },
                             "control_execution_id": e.control_execution_id,
+                            "execution_duration_ms": e.execution_duration_ms,
                             "steering_context": (
                                 {"message": e.steering_context.message}
                                 if e.steering_context else None
@@ -393,6 +395,7 @@ async def _evaluate(
                                 "metadata": nm.result.metadata,
                             },
                             "control_execution_id": nm.control_execution_id,
+                            "execution_duration_ms": nm.execution_duration_ms,
                             "steering_context": (
                                 {"message": nm.steering_context.message}
                                 if nm.steering_context else None
@@ -738,7 +741,7 @@ def _log_single_control(
         matched=matched,
         action=normalize_action(str(control_data.get("action", "observe"))),
         confidence=control_data.get("result", {}).get("confidence", 0.0),
-        duration_ms=control_data.get("result", {}).get("execution_duration_ms"),
+        duration_ms=control_data.get("execution_duration_ms"),
         control_execution_id=control_data.get("control_execution_id"),
         check_stage=check_stage,
     )
