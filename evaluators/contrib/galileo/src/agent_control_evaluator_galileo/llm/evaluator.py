@@ -13,7 +13,7 @@ from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_eval
 from agent_control_models import EvaluatorResult, JSONObject, JSONValue, Step
 
 from .client import GalileoExecutionContext, GalileoLLMClient, ScorerInvokeResponse
-from .config import LlmEvaluatorConfig, coerce_number
+from .config import LlmEvaluatorConfig, coerce_number, llm_invoke_runtime_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +117,13 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
 
     @classmethod
     def is_available(cls) -> bool:
-        """Check whether required runtime dependencies are available."""
-        return LLM_AVAILABLE
+        """Return True only when the LLM invoke runtime feature flag is enabled.
+
+        The LLM evaluator requires Orbit-side support for ``execution_context`` to
+        fetch LLM credentials. It is unavailable until
+        ``GALILEO_FEATURE_FLAG_LLM_INVOKE_RUNTIME=enabled`` is set.
+        """
+        return LLM_AVAILABLE and llm_invoke_runtime_enabled()
 
     def __init__(self, config: LlmEvaluatorConfig) -> None:
         """Initialize the direct LLM-as-judge evaluator.
@@ -267,6 +272,28 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
         extensions: JSONObject | None = None,
     ) -> EvaluatorResult:
         """Run an LLM scorer evaluation with optional structured runtime context."""
+        if step is None:
+            return EvaluatorResult(
+                matched=False,
+                confidence=0.0,
+                message="LLM scorer requires a runtime step; evaluation skipped.",
+                metadata=self._base_metadata(),
+                error="LLM scorer requires a runtime step; evaluation skipped.",
+            )
+
+        try:
+            execution_context = self._execution_context_from_extensions(extensions)
+        except ValueError as exc:
+            return self._handle_error(exc)
+        if execution_context is None:
+            return EvaluatorResult(
+                matched=False,
+                confidence=0.0,
+                message="LLM scorer requires authenticated execution context; evaluation skipped.",
+                metadata=self._base_metadata(),
+                error="LLM scorer requires authenticated execution context; evaluation skipped.",
+            )
+
         input_text, output_text = self._prepare_payload(data)
         if not (_has_text(input_text) or _has_text(output_text)):
             return EvaluatorResult(
@@ -277,14 +304,11 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
             )
 
         try:
-            execution_context = self._execution_context_from_extensions(extensions)
             scorer_kwargs = self._scorer_kwargs()
-            if step is not None:
-                scorer_kwargs["step"] = step
-                scorer_kwargs["selected_data"] = data
-                scorer_kwargs["selected_data_payload_field"] = self.config.payload_field
-            if execution_context is not None:
-                scorer_kwargs["execution_context"] = execution_context
+            scorer_kwargs["step"] = step
+            scorer_kwargs["selected_data"] = data
+            scorer_kwargs["selected_data_payload_field"] = self.config.payload_field
+            scorer_kwargs["execution_context"] = execution_context
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,

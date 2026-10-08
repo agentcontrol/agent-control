@@ -522,11 +522,12 @@ class GalileoLLMClient:
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
-            step: Optional complete runtime step used for structured dual-write.
+            step: Required runtime step; invocation is rejected without it.
             selected_data: Raw selector-selected value used to construct the record,
                 preserving its structure independently from serialized legacy inputs.
             selected_data_payload_field: Record input/output side for scalar selector values.
-            execution_context: Optional authenticated Galileo scorer context.
+            execution_context: Required authenticated Galileo scorer context; Orbit uses
+                it to fetch LLM credentials.
             config: Optional scorer invocation configuration.
             timeout: Request timeout in seconds.
             headers: Additional request headers.
@@ -535,12 +536,16 @@ class GalileoLLMClient:
             Parsed scorer invocation response.
 
         Raises:
-            ValueError: If neither input nor output is provided, or the timeout
-                ordering is invalid.
+            ValueError: If step or execution_context are absent, neither input nor
+                output is provided, or the timeout ordering is invalid.
             RuntimeError: If the API response is not a JSON object.
             httpx.HTTPStatusError: If the invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
         """
+        if step is None:
+            raise ValueError("LLM scorer invocation requires a runtime step.")
+        if execution_context is None:
+            raise ValueError("LLM scorer invocation requires an authenticated execution context.")
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
@@ -557,7 +562,7 @@ class GalileoLLMClient:
                 selected_data=selected_data,
                 payload_field=selected_data_payload_field,
             )
-            if step is not None and scorer_version_id is not None
+            if scorer_version_id is not None
             else None
         )
         request_body = ScorerInvokeRequest(
@@ -567,8 +572,8 @@ class GalileoLLMClient:
             inputs=ScorerInvokeInputs(
                 query="" if input is None else input,
                 response="" if output is None else output,
-                ground_truth=step.ground_truth if step is not None else None,
-                tools=step.tools if step is not None else None,
+                ground_truth=step.ground_truth,
+                tools=step.tools,
             ),
             record=record,
             execution_context=execution_context,

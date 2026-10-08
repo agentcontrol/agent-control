@@ -17,7 +17,28 @@ import pytest
 LLM_ENV = {
     "GALILEO_API_SECRET_KEY": "test-secret",
     "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
+    "GALILEO_FEATURE_FLAG_LLM_INVOKE_RUNTIME": "enabled",
 }
+
+_EXTENSIONS = {
+    "namespace_key": "org-1",
+    "caller_id": "user-1",
+    "target_type": "log_stream",
+    "target_id": "run-1",
+    "metadata": {},
+}
+
+
+def _make_invoke_kwargs() -> dict[str, object]:
+    """Minimal required kwargs for GalileoLLMClient.invoke()."""
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm.client import GalileoExecutionContext
+
+    return {
+        "step": Step(type="llm", name="test", input="prompt"),
+        "execution_context": GalileoExecutionContext(organization_id="org-1"),
+    }
 
 
 def _decode_jwt_payload(token: str) -> dict[str, object]:
@@ -289,12 +310,15 @@ async def test_evaluator_handles_non_success_status(monkeypatch):
     """A non-success status from the scorer must surface as an error result."""
     for key, value in LLM_ENV.items():
         monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
     from agent_control_evaluator_galileo.llm import LlmEvaluator, ScorerInvokeResponse
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
     evaluator = LlmEvaluator.from_dict(
         {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
     )
+    step = Step(type="llm", name="test", input="prompt")
 
     with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
         mock_invoke.return_value = ScorerInvokeResponse(
@@ -304,7 +328,7 @@ async def test_evaluator_handles_non_success_status(monkeypatch):
             error_message="upstream timeout",
         )
 
-        result = await evaluator.evaluate("hello")
+        result = await evaluator.evaluate_with_extensions("hello", step, _EXTENSIONS)
 
     assert result.matched is False
     assert result.error is not None
@@ -316,13 +340,16 @@ async def test_evaluator_skips_empty_data(monkeypatch):
     """Evaluator skips invocation when there is no text to score."""
     for key, value in LLM_ENV.items():
         monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
     from agent_control_evaluator_galileo.llm import LlmEvaluator
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
     evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    step = Step(type="llm", name="test", input="prompt")
 
     with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
-        result = await evaluator.evaluate(None)
+        result = await evaluator.evaluate_with_extensions(None, step, _EXTENSIONS)
 
     assert result.matched is False
     assert result.error is None
@@ -335,10 +362,13 @@ async def test_evaluator_returns_error_result_on_http_error(monkeypatch):
     """HTTP errors must surface as a non-matched EvaluatorResult with metadata."""
     for key, value in LLM_ENV.items():
         monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
     from agent_control_evaluator_galileo.llm import LlmEvaluator
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
     evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    step = Step(type="llm", name="test", input="prompt")
 
     fake_request = httpx.Request("POST", "http://luna-invoke:8090/api/v1/scorers/invoke")
     fake_response = httpx.Response(500, text="internal server error", request=fake_request)
@@ -349,7 +379,7 @@ async def test_evaluator_returns_error_result_on_http_error(monkeypatch):
         new_callable=AsyncMock,
         side_effect=httpx.HTTPStatusError("500", request=fake_request, response=fake_response),
     ):
-        result = await evaluator.evaluate("hello")
+        result = await evaluator.evaluate_with_extensions("hello", step, _EXTENSIONS)
 
     assert result.matched is False
     assert result.error is not None
@@ -755,7 +785,7 @@ async def test_invoke_raises_when_response_is_not_a_json_object(monkeypatch):
 
     try:
         with pytest.raises(RuntimeError, match="not a JSON object"):
-            await client.invoke(scorer_id="scorer-123", input="hello")
+            await client.invoke(scorer_id="scorer-123", input="hello", **_make_invoke_kwargs())
     finally:
         await client.close()
 
@@ -785,7 +815,7 @@ async def test_invoke_propagates_http_status_error(monkeypatch):
 
     try:
         with pytest.raises(httpx.HTTPStatusError):
-            await client.invoke(scorer_id="scorer-123", input="hello")
+            await client.invoke(scorer_id="scorer-123", input="hello", **_make_invoke_kwargs())
     finally:
         await client.close()
 
@@ -806,7 +836,7 @@ async def test_invoke_propagates_request_error(monkeypatch):
 
     try:
         with pytest.raises(httpx.RequestError):
-            await client.invoke(scorer_id="scorer-123", input="hello")
+            await client.invoke(scorer_id="scorer-123", input="hello", **_make_invoke_kwargs())
     finally:
         await client.close()
 
@@ -846,6 +876,7 @@ async def test_invoke_strips_caller_supplied_galileo_api_key_header(monkeypatch)
             scorer_id="scorer-123",
             input="hello",
             headers={"Galileo-API-Key": "should-be-stripped", "X-Custom": "keep-me"},
+            **_make_invoke_kwargs(),
         )
     finally:
         await client.close()
@@ -873,7 +904,7 @@ async def test_invoke_always_emits_config_field(monkeypatch):
     client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
     try:
-        await client.invoke(scorer_id="scorer-123", input="hello")
+        await client.invoke(scorer_id="scorer-123", input="hello", **_make_invoke_kwargs())
     finally:
         await client.close()
 
@@ -951,7 +982,7 @@ class TestLlmEvaluatorConfigValidation:
 
 @pytest.mark.asyncio
 async def test_evaluator_with_context_uses_step(monkeypatch):
-    """evaluate_with_context passes the step to _evaluate."""
+    """evaluate_with_extensions passes the step and execution_context to invoke."""
     for key, value in LLM_ENV.items():
         monkeypatch.setenv(key, value)
     from agent_control_models import Step
@@ -964,10 +995,11 @@ async def test_evaluator_with_context_uses_step(monkeypatch):
 
     with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
         mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-        result = await evaluator.evaluate_with_context("selected input", step)
+        result = await evaluator.evaluate_with_extensions("selected input", step, _EXTENSIONS)
 
     assert result.matched is True
     assert mock_invoke.call_args.kwargs["step"] == step
+    assert mock_invoke.call_args.kwargs["execution_context"] is not None
 
 
 @pytest.mark.asyncio
@@ -975,18 +1007,21 @@ async def test_evaluator_scorer_label_echoed_in_metadata(monkeypatch):
     """scorer_label echoed from the response is included in result metadata."""
     for key, value in LLM_ENV.items():
         monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
     from agent_control_evaluator_galileo.llm import LlmEvaluator
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient, ScorerInvokeResponse
 
     evaluator = LlmEvaluator.from_dict(
         {"scorer_id": "scorer-123", "threshold": 0.5, "scorer_label": "my-label"}
     )
+    step = Step(type="llm", name="test", input="prompt")
 
     with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
         mock_invoke.return_value = ScorerInvokeResponse(
             scorer_label="echoed-label", score=0.8, status="success"
         )
-        result = await evaluator.evaluate("hello")
+        result = await evaluator.evaluate_with_extensions("hello", step, _EXTENSIONS)
 
     assert result.metadata.get("scorer_label") == "echoed-label"
 
@@ -996,6 +1031,8 @@ async def test_evaluator_scorer_version_id_in_metadata(monkeypatch):
     """scorer_version_id is included in metadata when configured."""
     for key, value in LLM_ENV.items():
         monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
     from agent_control_evaluator_galileo.llm import LlmEvaluator
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient, ScorerInvokeResponse
 
@@ -1006,10 +1043,11 @@ async def test_evaluator_scorer_version_id_in_metadata(monkeypatch):
             "threshold": 0.5,
         }
     )
+    step = Step(type="llm", name="test", input="prompt")
 
     with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
         mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
-        result = await evaluator.evaluate("hello")
+        result = await evaluator.evaluate_with_extensions("hello", step, _EXTENSIONS)
 
     assert result.metadata.get("requested_scorer_version_id") == "ver-456"
     assert mock_invoke.call_args.kwargs["scorer_version_id"] == "ver-456"

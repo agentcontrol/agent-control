@@ -11,6 +11,7 @@ from agent_control_models import Step
 LLM_ENV = {
     "GALILEO_API_SECRET_KEY": "test-secret",
     "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
+    "GALILEO_FEATURE_FLAG_LLM_INVOKE_RUNTIME": "enabled",
 }
 
 
