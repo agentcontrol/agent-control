@@ -1,7 +1,7 @@
 """Evaluator system for agent_control.
 
 This module provides an evaluator architecture for extending agent_control
-with external evaluation systems like Galileo Luna, Guardrails AI, etc.
+with external evaluation systems like Galileo Luna, Galileo LLM, Guardrails AI, etc.
 
 Evaluator Discovery:
     Call `discover_evaluators()` at startup to load evaluators. This loads:
@@ -14,7 +14,12 @@ Galileo evaluators:
     When installed with galileo extras, the Galileo evaluator types are available:
     ```python
     from agent_control.evaluators import LunaEvaluator, LunaEvaluatorConfig  # if galileo installed
+    from agent_control.evaluators import LlmEvaluator, LlmEvaluatorConfig    # if galileo installed
     ```
+
+    Note: ``galileo.llm`` requires ``GALILEO_FEATURE_FLAG_LLM_EVALUATOR=enabled`` to be set.
+    The evaluator is unavailable (``is_available()`` returns ``False``) until this flag is present,
+    as it depends on Orbit-side support for ``execution_context`` to fetch LLM credentials.
 """
 
 from agent_control_engine import (
@@ -58,6 +63,28 @@ try:
             "LunaEvaluatorConfig",
             "LunaOperator",
             "LUNA_AVAILABLE",
+        ]
+    )
+except ImportError:
+    pass
+
+# Optionally export LLM evaluator types when available
+try:
+    from agent_control_evaluator_galileo.llm import (  # type: ignore[import-not-found]  # noqa: F401
+        LLM_AVAILABLE,
+        GalileoLLMClient,
+        LlmEvaluator,
+        LlmEvaluatorConfig,
+        LlmOperator,
+    )
+
+    __all__.extend(
+        [
+            "GalileoLLMClient",
+            "LlmEvaluator",
+            "LlmEvaluatorConfig",
+            "LlmOperator",
+            "LLM_AVAILABLE",
         ]
     )
 except ImportError:

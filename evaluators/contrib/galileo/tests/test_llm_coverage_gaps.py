@@ -1,0 +1,1053 @@
+"""Targeted tests filling coverage gaps in llm/evaluator.py and llm/client.py.
+
+These tests cover the small utility functions and rare branches that the
+integration-style tests in ``test_llm_evaluator.py`` skip past.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from base64 import urlsafe_b64decode
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
+import pytest
+
+LLM_ENV = {
+    "GALILEO_API_SECRET_KEY": "test-secret",
+    "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
+    "GALILEO_FEATURE_FLAG_LLM_EVALUATOR": "enabled",
+}
+
+_EXTENSIONS = {
+    "namespace_key": "org-1",
+    "caller_id": "user-1",
+    "target_type": "log_stream",
+    "target_id": "run-1",
+    "metadata": {},
+}
+
+
+def _make_invoke_kwargs() -> dict[str, object]:
+    """Minimal required kwargs for GalileoLLMClient.invoke()."""
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm.client import GalileoExecutionContext
+
+    return {
+        "step": Step(type="llm", name="test", input="prompt"),
+        "execution_context": GalileoExecutionContext(organization_id="org-1"),
+    }
+
+
+def _decode_jwt_payload(token: str) -> dict[str, object]:
+    payload_segment = token.split(".")[1]
+    padded = payload_segment + ("=" * (-len(payload_segment) % 4))
+    return json.loads(urlsafe_b64decode(padded.encode()).decode())
+
+
+# =============================================================================
+# llm/evaluator.py: utility helpers
+# =============================================================================
+
+
+class TestCoercePayloadText:
+    """``_coerce_payload_text`` normalises arbitrary values to strings."""
+
+    def test_none_returns_none(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _coerce_payload_text
+
+        assert _coerce_payload_text(None) is None
+
+    def test_string_passed_through(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _coerce_payload_text
+
+        assert _coerce_payload_text("hello") == "hello"
+
+    @pytest.mark.parametrize("value", [42, 3.14, True])
+    def test_scalars_stringified(self, value):
+        from agent_control_evaluator_galileo.llm.evaluator import _coerce_payload_text
+
+        assert _coerce_payload_text(value) == str(value)
+
+    def test_dict_is_json_serialized(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _coerce_payload_text
+
+        result = _coerce_payload_text({"a": 1, "b": 2})
+
+        assert json.loads(result) == {"a": 1, "b": 2}
+
+    def test_unserialisable_falls_back_to_str(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _coerce_payload_text
+
+        class CannotJson:
+            def __repr__(self):
+                return "<CannotJson>"
+
+        cannot = CannotJson()
+        result = _coerce_payload_text({"obj": cannot})
+
+        # default=str converts the inner object, so we still get a JSON string.
+        assert isinstance(result, str)
+
+
+class TestExtractDictText:
+    """``_extract_dict_text`` returns ``None`` for missing keys."""
+
+    def test_missing_key_returns_none(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _extract_dict_text
+
+        assert _extract_dict_text({}, "absent") is None
+
+    def test_present_key_coerced(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _extract_dict_text
+
+        assert _extract_dict_text({"x": 7}, "x") == "7"
+
+
+class TestContains:
+    """``_contains`` supports str/list and dict values against a threshold."""
+
+    def test_none_threshold_is_no_match(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _contains
+
+        assert _contains("anything", None) is False
+
+    def test_string_contains_substring(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _contains
+
+        assert _contains("hello world", "world") is True
+        assert _contains("hello world", "absent") is False
+
+    def test_list_contains_value(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _contains
+
+        assert _contains(["a", "b", "c"], "b") is True
+        assert _contains(["a", "b", "c"], "z") is False
+
+    def test_dict_threshold_does_not_match_key(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _contains
+
+        assert _contains({"toxicity": 0.9}, "toxicity") is False
+
+    def test_dict_threshold_matches_value(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _contains
+
+        assert _contains({"label": "flagged"}, "flagged") is True
+
+    def test_other_types_return_false(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _contains
+
+        assert _contains(42, 42) is False
+
+
+class TestConfidenceFromScore:
+    """``_confidence_from_score`` maps a raw score to [0, 1]."""
+
+    def test_true_bool_maps_to_one(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _confidence_from_score
+
+        assert _confidence_from_score(True) == 1.0
+
+    def test_false_bool_maps_to_zero(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _confidence_from_score
+
+        assert _confidence_from_score(False) == 0.0
+
+    def test_in_range_number_returned_as_is(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _confidence_from_score
+
+        assert _confidence_from_score(0.42) == 0.42
+
+    def test_out_of_range_falls_back_to_one(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _confidence_from_score
+
+        assert _confidence_from_score(7.2) == 1.0
+
+    def test_non_numeric_falls_back_to_one(self):
+        from agent_control_evaluator_galileo.llm.evaluator import _confidence_from_score
+
+        assert _confidence_from_score("not-a-number") == 1.0
+
+
+# =============================================================================
+# llm/evaluator.py: _score_matches operator branches
+# =============================================================================
+
+
+@pytest.fixture
+def llm_evaluator(monkeypatch):
+    """A ready-to-use LlmEvaluator instance with auth env wired up."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm import LlmEvaluator
+
+    return LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"})
+
+
+class TestScoreMatchesOperators:
+    """Every operator branch in ``_score_matches`` should evaluate."""
+
+    def _make(self, operator, threshold, monkeypatch):
+        for key, value in LLM_ENV.items():
+            monkeypatch.setenv(key, value)
+        from agent_control_evaluator_galileo.llm import LlmEvaluator
+
+        return LlmEvaluator.from_dict(
+            {"scorer_id": "scorer-123", "threshold": threshold, "operator": operator}
+        )
+
+    def test_any_truthy_score_matches(self, monkeypatch):
+        evaluator = self._make("any", 0.5, monkeypatch)
+        assert evaluator._score_matches(1) is True
+        assert evaluator._score_matches(0) is False
+
+    def test_eq_matches_threshold(self, monkeypatch):
+        evaluator = self._make("eq", "flagged", monkeypatch)
+        assert evaluator._score_matches("flagged") is True
+        assert evaluator._score_matches("safe") is False
+
+    def test_ne_matches_when_different(self, monkeypatch):
+        evaluator = self._make("ne", "flagged", monkeypatch)
+        assert evaluator._score_matches("safe") is True
+        assert evaluator._score_matches("flagged") is False
+
+    def test_contains_matches_substring(self, monkeypatch):
+        evaluator = self._make("contains", "flag", monkeypatch)
+        assert evaluator._score_matches("flagged") is True
+        assert evaluator._score_matches("clean") is False
+
+    def test_numeric_operators_all_branches(self, monkeypatch):
+        for op, expectations in [
+            ("gt", [(0.9, True), (0.5, False)]),
+            ("gte", [(0.5, True), (0.4, False)]),
+            ("lt", [(0.4, True), (0.5, False)]),
+            ("lte", [(0.5, True), (0.6, False)]),
+        ]:
+            evaluator = self._make(op, 0.5, monkeypatch)
+            for score, expected in expectations:
+                assert evaluator._score_matches(score) is expected, (op, score)
+
+    def test_numeric_operator_rejects_non_numeric_score(self, monkeypatch):
+        evaluator = self._make("gte", 0.5, monkeypatch)
+        with pytest.raises(ValueError, match="not numeric"):
+            evaluator._score_matches("not-a-number")
+
+
+# =============================================================================
+# llm/evaluator.py: payload preparation + aclose
+# =============================================================================
+
+
+class TestPreparePayload:
+    """``_prepare_payload`` routes scalar data using explicit config."""
+
+    def test_scalar_routed_to_input_by_default(self, monkeypatch):
+        for key, value in LLM_ENV.items():
+            monkeypatch.setenv(key, value)
+        from agent_control_evaluator_galileo.llm import LlmEvaluator
+
+        evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+
+        input_text, output_text = evaluator._prepare_payload("hello")
+
+        assert input_text == "hello"
+        assert output_text is None
+
+    def test_scalar_routed_to_output_when_payload_field_is_output(self, monkeypatch):
+        for key, value in LLM_ENV.items():
+            monkeypatch.setenv(key, value)
+        from agent_control_evaluator_galileo.llm import LlmEvaluator
+
+        evaluator = LlmEvaluator.from_dict(
+            {"scorer_id": "scorer-123", "threshold": 0.5, "payload_field": "output"}
+        )
+
+        input_text, output_text = evaluator._prepare_payload("hello")
+
+        assert input_text is None
+        assert output_text == "hello"
+
+    def test_structured_payload_uses_input_output_keys_over_payload_field(self, monkeypatch):
+        for key, value in LLM_ENV.items():
+            monkeypatch.setenv(key, value)
+        from agent_control_evaluator_galileo.llm import LlmEvaluator
+
+        evaluator = LlmEvaluator.from_dict(
+            {"scorer_id": "scorer-123", "threshold": 0.5, "payload_field": "output"}
+        )
+
+        input_text, output_text = evaluator._prepare_payload(
+            {"input": "prompt", "output": "answer"}
+        )
+
+        assert input_text == "prompt"
+        assert output_text == "answer"
+
+
+@pytest.mark.asyncio
+async def test_evaluator_aclose_closes_underlying_client(monkeypatch):
+    """``aclose`` must release the eagerly-created client without clearing it."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm import LlmEvaluator
+
+    evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+
+    fake = MagicMock()
+    fake.close = AsyncMock()
+    evaluator._client = fake
+
+    await evaluator.aclose()
+
+    fake.close.assert_awaited_once()
+    assert evaluator._client is fake
+
+
+@pytest.mark.asyncio
+async def test_evaluator_handles_non_success_status(monkeypatch):
+    """A non-success status from the scorer must surface as an error result."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm import LlmEvaluator, ScorerInvokeResponse
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    evaluator = LlmEvaluator.from_dict(
+        {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
+    )
+    step = Step(type="llm", name="test", input="prompt")
+
+    with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.return_value = ScorerInvokeResponse(
+            scorer_label="toxicity",
+            score=None,
+            status="failed",
+            error_message="upstream timeout",
+        )
+
+        result = await evaluator.evaluate_with_extensions("hello", step, _EXTENSIONS)
+
+    assert result.matched is False
+    assert result.error is not None
+    assert "upstream timeout" in result.error
+
+
+@pytest.mark.asyncio
+async def test_evaluator_skips_empty_data(monkeypatch):
+    """Evaluator skips invocation when there is no text to score."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm import LlmEvaluator
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    step = Step(type="llm", name="test", input="prompt")
+
+    with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+        result = await evaluator.evaluate_with_extensions(None, step, _EXTENSIONS)
+
+    assert result.matched is False
+    assert result.error is None
+    assert "No data to score" in result.message
+    mock_invoke.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_evaluator_returns_error_result_on_http_error(monkeypatch):
+    """HTTP errors must surface as a non-matched EvaluatorResult with metadata."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm import LlmEvaluator
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    step = Step(type="llm", name="test", input="prompt")
+
+    fake_request = httpx.Request("POST", "http://luna-invoke:8090/api/v1/scorers/invoke")
+    fake_response = httpx.Response(500, text="internal server error", request=fake_request)
+
+    with patch.object(
+        GalileoLLMClient,
+        "invoke",
+        new_callable=AsyncMock,
+        side_effect=httpx.HTTPStatusError("500", request=fake_request, response=fake_response),
+    ):
+        result = await evaluator.evaluate_with_extensions("hello", step, _EXTENSIONS)
+
+    assert result.matched is False
+    assert result.error is not None
+    assert result.metadata.get("http_status_code") == 500
+
+
+# =============================================================================
+# llm/evaluator.py: package version fallback
+# =============================================================================
+
+
+def test_resolve_package_version_falls_back_when_metadata_missing():
+    """The dev fallback must trigger when the package isn't installed by metadata."""
+    from importlib.metadata import PackageNotFoundError
+
+    from agent_control_evaluator_galileo.llm import evaluator as evaluator_module
+
+    with patch.object(evaluator_module, "version", side_effect=PackageNotFoundError):
+        result = evaluator_module._resolve_package_version()
+
+    assert result == "0.0.0.dev"
+
+
+# =============================================================================
+# llm/client.py: small helpers + branches
+# =============================================================================
+
+
+class TestAsFloatOrNone:
+    """``_as_float_or_none`` parses scalar values; strings may fail."""
+
+    def test_returns_none_for_bool(self):
+        from agent_control_evaluator_galileo.llm.client import _as_float_or_none
+
+        assert _as_float_or_none(True) is None
+
+    def test_returns_none_for_none(self):
+        from agent_control_evaluator_galileo.llm.client import _as_float_or_none
+
+        assert _as_float_or_none(None) is None
+
+    def test_returns_float_for_int(self):
+        from agent_control_evaluator_galileo.llm.client import _as_float_or_none
+
+        assert _as_float_or_none(7) == 7.0
+
+    def test_returns_float_for_string_number(self):
+        from agent_control_evaluator_galileo.llm.client import _as_float_or_none
+
+        assert _as_float_or_none("0.42") == 0.42
+
+    def test_returns_none_for_unparseable_string(self):
+        from agent_control_evaluator_galileo.llm.client import _as_float_or_none
+
+        assert _as_float_or_none("not-a-number") is None
+
+    def test_returns_none_for_other_types(self):
+        from agent_control_evaluator_galileo.llm.client import _as_float_or_none
+
+        assert _as_float_or_none([1, 2]) is None
+
+
+class TestHasValue:
+    """``_has_value`` is the "is this scorable" predicate."""
+
+    def test_none_is_empty(self):
+        from agent_control_evaluator_galileo.llm.client import _has_value
+
+        assert _has_value(None) is False
+
+    def test_empty_string_is_empty(self):
+        from agent_control_evaluator_galileo.llm.client import _has_value
+
+        assert _has_value("") is False
+        assert _has_value("   ") is False
+
+    def test_non_empty_string_has_value(self):
+        from agent_control_evaluator_galileo.llm.client import _has_value
+
+        assert _has_value("hi") is True
+
+    def test_empty_list_or_dict_is_empty(self):
+        from agent_control_evaluator_galileo.llm.client import _has_value
+
+        assert _has_value([]) is False
+        assert _has_value({}) is False
+
+    def test_non_empty_list_or_dict_has_value(self):
+        from agent_control_evaluator_galileo.llm.client import _has_value
+
+        assert _has_value([1]) is True
+        assert _has_value({"k": "v"}) is True
+
+    def test_scalar_other_types_have_value(self):
+        from agent_control_evaluator_galileo.llm.client import _has_value
+
+        assert _has_value(42) is True
+        assert _has_value(0) is True
+        assert _has_value(True) is True
+
+
+class TestEffectiveScorerTimeout:
+    """``_effective_scorer_timeout`` applies 80% server timeout by default."""
+
+    def test_defaults_to_80_percent_of_http_timeout(self):
+        from agent_control_evaluator_galileo.llm.client import (
+            ScorerInvokeConfig,
+            _effective_scorer_timeout,
+        )
+
+        config = _effective_scorer_timeout(ScorerInvokeConfig(), http_timeout_seconds=10.0)
+        assert config.request_timeout_seconds == pytest.approx(8.0)
+
+    def test_explicit_server_timeout_preserved_when_shorter(self):
+        from agent_control_evaluator_galileo.llm.client import (
+            ScorerInvokeConfig,
+            _effective_scorer_timeout,
+        )
+
+        config = _effective_scorer_timeout(
+            ScorerInvokeConfig(request_timeout_seconds=5.0), http_timeout_seconds=10.0
+        )
+        assert config.request_timeout_seconds == 5.0
+
+    def test_explicit_server_timeout_equal_to_http_raises(self):
+        from agent_control_evaluator_galileo.llm.client import (
+            ScorerInvokeConfig,
+            _effective_scorer_timeout,
+        )
+
+        with pytest.raises(ValueError, match="shorter than the HTTP timeout"):
+            _effective_scorer_timeout(
+                ScorerInvokeConfig(request_timeout_seconds=10.0), http_timeout_seconds=10.0
+            )
+
+    def test_zero_http_timeout_raises(self):
+        from agent_control_evaluator_galileo.llm.client import (
+            ScorerInvokeConfig,
+            _effective_scorer_timeout,
+        )
+
+        with pytest.raises(ValueError, match="greater than 0"):
+            _effective_scorer_timeout(ScorerInvokeConfig(), http_timeout_seconds=0.0)
+
+
+class TestLoadFloatEnv:
+    """``_load_float_env`` reads float env vars with a default."""
+
+    def test_returns_default_when_unset(self, monkeypatch):
+        from agent_control_evaluator_galileo.llm.client import _load_float_env
+
+        monkeypatch.delenv("TEST_FLOAT_ENV", raising=False)
+        assert _load_float_env("TEST_FLOAT_ENV", 3.14) == 3.14
+
+    def test_returns_default_when_blank(self, monkeypatch):
+        from agent_control_evaluator_galileo.llm.client import _load_float_env
+
+        monkeypatch.setenv("TEST_FLOAT_ENV", "  ")
+        assert _load_float_env("TEST_FLOAT_ENV", 3.14) == 3.14
+
+    def test_parses_valid_float(self, monkeypatch):
+        from agent_control_evaluator_galileo.llm.client import _load_float_env
+
+        monkeypatch.setenv("TEST_FLOAT_ENV", "2.5")
+        assert _load_float_env("TEST_FLOAT_ENV", 1.0) == 2.5
+
+    def test_raises_on_invalid(self, monkeypatch):
+        from agent_control_evaluator_galileo.llm.client import _load_float_env
+
+        monkeypatch.setenv("TEST_FLOAT_ENV", "not-a-float")
+        with pytest.raises(ValueError, match="not a number"):
+            _load_float_env("TEST_FLOAT_ENV", 1.0)
+
+
+class TestLoadIntEnv:
+    """``_load_int_env`` reads integer env vars with a default."""
+
+    def test_returns_default_when_unset(self, monkeypatch):
+        from agent_control_evaluator_galileo.llm.client import _load_int_env
+
+        monkeypatch.delenv("TEST_INT_ENV", raising=False)
+        assert _load_int_env("TEST_INT_ENV", 42) == 42
+
+    def test_returns_default_when_blank(self, monkeypatch):
+        from agent_control_evaluator_galileo.llm.client import _load_int_env
+
+        monkeypatch.setenv("TEST_INT_ENV", "  ")
+        assert _load_int_env("TEST_INT_ENV", 42) == 42
+
+    def test_parses_valid_int(self, monkeypatch):
+        from agent_control_evaluator_galileo.llm.client import _load_int_env
+
+        monkeypatch.setenv("TEST_INT_ENV", "10")
+        assert _load_int_env("TEST_INT_ENV", 1) == 10
+
+    def test_raises_on_invalid(self, monkeypatch):
+        from agent_control_evaluator_galileo.llm.client import _load_int_env
+
+        monkeypatch.setenv("TEST_INT_ENV", "not-an-int")
+        with pytest.raises(ValueError, match="not an integer"):
+            _load_int_env("TEST_INT_ENV", 1)
+
+
+class TestValidateConnectionConfig:
+    """``_validate_connection_config`` rejects invalid tuning parameters."""
+
+    def _valid(self):
+        return {
+            "keepalive_expiry_seconds": 1.0,
+            "max_connections": 100,
+            "max_keepalive_connections": 20,
+            "client_pool_size": 1,
+        }
+
+    def test_negative_keepalive_raises(self):
+        from agent_control_evaluator_galileo.llm.client import _validate_connection_config
+
+        cfg = {**self._valid(), "keepalive_expiry_seconds": -1.0}
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
+            _validate_connection_config(**cfg)
+
+    def test_zero_max_connections_raises(self):
+        from agent_control_evaluator_galileo.llm.client import _validate_connection_config
+
+        cfg = {**self._valid(), "max_connections": 0}
+        with pytest.raises(ValueError, match="greater than 0"):
+            _validate_connection_config(**cfg)
+
+    def test_negative_max_keepalive_raises(self):
+        from agent_control_evaluator_galileo.llm.client import _validate_connection_config
+
+        cfg = {**self._valid(), "max_keepalive_connections": -1}
+        with pytest.raises(ValueError, match="greater than or equal to 0"):
+            _validate_connection_config(**cfg)
+
+    def test_keepalive_exceeds_connections_raises(self):
+        from agent_control_evaluator_galileo.llm.client import _validate_connection_config
+
+        cfg = {**self._valid(), "max_connections": 5, "max_keepalive_connections": 10}
+        with pytest.raises(ValueError, match="less than or equal to"):
+            _validate_connection_config(**cfg)
+
+    def test_zero_pool_size_raises(self):
+        from agent_control_evaluator_galileo.llm.client import _validate_connection_config
+
+        cfg = {**self._valid(), "client_pool_size": 0}
+        with pytest.raises(ValueError, match="greater than 0"):
+            _validate_connection_config(**cfg)
+
+
+class TestScorerInvokeRequestValidation:
+    """``ScorerInvokeRequest`` rejects malformed input combos."""
+
+    def test_missing_scorer_id_raises(self):
+        from agent_control_evaluator_galileo.llm.client import (
+            ScorerInvokeInputs,
+            ScorerInvokeRequest,
+        )
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="scorer_id"):
+            ScorerInvokeRequest(inputs=ScorerInvokeInputs(query="hello"))
+
+
+def test_client_raises_when_no_api_secret(monkeypatch):
+    """The client requires GALILEO_API_SECRET_KEY or GALILEO_API_SECRET."""
+    for name in ("GALILEO_API_SECRET_KEY", "GALILEO_API_SECRET"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna-invoke:8090")
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_SECRET"):
+        GalileoLLMClient()
+
+
+def test_client_raises_when_no_llm_invoke_url(monkeypatch):
+    """The client requires GALILEO_LUNA_INVOKE_URL."""
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.delenv("GALILEO_LUNA_INVOKE_URL", raising=False)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    with pytest.raises(ValueError, match="GALILEO_LUNA_INVOKE_URL"):
+        GalileoLLMClient()
+
+
+def test_client_jwt_has_internal_scope(monkeypatch):
+    """JWT produced by the client must carry internal=True and scope=scorers.invoke."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    client = GalileoLLMClient()
+    _, auth_header = client._endpoint_and_auth_header()
+
+    assert auth_header.startswith("Bearer ")
+    payload = _decode_jwt_payload(auth_header.removeprefix("Bearer "))
+    assert payload["internal"] is True
+    assert payload["scope"] == "scorers.invoke"
+
+
+def test_client_posts_to_correct_llm_invoke_endpoint(monkeypatch):
+    """_endpoint_and_auth_header must return the LLM invoke endpoint path."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    client = GalileoLLMClient()
+    endpoint, _ = client._endpoint_and_auth_header()
+
+    assert endpoint == "http://luna-invoke:8090/api/v1/scorers/invoke"
+
+
+def test_client_does_not_use_old_api_paths(monkeypatch):
+    """The client must not reference /internal/scorers/invoke."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    client = GalileoLLMClient()
+    endpoint, _ = client._endpoint_and_auth_header()
+
+    assert "/scorers/invoke" in endpoint
+    assert endpoint.startswith("http://luna-invoke:8090/api/v1/")
+    assert "/internal/scorers/invoke" not in endpoint
+
+
+@pytest.mark.asyncio
+async def test_get_client_does_not_set_galileo_api_key_header(monkeypatch):
+    """The HTTP client must never include a Galileo-API-Key header."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    client = GalileoLLMClient()
+    http_client = await client._get_client()
+    try:
+        assert "Galileo-API-Key" not in http_client.headers
+        assert "galileo-api-key" not in http_client.headers
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_get_client_uses_configured_llm_invoke_ca_file(monkeypatch):
+    """The HTTP client should verify TLS with the configured CA."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("GALILEO_LUNA_INVOKE_CA_FILE", "/etc/galileo/llm-invoke-ca.crt")
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    ssl_context = object()
+    with (
+        patch.object(GalileoLLMClient, "_load_ssl_context", return_value=ssl_context),
+        patch("httpx.AsyncClient") as async_client,
+    ):
+        client = GalileoLLMClient()
+        await client._get_client()
+
+    assert client.llm_invoke_ca_file == "/etc/galileo/llm-invoke-ca.crt"
+    assert async_client.call_args.kwargs["verify"] is ssl_context
+
+
+@pytest.mark.asyncio
+async def test_get_client_falls_back_to_agent_control_auth_upstream_ca_file(monkeypatch):
+    """Galileo in-cluster pods already mount the internal CA for auth upstream."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("GALILEO_LUNA_INVOKE_CA_FILE", raising=False)
+    monkeypatch.setenv(
+        "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE", "/etc/agent-control/auth-upstream-ca/ca.crt"
+    )
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    ssl_context = object()
+    with (
+        patch.object(GalileoLLMClient, "_load_ssl_context", return_value=ssl_context),
+        patch("httpx.AsyncClient") as async_client,
+    ):
+        client = GalileoLLMClient()
+        await client._get_client()
+
+    assert client.llm_invoke_ca_file == "/etc/agent-control/auth-upstream-ca/ca.crt"
+    assert async_client.call_args.kwargs["verify"] is ssl_context
+
+
+@pytest.mark.asyncio
+async def test_invoke_raises_when_response_is_not_a_json_object(monkeypatch):
+    """A non-object JSON body must surface as a clear RuntimeError."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    client = GalileoLLMClient()
+
+    fake_response = MagicMock()
+    fake_response.raise_for_status = MagicMock()
+    fake_response.json = MagicMock(return_value=["not", "an", "object"])
+
+    fake_http = AsyncMock()
+    fake_http.post = AsyncMock(return_value=fake_response)
+    fake_http.is_closed = False
+    client._client = fake_http
+
+    try:
+        with pytest.raises(RuntimeError, match="not a JSON object"):
+            await client.invoke(scorer_id="scorer-123", input="hello", **_make_invoke_kwargs())
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_invoke_propagates_http_status_error(monkeypatch):
+    """The client logs and re-raises HTTP status errors."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    client = GalileoLLMClient()
+
+    fake_response = MagicMock(spec=httpx.Response)
+    fake_response.status_code = 500
+    fake_response.text = "internal error"
+    fake_response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "boom", request=MagicMock(spec=httpx.Request), response=fake_response
+        )
+    )
+
+    fake_http = AsyncMock()
+    fake_http.post = AsyncMock(return_value=fake_response)
+    fake_http.is_closed = False
+    client._client = fake_http
+
+    try:
+        with pytest.raises(httpx.HTTPStatusError):
+            await client.invoke(scorer_id="scorer-123", input="hello", **_make_invoke_kwargs())
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_invoke_propagates_request_error(monkeypatch):
+    """RequestError is logged and re-raised so callers can decide policy."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    client = GalileoLLMClient()
+
+    fake_http = AsyncMock()
+    fake_http.post = AsyncMock(side_effect=httpx.RequestError("network down"))
+    fake_http.is_closed = False
+    client._client = fake_http
+
+    try:
+        with pytest.raises(httpx.RequestError):
+            await client.invoke(scorer_id="scorer-123", input="hello", **_make_invoke_kwargs())
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_client_async_context_manager_closes_on_exit(monkeypatch):
+    """Entering/exiting the async context manager must close the client."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    async with GalileoLLMClient() as client:
+        await client._get_client()
+        assert client._client is not None
+
+    assert client._client is None
+
+
+@pytest.mark.asyncio
+async def test_invoke_strips_caller_supplied_galileo_api_key_header(monkeypatch):
+    """Regression: a Galileo-API-Key passed via the headers kwarg must be stripped."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        return httpx.Response(200, json={"score": 0.9, "status": "success"})
+
+    client = GalileoLLMClient()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    try:
+        await client.invoke(
+            scorer_id="scorer-123",
+            input="hello",
+            headers={"Galileo-API-Key": "should-be-stripped", "X-Custom": "keep-me"},
+            **_make_invoke_kwargs(),
+        )
+    finally:
+        await client.close()
+
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert "galileo-api-key" not in headers
+    assert headers.get("x-custom") == "keep-me"
+
+
+@pytest.mark.asyncio
+async def test_invoke_always_emits_config_field(monkeypatch):
+    """The request always carries a server timeout below its HTTP deadline."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"score": 0.5, "status": "success"})
+
+    client = GalileoLLMClient()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    try:
+        await client.invoke(scorer_id="scorer-123", input="hello", **_make_invoke_kwargs())
+    finally:
+        await client.close()
+
+    assert "config" in captured["body"]
+    assert captured["body"]["config"] == {"request_timeout_seconds": 8.0}
+
+
+@pytest.mark.asyncio
+async def test_client_pool_round_robin(monkeypatch):
+    """With pool_size > 1, the client rotates through multiple connections."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("GALILEO_LUNA_CLIENT_POOL_SIZE", "2")
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
+
+    client = GalileoLLMClient()
+    assert client.client_pool_size == 2
+
+    first = await client._get_client()
+    second = await client._get_client()
+    third = await client._get_client()
+
+    # With pool_size=2, two distinct clients exist and we cycle back
+    assert len(client._clients) == 2
+    assert first is not second
+    assert third is first  # wraps around
+
+    await client.close()
+    assert client._clients == []
+
+
+# =============================================================================
+# llm/config.py: threshold validator branches
+# =============================================================================
+
+
+class TestLlmEvaluatorConfigValidation:
+    """``LlmEvaluatorConfig.validate_threshold`` exercises all branches."""
+
+    def test_numeric_operator_with_non_numeric_threshold_raises(self):
+        from agent_control_evaluator_galileo.llm.config import LlmEvaluatorConfig
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="numeric threshold"):
+            LlmEvaluatorConfig(scorer_id="scorer-123", operator="gt", threshold="not-a-number")
+
+    def test_none_threshold_with_non_any_operator_raises(self):
+        from agent_control_evaluator_galileo.llm.config import LlmEvaluatorConfig
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="threshold is required"):
+            LlmEvaluatorConfig(scorer_id="scorer-123", operator="eq", threshold=None)
+
+    def test_any_operator_allows_none_threshold(self):
+        from agent_control_evaluator_galileo.llm.config import LlmEvaluatorConfig
+
+        config = LlmEvaluatorConfig(scorer_id="scorer-123", operator="any", threshold=None)
+        assert config.operator == "any"
+
+    def test_coerce_number_returns_none_for_list(self):
+        from agent_control_evaluator_galileo.llm.config import coerce_number
+
+        assert coerce_number([1, 2, 3]) is None
+
+    def test_coerce_number_returns_none_for_non_numeric_string(self):
+        from agent_control_evaluator_galileo.llm.config import coerce_number
+
+        assert coerce_number("abc") is None
+
+    def test_coerce_number_parses_numeric_string(self):
+        from agent_control_evaluator_galileo.llm.config import coerce_number
+
+        assert coerce_number("0.75") == pytest.approx(0.75)
+
+
+@pytest.mark.asyncio
+async def test_evaluator_with_context_uses_step(monkeypatch):
+    """evaluate_with_extensions passes the step and execution_context to invoke."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm import LlmEvaluator
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient, ScorerInvokeResponse
+
+    evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    step = Step(type="llm", name="test", input="prompt", output="answer")
+
+    with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
+        result = await evaluator.evaluate_with_extensions("selected input", step, _EXTENSIONS)
+
+    assert result.matched is True
+    assert mock_invoke.call_args.kwargs["step"] == step
+    assert mock_invoke.call_args.kwargs["execution_context"] is not None
+
+
+@pytest.mark.asyncio
+async def test_evaluator_scorer_label_echoed_in_metadata(monkeypatch):
+    """scorer_label echoed from the response is included in result metadata."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm import LlmEvaluator
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient, ScorerInvokeResponse
+
+    evaluator = LlmEvaluator.from_dict(
+        {"scorer_id": "scorer-123", "threshold": 0.5, "scorer_label": "my-label"}
+    )
+    step = Step(type="llm", name="test", input="prompt")
+
+    with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.return_value = ScorerInvokeResponse(
+            scorer_label="echoed-label", score=0.8, status="success"
+        )
+        result = await evaluator.evaluate_with_extensions("hello", step, _EXTENSIONS)
+
+    assert result.metadata.get("scorer_label") == "echoed-label"
+
+
+@pytest.mark.asyncio
+async def test_evaluator_scorer_version_id_in_metadata(monkeypatch):
+    """scorer_version_id is included in metadata when configured."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm import LlmEvaluator
+    from agent_control_evaluator_galileo.llm.client import GalileoLLMClient, ScorerInvokeResponse
+
+    evaluator = LlmEvaluator.from_dict(
+        {
+            "scorer_id": "scorer-123",
+            "scorer_version_id": "ver-456",
+            "threshold": 0.5,
+        }
+    )
+    step = Step(type="llm", name="test", input="prompt")
+
+    with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.return_value = ScorerInvokeResponse(score=0.8, status="success")
+        result = await evaluator.evaluate_with_extensions("hello", step, _EXTENSIONS)
+
+    assert result.metadata.get("requested_scorer_version_id") == "ver-456"
+    assert mock_invoke.call_args.kwargs["scorer_version_id"] == "ver-456"
