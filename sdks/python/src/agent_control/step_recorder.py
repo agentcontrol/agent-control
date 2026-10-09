@@ -9,7 +9,7 @@ dict representation and no separate converter.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 from typing import Any, Literal, TypeVar
 
 from agent_control_models import EvaluationResult, JSONObject, JSONValue, Step
@@ -21,12 +21,6 @@ from .validation import ensure_step_type
 
 T = TypeVar("T")
 
-# Step types whose children are reported as a span/trace tree; an absent
-# recording means "nothing happened", which the record factory treats
-# differently from "not applicable" (None). See models/agent.py and
-# records/factory.py for the trace/session child-shape rules this mirrors.
-_EMPTY_CHILDREN_STEP_TYPES = frozenset({"trace", "session"})
-
 
 def record_step(
     step_type: str,
@@ -36,8 +30,18 @@ def record_step(
     context: dict[str, Any] | None = None,
     tools: list[JSONObject] | None = None,
     ground_truth: JSONValue | None = None,
+    container_types: Collection[str] = (),
 ) -> StepRecorder:
-    """Start building a ``Step`` tree. Use as a context manager."""
+    """Start building a ``Step`` tree. Use as a context manager.
+
+    ``container_types`` names step types whose ``children`` should be
+    serialized as ``[]`` rather than omitted when none were recorded - e.g.
+    a trace/session that legitimately ran with zero children, as opposed to
+    a leaf type for which children isn't a meaningful concept at all. Step
+    types are caller-defined strings, so this isn't assumed; opt in with
+    e.g. ``container_types={"trace", "session"}``. Inherited by nested
+    ``.child()`` recorders unless overridden there.
+    """
     return StepRecorder(
         step_type,
         name,
@@ -45,6 +49,7 @@ def record_step(
         context=context,
         tools=tools,
         ground_truth=ground_truth,
+        container_types=frozenset(container_types),
     )
 
 
@@ -64,6 +69,7 @@ class StepRecorder:
         context: dict[str, Any] | None = None,
         tools: list[JSONObject] | None = None,
         ground_truth: JSONValue | None = None,
+        container_types: frozenset[str] = frozenset(),
         _parent: StepRecorder | None = None,
     ) -> None:
         self.type = ensure_step_type(step_type)
@@ -75,6 +81,7 @@ class StepRecorder:
         self.ground_truth = ground_truth
         self._children: list[Step] = []
         self._parent = _parent
+        self._container_types = container_types
 
     def __enter__(self) -> StepRecorder:
         return self
@@ -92,8 +99,13 @@ class StepRecorder:
         context: dict[str, Any] | None = None,
         tools: list[JSONObject] | None = None,
         ground_truth: JSONValue | None = None,
+        container_types: Collection[str] | None = None,
     ) -> StepRecorder:
-        """Start a nested recorder; it attaches to this node on ``__exit__``."""
+        """Start a nested recorder; it attaches to this node on ``__exit__``.
+
+        Inherits this node's ``container_types`` unless ``container_types``
+        is given explicitly.
+        """
         return StepRecorder(
             step_type,
             name,
@@ -101,6 +113,9 @@ class StepRecorder:
             context=context,
             tools=tools,
             ground_truth=ground_truth,
+            container_types=(
+                self._container_types if container_types is None else frozenset(container_types)
+            ),
             _parent=self,
         )
 
@@ -178,7 +193,7 @@ class StepRecorder:
             step_dict["ground_truth"] = self.ground_truth
         if self._children:
             step_dict["children"] = list(self._children)
-        elif self.type in _EMPTY_CHILDREN_STEP_TYPES:
+        elif self.type in self._container_types:
             step_dict["children"] = []
         return Step(**step_dict)  # type: ignore[arg-type]
 

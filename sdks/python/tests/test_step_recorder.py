@@ -140,23 +140,46 @@ def test_build_includes_context_tools_ground_truth():
     assert step.ground_truth == "hello"
 
 
-def test_empty_trace_and_session_build_empty_children_list():
-    """A trace/session with no recorded children gets children=[], not None."""
-    with record_step("trace", "empty_trace") as trace:
+def test_container_types_opts_in_to_empty_children_list():
+    """A declared container type with no recorded children gets children=[], not None."""
+    with record_step("trace", "empty_trace", container_types={"trace", "session"}) as trace:
         pass
-    with record_step("session", "empty_session") as session:
+    with record_step("session", "empty_session", container_types={"trace", "session"}) as session:
         pass
 
     assert trace.build().children == []
     assert session.build().children == []
 
 
-def test_llm_step_without_children_stays_none():
-    """Non trace/session step types are untouched when no children were recorded."""
+def test_step_type_without_container_types_stays_none():
+    """Step types are caller-defined strings; children stays None unless the
+    caller opts a type into container_types - no type is a container by default."""
+    with record_step("trace", "empty_trace") as trace:
+        pass
     with record_step("llm", "respond", input="hi") as leaf:
         leaf.output = "hello"
 
+    assert trace.build().children is None
     assert leaf.build().children is None
+
+
+def test_child_inherits_parent_container_types():
+    """A nested .child() recorder inherits the parent's container_types unless overridden."""
+    with record_step("session", "s", container_types={"trace", "session"}) as session:
+        with session.child("trace", "empty_trace") as trace:
+            pass
+
+    assert trace.build().children == []
+    assert session.build().children == [trace.build()]
+
+
+def test_child_can_override_container_types():
+    """A nested .child() recorder can override the inherited container_types."""
+    with record_step("session", "s", container_types={"trace", "session"}) as session:
+        with session.child("trace", "empty_trace", container_types=()) as trace:
+            pass
+
+    assert trace.build().children is None
 
 
 def test_add_attaches_prebuilt_step_or_dict():
