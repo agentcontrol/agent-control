@@ -84,53 +84,59 @@ async with agent_control.AgentControlClient() as client:
 The existing `evaluate_controls` helper remains available for callers that
 prefer its field-based convenience arguments.
 
-## Building trace/session steps
+## Building a step with children
 
-Trace- and session-level controls evaluate the aggregate of several
-already-executed child steps, so `Step.children` has to be populated by the
-caller. Building that tree by hand means hand-rolling a side-channel record
-for every leaf call and converting it into `Step` objects afterward:
+A control's scope can target any step type, including one that aggregates
+several already-executed child steps - `Step.children` just has to be
+populated by the caller. Building that tree by hand means hand-rolling a
+side-channel record for every leaf call and converting it into `Step`
+objects afterward:
 
 ```python
 # Before: a hand-built dict record next to the real return value
 def execute_policy_search(query):
     docs = search_policy_documents(query)
-    record = {"type": "retriever", "query": query, "docs": docs}
+    record = {"type": "lookup", "query": query, "docs": docs}
     return StepExecution(value=docs, record=record)
 
-spans = []
+children = []
 result = execute_policy_search(query)
-spans.append(result.record)
+children.append(result.record)
 ...
-trace_step = build_agent_control_step({"type": "trace", "spans": spans, ...})
+workflow_step = build_agent_control_step({"type": "workflow", "children": children, ...})
 ```
 
 `agent_control.record_step()` builds the same tree incrementally, in `Step`
 vocabulary, with no intermediate dict and no converter:
 
 ```python
-with agent_control.record_step("trace", "banking_trace", input={"request": req}) as trace:
-    with trace.child("retriever", "policy_lookup", input=query) as span:
+with agent_control.record_step("workflow", "banking_workflow", input={"request": req}) as workflow:
+    with workflow.child("lookup", "policy_lookup", input=query) as span:
         span.output = search_policy_documents(query)
 
-    account = trace.call(lookup_account, account_id="acct-1001", step_type="tool")
-    plan = trace.call(run_banking_model, req, step_type="llm", tools=TOOL_DEFINITIONS)
-    trace.output = {"status": "planned", "message": plan["content"]}
+    account = workflow.call(lookup_account, account_id="acct-1001", step_type="tool")
+    plan = workflow.call(run_banking_model, req, step_type="llm", tools=TOOL_DEFINITIONS)
+    workflow.output = {"status": "planned", "message": plan["content"]}
 
-result = await trace.evaluate(stage="post")
+result = await workflow.evaluate(stage="post")
 ```
 
-`trace.call(...)`/`await trace.acall(...)` run the function and record it as
-a child using the same capture logic as `@control()` (input from bound
+`workflow.call(...)`/`await workflow.acall(...)` run the function and record
+it as a child using the same capture logic as `@control()` (input from bound
 arguments, output from the return value), then return the real result -
 removing the need for a separate `StepExecution`-style wrapper. A failed
 call is still recorded (with the error in `context`) before the exception is
-re-raised. `trace.child(...)` nests another recorder the same way, so
-sessions nest traces with `session.child("trace", ...)`.
+re-raised. `workflow.child(...)` nests another recorder the same way, so a
+parent step can nest children of any depth, e.g. `session.child("trace",
+...)` for callers that model multi-turn sessions of traces.
 
-`trace.build()` produces the frozen `Step`; `trace.evaluate(...)` builds it
-and evaluates it in one call via `evaluate_step()` - the same function
-`evaluate_controls()` uses internally once its `Step` is built.
+`workflow.build()` produces the frozen `Step`, with `children=[]` instead of
+omitted (`None`) for a step type passed via `container_types` even when no
+children were recorded - e.g. `record_step("workflow", ..., container_types=
+{"workflow"})` for a workflow that legitimately ran with zero children.
+`workflow.evaluate(...)` builds the step and evaluates it in one call via
+`evaluate_step()` - the same function `evaluate_controls()` uses internally
+once its `Step` is built.
 
 ## Sharing an OpenTelemetry provider with Google ADK
 

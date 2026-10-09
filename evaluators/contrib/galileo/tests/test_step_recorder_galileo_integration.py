@@ -1,38 +1,9 @@
-"""Cross-package check: StepRecorder trees feed the Galileo record factory.
-
-The galileo extras are normally installed in the dev environment (see
-``test_evaluators_optional_imports.py``), so this skips cleanly when they
-are not available instead of failing the suite.
-"""
+"""Cross-package check: StepRecorder trees feed the Galileo record factory."""
 
 from __future__ import annotations
 
-import importlib.util
-
-import pytest
-
 from agent_control import record_step
-
-
-def _module_available(name: str) -> bool:
-    try:
-        return importlib.util.find_spec(name) is not None
-    except (ImportError, ValueError):
-        return False
-
-
-_GALILEO_INSTALLED = _module_available("agent_control_evaluator_galileo.records")
-
-pytestmark = pytest.mark.skipif(
-    not _GALILEO_INSTALLED,
-    reason="agent-control-evaluator-galileo extras not installed in this environment",
-)
-
-
-def _record_from_step(step):
-    from agent_control_evaluator_galileo.records.factory import record_from_step
-
-    return record_from_step(step)
+from agent_control_evaluator_galileo.records.factory import record_from_step as _record_from_step
 
 
 def test_recorder_built_trace_matches_demo_shape():
