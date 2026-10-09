@@ -69,6 +69,7 @@ from .health import HealthResponse
 from .observability import (
     BatchEventsRequest,
     BatchEventsResponse,
+    ControlCheckEvent,
     ControlExecutionEvent,
     ControlStats,
     ControlStatsResponse,
@@ -220,6 +221,7 @@ __all__ = [
     "ValidateControlDataRequest",
     "ValidateControlDataResponse",
     # Observability models
+    "ControlCheckEvent",
     "ControlExecutionEvent",
     "BatchEventsRequest",
     "BatchEventsResponse",

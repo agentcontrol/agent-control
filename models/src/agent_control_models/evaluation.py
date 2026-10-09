@@ -170,6 +170,21 @@ class EvaluationResult(EvaluationResponse):
     This is what SDK users interact with.
     """
 
+    control_check_id: str | None = Field(
+        default=None,
+        description="Unique ID of this SDK control-check invocation, when measured",
+    )
+    control_check_elapsed_ms: float | None = Field(
+        default=None,
+        ge=0,
+        allow_inf_nan=False,
+        description=(
+            "SDK caller-visible elapsed milliseconds for one pre/post control check, "
+            "including local evaluation and conditional server request; excludes the "
+            "protected tool/LLM function"
+        ),
+    )
+
     def is_confident(self, threshold: float = 0.8) -> bool:
         """
         Check if the result confidence exceeds a threshold.

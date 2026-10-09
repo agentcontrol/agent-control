@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
-from agent_control_models import ControlExecutionEvent
+from agent_control_models import ControlCheckEvent, ControlExecutionEvent
 
 
 @dataclass(frozen=True)
@@ -74,3 +74,15 @@ class BaseAsyncControlEventSink(AsyncControlEventSink):
             accepted += result.accepted
             dropped += result.dropped
         return SinkResult(accepted=accepted, dropped=dropped)
+
+
+@runtime_checkable
+class ControlCheckEventSink(Protocol):
+    """Optional capability for sinks that support whole SDK control checks.
+
+    Existing control-execution sinks need not implement this capability. Check
+    events are not accepted by the HTTP control-execution ingestion endpoint.
+    """
+
+    def write_control_check_events(self, events: Sequence[ControlCheckEvent]) -> SinkResult:
+        """Write measured SDK check events, separately from individual controls."""
