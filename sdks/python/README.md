@@ -118,3 +118,58 @@ It force-flushes the provider during shutdown but leaves provider shutdown to th
 application. If no provider is passed, the OTEL sink first checks for a globally
 registered SDK provider, then falls back to its existing Agent Control-owned OTLP
 pipeline.
+
+
+## Whole control-check elapsed time
+
+`evaluate_controls()`, `check_evaluation_with_local()` and the server-only
+`evaluation.check_evaluation()` return `EvaluationResult.control_check_elapsed_ms`
+and a unique `control_check_id`. Each value measures **one pre or post check**
+with a monotonic clock. It includes preparation inside the evaluation helper,
+local controls, and the conditional server call (network/auth refresh/retry wait
+included). It excludes `init()`, decorator payload preparation before the helper,
+the protected tool/LLM function, and export of the whole-check event itself.
+High-level `evaluate_controls()` step construction and client setup happen before
+the timed helper and are excluded, as is parent trace-context resolution.
+The decorator server-only fallback also measures its HTTP evaluation attempt;
+its already-built payload and client initialization are outside that boundary.
+If local evaluation fails and the decorator falls back, these are separate check
+attempts with separate IDs rather than one fabricated combined elapsed value.
+Existing per-control `execution_duration_ms` values are unchanged.
+
+```python
+# After agent_control.init(...) has configured the SDK session.
+result = await agent_control.evaluate_controls(
+    agent_name="my-agent", step_name="search", input={"query": "example"},
+    stage="pre", step_type="tool"
+)
+print(result.control_check_id, result.control_check_elapsed_ms)
+```
+
+Local denial, a completed result containing evaluator errors, and a check with
+no applicable controls still have measured elapsed time. The last case measures
+the check's preparation, rather than assigning zero as a placeholder. A genuinely
+measured zero is valid. Older/manually constructed results have `None` unless
+actually measured by these helpers. An SDK check that raises or is cancelled
+still propagates that outcome; it does not return a fabricated evaluation result.
+
+With observability enabled and an `otel` sink selected, the same provider emits
+one `agent_control.control_check` span as a child of the correlated step. Its
+start is captured when the check begins and its end uses that start plus measured
+monotonic elapsed nanoseconds; these are not reconstructed from control children.
+Attributes include `agent_control.control_check_elapsed_ms`, the check ID,
+`check_stage`, and `control_check_status` (`completed`, `error`, `cancelled`).
+Safe IDs/stage/elapsed/status are also supplied in the JSON `metadata` attribute.
+No input/output or exception text is recorded. Existing Orbit ingestion treats
+this as a workflow span; it is **not** an individual shield/control span. Showing
+these spans/metadata in a dedicated session summary requires UI/Orbit follow-up.
+
+Existing HTTP control-event ingestion accepts only individual control events;
+it does not receive whole-check events. Custom registered sinks may opt in by
+implementing `agent_control_telemetry.ControlCheckEventSink` in addition to their
+existing `write_events` method. Control-only sinks remain compatible. Sink
+failures never replace a result, exception or cancellation.
+
+An elapsed value is neither an average nor the maximum of child controls.
+Several checks may overlap in a session, so summing their elapsed values does
+not establish session wall time or a counterfactual "agent overhead".

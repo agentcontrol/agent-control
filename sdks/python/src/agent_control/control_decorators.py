@@ -34,13 +34,14 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar, cast
 
 from agent_control_models import JSONObject, Step, normalize_action
 from agent_control_telemetry import get_trace_context_from_provider
 
 from agent_control import AgentControlClient
 from agent_control._state import state
+from agent_control.control_check import measure_control_check
 from agent_control.evaluation import (
     _post_evaluation_request,
     _resolve_session_target,
@@ -337,6 +338,8 @@ async def _evaluate(
                     "is_safe": result.is_safe,
                     "confidence": result.confidence,
                     "reason": result.reason,
+                    "control_check_id": result.control_check_id,
+                    "control_check_elapsed_ms": result.control_check_elapsed_ms,
                     "matches": [
                         {
                             "control_id": m.control_id,
@@ -420,16 +423,25 @@ async def _evaluate(
             payload["target_type"] = target_type
             payload["target_id"] = target_id
 
-        response = await _post_evaluation_request(
-            client,
-            request_payload=payload,
-            headers=headers,
-            target_type=target_type,
-            target_id=target_id,
+        async def server_check() -> dict[str, Any]:
+            response = await _post_evaluation_request(
+                client,
+                request_payload=payload,
+                headers=headers,
+                target_type=target_type,
+                target_id=target_id,
+            )
+            response.raise_for_status()
+            result_dict: dict[str, Any] = response.json()
+            return result_dict
+
+        return await measure_control_check(
+            server_check,
+            agent_name=event_agent_name or agent_name,
+            stage=cast(Literal["pre", "post"], stage),
+            trace_id=trace_id,
+            span_id=span_id,
         )
-        response.raise_for_status()
-        result_dict: dict[str, Any] = response.json()
-        return result_dict
 
 
 def _unexpected_control_failure_message(stage: str, error: Exception) -> str:
