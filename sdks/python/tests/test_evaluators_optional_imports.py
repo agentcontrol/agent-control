@@ -28,6 +28,7 @@ def _module_available(name: str) -> bool:
 
 
 _GALILEO_INSTALLED = _module_available("agent_control_evaluator_galileo.luna")
+_GALILEO_LLM_INSTALLED = _module_available("agent_control_evaluator_galileo.llm")
 
 
 def _reload_evaluators_with_blocked(prefix: str) -> object:
@@ -70,9 +71,20 @@ def test_module_loads_when_galileo_luna_is_unavailable():
 
     # Core names are always present.
     assert "Evaluator" in reloaded.__all__
-    # Luna1 names are NOT present because the import failed.
+    # Luna names are NOT present because the import failed.
     assert "LunaEvaluator" not in reloaded.__all__
     assert "GalileoLunaClient" not in reloaded.__all__
+
+
+def test_module_loads_when_galileo_llm_is_unavailable():
+    """Hiding ``agent_control_evaluator_galileo.llm`` exercises its except branch."""
+    reloaded = _reload_evaluators_with_blocked("agent_control_evaluator_galileo.llm")
+
+    # Core names are always present.
+    assert "Evaluator" in reloaded.__all__
+    # LLM names are NOT present because the import failed.
+    assert "LlmEvaluator" not in reloaded.__all__
+    assert "GalileoLLMClient" not in reloaded.__all__
 
 
 def test_module_loads_when_galileo_package_is_unavailable():
@@ -80,11 +92,14 @@ def test_module_loads_when_galileo_package_is_unavailable():
     reloaded = _reload_evaluators_with_blocked("agent_control_evaluator_galileo")
 
     assert "Evaluator" in reloaded.__all__
-    # The optional luna names are absent.
+    # The optional luna and llm names are absent.
     for absent in (
         "LunaEvaluator",
         "GalileoLunaClient",
         "LUNA_AVAILABLE",
+        "LlmEvaluator",
+        "GalileoLLMClient",
+        "LLM_AVAILABLE",
     ):
         assert absent not in reloaded.__all__
 
@@ -105,6 +120,23 @@ def test_module_loads_galileo_optional_imports_when_available():
         reloaded = importlib.reload(reloaded)
         # Sanity: at least one luna name should reappear.
         assert "LunaEvaluator" in reloaded.__all__
+    finally:
+        if saved is not None:
+            sys.modules["agent_control.evaluators"] = saved
+
+
+@pytest.mark.skipif(
+    not _GALILEO_LLM_INSTALLED,
+    reason="agent-control-evaluator-galileo extras not installed in this environment",
+)
+def test_module_loads_galileo_llm_optional_imports_when_available():
+    """Sanity check: with galileo installed, the LLM optional names ARE exposed."""
+    saved = sys.modules.pop("agent_control.evaluators", None)
+    try:
+        import agent_control.evaluators as reloaded
+
+        reloaded = importlib.reload(reloaded)
+        assert "LlmEvaluator" in reloaded.__all__
     finally:
         if saved is not None:
             sys.modules["agent_control.evaluators"] = saved
