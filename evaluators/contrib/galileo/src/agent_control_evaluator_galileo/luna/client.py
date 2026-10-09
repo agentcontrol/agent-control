@@ -19,7 +19,7 @@ from agent_control_models import JSONObject, JSONValue, Step
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ..records import UnsupportedStepTypeError, record_from_step
-from .config import ScorerInvokeConfig
+from .config import ScorerInvokeConfig, scorer_invoke_runtime_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -367,6 +367,8 @@ class GalileoLunaClient:
     Environment Variables:
         GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: JWT signing secret for internal auth.
         GALILEO_LUNA_INVOKE_URL: Luna scorer invoke URL or service root (required).
+        GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME: Set to ``enabled`` to send
+            structured runtime data.
         GALILEO_LUNA_INVOKE_CA_FILE: CA bundle used to verify Luna invoke TLS.
         AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE: Shared internal CA fallback.
         GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS: HTTP pooled connection expiry.
@@ -414,6 +416,7 @@ class GalileoLunaClient:
             )
 
         self.api_secret = resolved_api_secret
+        self.runtime_enabled = scorer_invoke_runtime_enabled()
         self.luna_invoke_url = _normalize_luna_invoke_url(resolved_luna_invoke_url)
         self.luna_invoke_ca_file = (
             luna_invoke_ca_file
@@ -559,7 +562,7 @@ class GalileoLunaClient:
                 selected_data=selected_data,
                 payload_field=selected_data_payload_field,
             )
-            if step is not None and scorer_version_id is not None
+            if self.runtime_enabled and step is not None and scorer_version_id is not None
             else None
         )
         request_body = ScorerInvokeRequest(
@@ -573,7 +576,7 @@ class GalileoLunaClient:
                 tools=step.tools if step is not None else None,
             ),
             record=record,
-            execution_context=execution_context,
+            execution_context=execution_context if self.runtime_enabled else None,
             config=invoke_config,
         ).to_dict()
 
