@@ -132,13 +132,17 @@ class StepRecorder:
         step_name: str | None,
         step_type: str | None,
         tools: ToolsConfiguration,
+        step_context: dict[str, Any] | None,
         error: BaseException | None,
     ) -> None:
         payload = _create_evaluation_payload(
             func, args, kwargs, output, step_name, step_type, tools
         )
+        context = {**(payload.get("context") or {}), **(step_context or {})}
         if error is not None:
-            payload["context"] = {**(payload.get("context") or {}), "error": repr(error)}
+            context["error"] = repr(error)
+        if context:
+            payload["context"] = context
         self._children.append(Step.model_validate(payload))
 
     def call(
@@ -148,15 +152,27 @@ class StepRecorder:
         step_type: str | None = None,
         step_name: str | None = None,
         tools: ToolsConfiguration = None,
+        step_context: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> T:
-        """Run ``func``, record it via ``@control()``'s capture logic, return its output."""
+        """Run ``func``, record it via ``@control()``'s capture logic, return its output.
+
+        ``step_context`` is merged into the recorded child's ``context`` (an
+        ``error`` key added on failure takes precedence over the same key in
+        ``step_context``). It is named ``step_context`` rather than ``context``
+        so it can't collide with a ``context`` keyword argument on ``func``
+        itself, which ``**kwargs`` would otherwise forward unchanged.
+        """
         try:
             output = func(*args, **kwargs)
         except Exception as exc:
-            self._record_call_result(func, args, kwargs, None, step_name, step_type, tools, exc)
+            self._record_call_result(
+                func, args, kwargs, None, step_name, step_type, tools, step_context, exc
+            )
             raise
-        self._record_call_result(func, args, kwargs, output, step_name, step_type, tools, None)
+        self._record_call_result(
+            func, args, kwargs, output, step_name, step_type, tools, step_context, None
+        )
         return output
 
     async def acall(
@@ -166,15 +182,20 @@ class StepRecorder:
         step_type: str | None = None,
         step_name: str | None = None,
         tools: ToolsConfiguration = None,
+        step_context: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> T:
         """Async counterpart to :meth:`call`."""
         try:
             output = await func(*args, **kwargs)
         except Exception as exc:
-            self._record_call_result(func, args, kwargs, None, step_name, step_type, tools, exc)
+            self._record_call_result(
+                func, args, kwargs, None, step_name, step_type, tools, step_context, exc
+            )
             raise
-        self._record_call_result(func, args, kwargs, output, step_name, step_type, tools, None)
+        self._record_call_result(
+            func, args, kwargs, output, step_name, step_type, tools, step_context, None
+        )
         return output
 
     def build(self) -> Step:
