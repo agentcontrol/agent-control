@@ -1,5 +1,6 @@
 """Tests for StepRecorder, the incremental Step tree builder."""
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -87,6 +88,72 @@ async def test_acall_runs_async_function_and_records_child():
     assert child.name == "respond"
     assert child.input == "hello"
     assert child.output == "answer: hello"
+
+
+def test_call_step_context_is_recorded():
+    """step_context is merged into the recorded child's context."""
+
+    def lookup_account(account_id: str) -> dict:
+        return {"balance": 100}
+
+    with record_step("trace", "t") as trace:
+        trace.call(
+            lookup_account,
+            account_id="acct-1",
+            step_type="tool",
+            step_name="lookup_account",
+            step_context={"executed_function": "lookup_account"},
+        )
+
+    [child] = trace.build().children
+    assert child.context == {"executed_function": "lookup_account"}
+
+
+def test_call_step_context_does_not_collide_with_func_context_kwarg():
+    """step_context is merged into Step.context, not forwarded to func - a plain
+    `context` kwarg on call() would instead be swallowed by **kwargs and sent
+    to func, silently dropping the caller's intended Step metadata."""
+
+    received: dict[str, Any] = {}
+
+    def run_banking_model(prompt: str, *, context: dict[str, Any] | None = None) -> str:
+        received["context"] = context
+        return f"answer: {prompt}"
+
+    with record_step("trace", "t") as trace:
+        result = trace.call(
+            run_banking_model,
+            "hello",
+            context={"account": "acct-1"},
+            step_type="llm",
+            step_name="respond",
+            step_context={"executed_function": "run_banking_model"},
+        )
+
+    assert result == "answer: hello"
+    assert received["context"] == {"account": "acct-1"}
+    [child] = trace.build().children
+    assert child.context == {"executed_function": "run_banking_model"}
+
+
+def test_call_step_context_and_error_merge_on_failure():
+    """On failure, the error key is added to step_context's dict and wins on collision."""
+
+    def flaky(x: int) -> int:
+        raise ValueError("boom")
+
+    with record_step("trace", "t") as trace:
+        with pytest.raises(ValueError, match="boom"):
+            trace.call(
+                flaky,
+                1,
+                step_type="tool",
+                step_name="flaky",
+                step_context={"attempt": 1, "error": "overwritten"},
+            )
+
+    [child] = trace.build().children
+    assert child.context == {"attempt": 1, "error": "ValueError('boom')"}
 
 
 def test_call_records_exception_and_reraises():
