@@ -361,6 +361,12 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
             **self._base_metadata(),
             "error_type": type(error).__name__,
         }
+        # The server redacts error text, so retain this deterministic failure as
+        # a safe code that clients can distinguish from an evaluator outage.
+        if isinstance(error, RuntimeError) and error_detail.startswith(
+            "Input exceeds maximum length for Galileo model server:"
+        ):
+            metadata["error_code"] = "context_limit"
         if isinstance(error, httpx.HTTPStatusError):
             metadata.update(_http_status_error_metadata(error))
 
