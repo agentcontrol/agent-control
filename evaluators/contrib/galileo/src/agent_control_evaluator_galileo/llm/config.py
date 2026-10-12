@@ -80,7 +80,9 @@ class LlmEvaluatorConfig(EvaluatorConfig):
     )
     scorer_version_id: str = Field(
         min_length=1,
-        description="Required scorer version identifier. Orbit uses this to send the structured record.",
+        description=(
+            "Required scorer version identifier. Orbit uses this to send the structured record."
+        ),
     )
     scorer_label: str | None = Field(
         default=None,

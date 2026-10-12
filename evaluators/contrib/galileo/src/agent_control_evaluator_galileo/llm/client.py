@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue, Step
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from ..records import UnsupportedStepTypeError, record_from_step
 from .config import ScorerInvokeConfig
