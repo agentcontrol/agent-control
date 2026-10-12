@@ -205,15 +205,6 @@ def _effective_scorer_timeout(
     return config.model_copy(update={"request_timeout_seconds": server_timeout})
 
 
-class ScorerInvokeInputs(BaseModel):
-    """Input values sent to the LLM scorer invoke endpoint."""
-
-    query: JSONValue = ""
-    response: JSONValue = ""
-    ground_truth: JSONValue = None
-    tools: list[JSONObject] | None = None
-
-
 class ScorerInvokeRecord(BaseModel):
     """Caller-controlled subset of Orbit's partial runtime-record contract.
 
@@ -246,28 +237,21 @@ class ScorerInvokeRequest(BaseModel):
 
     Attributes:
         scorer_id: Required scorer identifier.
-        scorer_version_id: Optional. When absent, contextual evaluation sends
-            legacy inputs only and skips the structured record.
+        scorer_version_id: Required scorer version identifier. Orbit uses this
+            to send the structured record alongside the legacy inputs.
         scorer_label: Optional display/metadata label.
-        inputs: Selected scorer input values.
         record: Optional Orbit-compatible structured runtime record.
-        execution_context: Optional authenticated execution context.
+        execution_context: Required authenticated execution context; Orbit uses
+            it to fetch LLM credentials.
         config: Scorer-specific configuration, always emitted.
     """
 
     scorer_id: str = Field(min_length=1)
-    scorer_version_id: str | None = Field(default=None, min_length=1)
+    scorer_version_id: str = Field(min_length=1)
     scorer_label: str | None = Field(default=None, min_length=1)
-    inputs: ScorerInvokeInputs
     record: ScorerInvokeRecord | None = None
-    execution_context: GalileoExecutionContext | None = None
+    execution_context: GalileoExecutionContext
     config: ScorerInvokeConfig = Field(default_factory=ScorerInvokeConfig)
-
-    @model_validator(mode="after")
-    def ensure_required_values(self) -> ScorerInvokeRequest:
-        if not (_has_value(self.inputs.query) or _has_value(self.inputs.response)):
-            raise ValueError("Either inputs.query or inputs.response must be set.")
-        return self
 
     def to_dict(self) -> JSONObject:
         """Convert to the LLM scorer invoke request shape."""
@@ -503,7 +487,7 @@ class GalileoLLMClient:
         self,
         *,
         scorer_id: str,
-        scorer_version_id: str | None = None,
+        scorer_version_id: str,
         scorer_label: str | None = None,
         input: JSONValue = None,
         output: JSONValue = None,
@@ -519,8 +503,8 @@ class GalileoLLMClient:
 
         Args:
             scorer_id: Required scorer identifier.
-            scorer_version_id: Optional. When absent, contextual evaluation sends
-                legacy inputs only and skips the structured record.
+            scorer_version_id: Required scorer version identifier. Orbit uses this
+                to send the structured record alongside the legacy inputs.
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
@@ -556,27 +540,17 @@ class GalileoLLMClient:
             invoke_config,
             http_timeout_seconds=timeout,
         )
-        record = (
-            _scorer_invoke_record_from_step(
-                step,
-                selected_input=input,
-                selected_output=output,
-                selected_data=selected_data,
-                payload_field=selected_data_payload_field,
-            )
-            if scorer_version_id is not None
-            else None
+        record = _scorer_invoke_record_from_step(
+            step,
+            selected_input=input,
+            selected_output=output,
+            selected_data=selected_data,
+            payload_field=selected_data_payload_field,
         )
         request_body = ScorerInvokeRequest(
             scorer_id=scorer_id,
             scorer_version_id=scorer_version_id,
             scorer_label=scorer_label,
-            inputs=ScorerInvokeInputs(
-                query="" if input is None else input,
-                response="" if output is None else output,
-                ground_truth=step.ground_truth,
-                tools=step.tools,
-            ),
             record=record,
             execution_context=execution_context,
             config=invoke_config,

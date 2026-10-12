@@ -63,8 +63,8 @@ class LlmEvaluatorConfig(EvaluatorConfig):
 
     Attributes:
         scorer_id: Required scorer identifier for LLM scorer invocation.
-        scorer_version_id: Optional. When absent, contextual evaluation sends
-            legacy inputs only and skips the structured record.
+        scorer_version_id: Required scorer version identifier. Orbit uses this
+            to send the structured record alongside the legacy inputs.
         scorer_label: Optional display/metadata label.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
@@ -78,13 +78,9 @@ class LlmEvaluatorConfig(EvaluatorConfig):
         min_length=1,
         description="Required scorer identifier for LLM scorer invocation.",
     )
-    scorer_version_id: str | None = Field(
-        default=None,
+    scorer_version_id: str = Field(
         min_length=1,
-        description=(
-            "Optional. When absent, contextual evaluation sends legacy inputs only "
-            "and skips the structured record."
-        ),
+        description="Required scorer version identifier. Orbit uses this to send the structured record.",
     )
     scorer_label: str | None = Field(
         default=None,
