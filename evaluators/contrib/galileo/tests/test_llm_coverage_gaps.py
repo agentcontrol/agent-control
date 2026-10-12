@@ -36,6 +36,7 @@ def _make_invoke_kwargs() -> dict[str, object]:
     from agent_control_evaluator_galileo.llm.client import GalileoExecutionContext
 
     return {
+        "scorer_version_id": "ver-1",
         "step": Step(type="llm", name="test", input="prompt"),
         "execution_context": GalileoExecutionContext(organization_id="org-1"),
     }
@@ -183,7 +184,9 @@ def llm_evaluator(monkeypatch):
         monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.llm import LlmEvaluator
 
-    return LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"})
+    return LlmEvaluator.from_dict(
+        {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5, "operator": "gte"}
+    )
 
 
 class TestScoreMatchesOperators:
@@ -195,7 +198,7 @@ class TestScoreMatchesOperators:
         from agent_control_evaluator_galileo.llm import LlmEvaluator
 
         return LlmEvaluator.from_dict(
-            {"scorer_id": "scorer-123", "threshold": threshold, "operator": operator}
+            {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": threshold, "operator": operator}
         )
 
     def test_any_truthy_score_matches(self, monkeypatch):
@@ -248,7 +251,9 @@ class TestPreparePayload:
             monkeypatch.setenv(key, value)
         from agent_control_evaluator_galileo.llm import LlmEvaluator
 
-        evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+        evaluator = LlmEvaluator.from_dict(
+            {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5}
+        )
 
         input_text, output_text = evaluator._prepare_payload("hello")
 
@@ -261,7 +266,7 @@ class TestPreparePayload:
         from agent_control_evaluator_galileo.llm import LlmEvaluator
 
         evaluator = LlmEvaluator.from_dict(
-            {"scorer_id": "scorer-123", "threshold": 0.5, "payload_field": "output"}
+            {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5, "payload_field": "output"}
         )
 
         input_text, output_text = evaluator._prepare_payload("hello")
@@ -275,7 +280,7 @@ class TestPreparePayload:
         from agent_control_evaluator_galileo.llm import LlmEvaluator
 
         evaluator = LlmEvaluator.from_dict(
-            {"scorer_id": "scorer-123", "threshold": 0.5, "payload_field": "output"}
+            {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5, "payload_field": "output"}
         )
 
         input_text, output_text = evaluator._prepare_payload(
@@ -293,7 +298,9 @@ async def test_evaluator_aclose_closes_underlying_client(monkeypatch):
         monkeypatch.setenv(key, value)
     from agent_control_evaluator_galileo.llm import LlmEvaluator
 
-    evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    evaluator = LlmEvaluator.from_dict(
+        {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5}
+    )
 
     fake = MagicMock()
     fake.close = AsyncMock()
@@ -316,7 +323,7 @@ async def test_evaluator_handles_non_success_status(monkeypatch):
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
     evaluator = LlmEvaluator.from_dict(
-        {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
+        {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5, "operator": "gte"}
     )
     step = Step(type="llm", name="test", input="prompt")
 
@@ -345,7 +352,9 @@ async def test_evaluator_skips_empty_data(monkeypatch):
     from agent_control_evaluator_galileo.llm import LlmEvaluator
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
-    evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    evaluator = LlmEvaluator.from_dict(
+        {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5}
+    )
     step = Step(type="llm", name="test", input="prompt")
 
     with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
@@ -367,7 +376,9 @@ async def test_evaluator_returns_error_result_on_http_error(monkeypatch):
     from agent_control_evaluator_galileo.llm import LlmEvaluator
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
-    evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    evaluator = LlmEvaluator.from_dict(
+        {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5}
+    )
     step = Step(type="llm", name="test", input="prompt")
 
     fake_request = httpx.Request("POST", "http://luna-invoke:8090/api/v1/scorers/invoke")
@@ -635,13 +646,15 @@ class TestScorerInvokeRequestValidation:
 
     def test_missing_scorer_id_raises(self):
         from agent_control_evaluator_galileo.llm.client import (
-            ScorerInvokeInputs,
+            GalileoExecutionContext,
             ScorerInvokeRequest,
         )
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="scorer_id"):
-            ScorerInvokeRequest(inputs=ScorerInvokeInputs(query="hello"))
+            ScorerInvokeRequest(
+                execution_context=GalileoExecutionContext(organization_id="org-1")
+            )
 
 
 def test_client_raises_when_no_api_secret(monkeypatch):
@@ -949,19 +962,25 @@ class TestLlmEvaluatorConfigValidation:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="numeric threshold"):
-            LlmEvaluatorConfig(scorer_id="scorer-123", operator="gt", threshold="not-a-number")
+            LlmEvaluatorConfig(
+                scorer_id="scorer-123", scorer_version_id="ver-1", operator="gt", threshold="not-a-number"
+            )
 
     def test_none_threshold_with_non_any_operator_raises(self):
         from agent_control_evaluator_galileo.llm.config import LlmEvaluatorConfig
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="threshold is required"):
-            LlmEvaluatorConfig(scorer_id="scorer-123", operator="eq", threshold=None)
+            LlmEvaluatorConfig(
+                scorer_id="scorer-123", scorer_version_id="ver-1", operator="eq", threshold=None
+            )
 
     def test_any_operator_allows_none_threshold(self):
         from agent_control_evaluator_galileo.llm.config import LlmEvaluatorConfig
 
-        config = LlmEvaluatorConfig(scorer_id="scorer-123", operator="any", threshold=None)
+        config = LlmEvaluatorConfig(
+            scorer_id="scorer-123", scorer_version_id="ver-1", operator="any", threshold=None
+        )
         assert config.operator == "any"
 
     def test_coerce_number_returns_none_for_list(self):
@@ -990,7 +1009,9 @@ async def test_evaluator_with_context_uses_step(monkeypatch):
     from agent_control_evaluator_galileo.llm import LlmEvaluator
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient, ScorerInvokeResponse
 
-    evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "threshold": 0.5})
+    evaluator = LlmEvaluator.from_dict(
+        {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5}
+    )
     step = Step(type="llm", name="test", input="prompt", output="answer")
 
     with patch.object(GalileoLLMClient, "invoke", new_callable=AsyncMock) as mock_invoke:
@@ -1013,7 +1034,7 @@ async def test_evaluator_scorer_label_echoed_in_metadata(monkeypatch):
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient, ScorerInvokeResponse
 
     evaluator = LlmEvaluator.from_dict(
-        {"scorer_id": "scorer-123", "threshold": 0.5, "scorer_label": "my-label"}
+        {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5, "scorer_label": "my-label"}
     )
     step = Step(type="llm", name="test", input="prompt")
 

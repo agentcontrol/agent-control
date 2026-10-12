@@ -341,17 +341,19 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
 
     def _base_metadata(self) -> dict[str, Any]:
         """Build result metadata without implying a requested version executed."""
-        metadata: dict[str, Any] = {"scorer_id": self.config.scorer_id}
-        if self.config.scorer_version_id is not None:
-            metadata["requested_scorer_version_id"] = self.config.scorer_version_id
+        metadata: dict[str, Any] = {
+            "scorer_id": self.config.scorer_id,
+            "requested_scorer_version_id": self.config.scorer_version_id,
+        }
         if self.config.scorer_label is not None:
             metadata["scorer_label"] = self.config.scorer_label
         return metadata
 
     def _scorer_kwargs(self) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {"scorer_id": self.config.scorer_id}
-        if self.config.scorer_version_id is not None:
-            kwargs["scorer_version_id"] = self.config.scorer_version_id
+        kwargs: dict[str, Any] = {
+            "scorer_id": self.config.scorer_id,
+            "scorer_version_id": self.config.scorer_version_id,
+        }
         if self.config.scorer_label is not None:
             kwargs["scorer_label"] = self.config.scorer_label
         return kwargs

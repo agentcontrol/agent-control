@@ -21,13 +21,12 @@ class TestGalileoLLMClient:
     def test_execution_context_serializes_missing_optional_claims_as_null(self) -> None:
         from agent_control_evaluator_galileo.llm.client import (
             GalileoExecutionContext,
-            ScorerInvokeInputs,
             ScorerInvokeRequest,
         )
 
         request = ScorerInvokeRequest(
             scorer_id="scorer-123",
-            inputs=ScorerInvokeInputs(query="hello"),
+            scorer_version_id="ver-1",
             execution_context=GalileoExecutionContext(organization_id="org-1"),
         )
 
@@ -54,7 +53,7 @@ class TestLlmEvaluator:
         )
 
         evaluator = LlmEvaluator.from_dict(
-            {"scorer_id": "scorer-123", "threshold": 0.5, "operator": "gte"}
+            {"scorer_id": "scorer-123", "scorer_version_id": "ver-1", "threshold": 0.5, "operator": "gte"}
         )
         extensions = {
             "namespace_key": "org-1",
@@ -73,6 +72,7 @@ class TestLlmEvaluator:
         assert result.matched is True
         mock_invoke.assert_awaited_once_with(
             scorer_id="scorer-123",
+            scorer_version_id="ver-1",
             step=Step(type="llm", name="answer", input="prompt"),
             selected_data="selected input",
             selected_data_payload_field="input",
@@ -98,7 +98,7 @@ class TestLlmEvaluator:
             ScorerInvokeResponse,
         )
 
-        evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123"})
+        evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "scorer_version_id": "ver-1"})
         extensions = {
             "namespace_key": "org-1",
             "target_type": "log_stream",
@@ -115,6 +115,7 @@ class TestLlmEvaluator:
         assert result.error is None
         mock_invoke.assert_awaited_once_with(
             scorer_id="scorer-123",
+            scorer_version_id="ver-1",
             step=Step(type="llm", name="answer", input="prompt"),
             selected_data="selected input",
             selected_data_payload_field="input",
@@ -140,7 +141,7 @@ class TestLlmEvaluator:
             ScorerInvokeResponse,
         )
 
-        evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123"})
+        evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "scorer_version_id": "ver-1"})
         extensions = {
             "namespace_key": "org-1",
             "caller_id": "verified-user-2",
@@ -158,6 +159,7 @@ class TestLlmEvaluator:
         assert result.error is None
         mock_invoke.assert_awaited_once_with(
             scorer_id="scorer-123",
+            scorer_version_id="ver-1",
             step=Step(type="llm", name="answer", input="prompt"),
             selected_data="selected input",
             selected_data_payload_field="input",
@@ -179,7 +181,7 @@ class TestLlmEvaluator:
         from agent_control_evaluator_galileo.llm import LlmEvaluator
         from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
-        evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123"})
+        evaluator = LlmEvaluator.from_dict({"scorer_id": "scorer-123", "scorer_version_id": "ver-1"})
         extensions = {
             "target_type": "log_stream",
             "target_id": "run-4",
