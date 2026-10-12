@@ -17,6 +17,11 @@ from pydantic import UUID4, BaseModel, ConfigDict, ValidationError
 LUNA_ENV = {
     "GALILEO_API_SECRET_KEY": "test-secret",
     "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
+    "GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME": "enabled",
+}
+LEGACY_LUNA_ENV = {
+    "GALILEO_API_SECRET_KEY": "test-secret",
+    "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
 }
 SCORER_ID = "3d45ef0d-5f14-4f1a-a8f1-8ab758da18b4"
 SCORER_VERSION_ID = "07fb9c96-9752-4cf5-a253-1a396100e9d2"
@@ -884,6 +889,60 @@ class TestGalileoLunaClient:
             "inputs": {"query": "selected question", "response": "selected answer"},
             "config": {"request_timeout_seconds": 8.0},
         }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("flag_value", [None, "disabled", "Enabled"])
+    async def test_client_uses_legacy_request_without_runtime_flag(
+        self, flag_value: str | None
+    ) -> None:
+        from agent_control_evaluator_galileo.luna import GalileoLunaClient
+        from agent_control_evaluator_galileo.luna.client import GalileoExecutionContext
+
+        captured: dict[str, object] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.content.decode())
+            return httpx.Response(200, json={"score": 0.8, "status": "success"})
+
+        step = Step(
+            type="llm",
+            name="answer",
+            input="step input",
+            output="step output",
+            ground_truth={"expected": "answer"},
+            tools=[{"name": "search", "input_schema": {}}],
+        )
+        env = LEGACY_LUNA_ENV.copy()
+        if flag_value is not None:
+            env["GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME"] = flag_value
+        with patch.dict(os.environ, env, clear=True):
+            client = GalileoLunaClient()
+        client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+        try:
+            await client.invoke(
+                scorer_id=SCORER_ID,
+                scorer_version_id=SCORER_VERSION_ID,
+                input="selected input",
+                output="selected output",
+                step=step,
+                execution_context=GalileoExecutionContext(organization_id="org-1"),
+            )
+        finally:
+            await client.close()
+
+        body = captured["body"]
+        assert isinstance(body, dict)
+        assert body["scorer_id"] == SCORER_ID
+        assert body["scorer_version_id"] == SCORER_VERSION_ID
+        assert body["inputs"] == {
+            "query": "selected input",
+            "response": "selected output",
+            "ground_truth": {"expected": "answer"},
+            "tools": [{"name": "search", "input_schema": {}}],
+        }
+        assert "record" not in body
+        assert "execution_context" not in body
 
     @pytest.mark.asyncio
     async def test_client_omits_record_when_step_has_no_pinned_version(self) -> None:

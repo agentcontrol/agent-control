@@ -2,6 +2,30 @@
 
 <!-- version list -->
 
+## v8.12.0 (2026-10-09)
+
+### Features
+
+- **engine**: Capture per-control execution duration [SAO-18023]
+  ([#283](https://github.com/agentcontrol/agent-control/pull/283),
+  [`d1b9d21`](https://github.com/agentcontrol/agent-control/commit/d1b9d21f900129a33661f0f1449f989166da27ce))
+
+- **evaluators**: 17516 request payload contract
+  ([#271](https://github.com/agentcontrol/agent-control/pull/271),
+  [`1f07d7c`](https://github.com/agentcontrol/agent-control/commit/1f07d7cee069c5515c384d2fa794dfbaa8fcdce0))
+
+- **examples**: Add TypeSafe Jev evaluator example
+  ([#279](https://github.com/agentcontrol/agent-control/pull/279),
+  [`095edf0`](https://github.com/agentcontrol/agent-control/commit/095edf0321e7c2ed46f16cffcfb66bfcbd79f2ed))
+
+- **sdk**: Add Step.children ([#282](https://github.com/agentcontrol/agent-control/pull/282),
+  [`86fbbfe`](https://github.com/agentcontrol/agent-control/commit/86fbbfe42bf95a332c100fa29e3d7056ea7f9ad4))
+
+- **server**: Report sanitized diagnostics on upstream 4xx rejections [SAO-17523]
+  ([#270](https://github.com/agentcontrol/agent-control/pull/270),
+  [`db9c667`](https://github.com/agentcontrol/agent-control/commit/db9c6676f058d91b08f761626cdad5113696df92))
+
+
 ## v8.11.0 (2026-10-02)
 
 ### Features
