@@ -12,6 +12,7 @@ from .sinks import (
     AsyncControlEventSink,
     BaseAsyncControlEventSink,
     BaseControlEventSink,
+    ControlCheckEventSink,
     ControlEventSink,
     SinkResult,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "AsyncControlEventSink",
     "BaseAsyncControlEventSink",
     "BaseControlEventSink",
+    "ControlCheckEventSink",
     "ControlEventSink",
     "SinkResult",
     "DEFAULT_CONTROL_EVENT_SINK_NAME",

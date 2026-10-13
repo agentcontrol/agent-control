@@ -9,10 +9,10 @@ This module provides models for:
 """
 
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import uuid4
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .actions import (
     ActionDecision,
@@ -582,3 +582,31 @@ class ControlStatsResponse(BaseModel):
     @classmethod
     def validate_and_normalize_agent_name(cls, value: str) -> str:
         return normalize_agent_name(str(value))
+
+
+class ControlCheckEvent(BaseModel):
+    """One SDK control-check invocation, separate from individual control executions.
+
+    Start is captured at invocation and end is anchored using monotonic elapsed
+    nanoseconds. No input/output or exception text is included. A completed check
+    can be unsafe or contain handled evaluator errors; error/cancelled describe
+    failures of the SDK check itself.
+    """
+
+    control_check_id: str = Field(min_length=1)
+    trace_id: str = Field(min_length=1)
+    span_id: str = Field(min_length=1, description="Parent step span ID")
+    agent_name: str = Field(min_length=1)
+    check_stage: Literal["pre", "post"]
+    status: Literal["completed", "error", "cancelled"]
+    elapsed_ms: float = Field(ge=0, allow_inf_nan=False)
+    start_time_unix_nano: int = Field(ge=0)
+    end_time_unix_nano: int = Field(ge=0)
+    is_safe: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_time_order(self) -> Self:
+        """Reject an end before the invocation started."""
+        if self.end_time_unix_nano < self.start_time_unix_nano:
+            raise ValueError("control-check end must not precede its start")
+        return self
