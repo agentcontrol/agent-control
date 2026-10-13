@@ -107,3 +107,33 @@ def list_evaluators() -> dict[str, type[Evaluator[Any]]]:
     """
     ensure_evaluators_discovered()
     return get_all_evaluators()
+
+
+def is_evaluator_disabled(name: str) -> bool:
+    """Return True if an evaluator exists in entry points but is disabled by a feature flag.
+
+    An evaluator is considered disabled (not merely unknown) when it is present
+    in the ``agent_control.evaluators`` entry point group but its ``is_available()``
+    method returns ``False``.  A genuinely unrecognised name returns ``False``.
+
+    Args:
+        name: The evaluator metadata name to check (e.g. ``"galileo.llm"``).
+
+    Returns:
+        ``True`` if the evaluator is known but currently unavailable, ``False``
+        if it is either registered/available or completely unknown.
+    """
+    if name in get_all_evaluators():
+        return False
+    try:
+        eps = entry_points(group="agent_control.evaluators")
+        for ep in eps:
+            try:
+                evaluator_class = ep.load()
+                if evaluator_class.metadata.name == name:
+                    return not evaluator_class.is_available()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return False
