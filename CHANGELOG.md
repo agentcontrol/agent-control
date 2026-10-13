@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v8.13.0 (2026-10-13)
+
+### Features
+
+- **evaluators**: Put runtime records behind a flag
+  ([#288](https://github.com/agentcontrol/agent-control/pull/288),
+  [`59b2ec5`](https://github.com/agentcontrol/agent-control/commit/59b2ec5fa7f27d1951bf2af8b73cc3f2d543b0f5))
+
+- **sdk**: Add StepRecorder for incremental trace/session Step trees
+  ([#287](https://github.com/agentcontrol/agent-control/pull/287),
+  [`4f342ed`](https://github.com/agentcontrol/agent-control/commit/4f342edc2f58900b977a5a88d009c4e457e26055))
+
+
 ## v8.12.0 (2026-10-09)
 
 ### Features
