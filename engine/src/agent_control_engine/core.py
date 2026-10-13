@@ -14,7 +14,7 @@ from typing import Any, Literal, Protocol
 
 import re2
 from agent_control_evaluators import get_evaluator_instance
-from agent_control_evaluators._discovery import is_evaluator_disabled, list_evaluators
+from agent_control_evaluators._discovery import is_evaluator_disabled
 from agent_control_models import (
     ConditionNode,
     ControlAction,
