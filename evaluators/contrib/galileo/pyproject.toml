@@ -16,6 +16,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "agent-control-sdk>=8.11.0",
+    "agent-control-telemetry>=8.6.0",
+    "agent-control-engine>=8.6.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
@@ -37,3 +40,6 @@ packages = ["src/agent_control_evaluator_galileo"]
 [tool.uv.sources]
 agent-control-evaluators = { path = "../../builtin", editable = true }
 agent-control-models = { path = "../../../models", editable = true }
+agent-control-sdk = { path = "../../../sdks/python", editable = true }
+agent-control-telemetry = { path = "../../../telemetry", editable = true }
+agent-control-engine = { path = "../../../engine", editable = true }

@@ -16,7 +16,7 @@ sync:
 	uv sync
 
 test:
-	uv run --with pytest --with pytest-asyncio --with pytest-cov --package $(PACKAGE) pytest tests --cov=src --cov-report=xml:../../../coverage-evaluators-galileo.xml -q
+	uv run --extra dev --with pytest --with pytest-asyncio --with pytest-cov --package $(PACKAGE) pytest tests --cov=src --cov-report=xml:../../../coverage-evaluators-galileo.xml -q
 
 lint:
 	uv run --with ruff --package $(PACKAGE) ruff check --config ../../../pyproject.toml src/
