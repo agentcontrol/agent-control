@@ -262,5 +262,8 @@ export const api = {
       apiClient.GET('/api/v1/observability/stats', {
         params: { query: params },
       }),
+    queryEvents: (
+      body: paths['/api/v1/observability/events/query']['post']['requestBody']['content']['application/json']
+    ) => apiClient.POST('/api/v1/observability/events/query', { body }),
   },
 };

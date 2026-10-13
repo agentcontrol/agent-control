@@ -11,14 +11,22 @@ import {
   Title,
 } from '@mantine/core';
 import { Button, TimeRangeSwitch } from '@rungalileo/jupiter-ds';
-import { IconAlertCircle, IconChartBar, IconShield } from '@tabler/icons-react';
+import {
+  IconAlertCircle,
+  IconChartBar,
+  IconListDetails,
+  IconShield,
+} from '@tabler/icons-react';
 import { useRouter } from 'next/router';
 import React, { useMemo, useRef, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/error-boundary';
 import type { Control } from '@/core/api/types';
 import { SearchInput } from '@/core/components/search-input';
-import { getAgentRoute } from '@/core/constants/agent-routes';
+import {
+  type AgentDetailTab,
+  getAgentRoute,
+} from '@/core/constants/agent-routes';
 import { MODAL_NAMES } from '@/core/constants/modal-routes';
 import { useAgent } from '@/core/hooks/query-hooks/use-agent';
 import { useAgentControls } from '@/core/hooks/query-hooks/use-agent-controls';
@@ -32,13 +40,14 @@ import { useTimeRangePreference } from '@/core/hooks/use-time-range-preference';
 import { ControlsTab } from './controls/controls-tab';
 import { useControlsTableColumns } from './controls/table-columns';
 import { useDeleteControlFlow } from './controls/use-delete-control-flow';
+import { AgentEvents } from './events';
 import { ControlStoreModal } from './modals/control-store';
 import { EditControlContent } from './modals/edit-control/edit-control-content';
 import { AgentsMonitor, TIME_RANGE_SEGMENTS } from './monitor';
 
 type AgentDetailPageProps = {
   agentId: string;
-  defaultTab?: 'controls' | 'monitor';
+  defaultTab?: AgentDetailTab;
 };
 
 const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
@@ -90,6 +99,7 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
 
   const [activeTab, setActiveTab] = useState<string | null>(() => {
     if (defaultTab === 'monitor') return 'monitor';
+    if (defaultTab === 'events') return 'events';
     if (defaultTab === 'controls') return 'controls';
     return 'controls';
   });
@@ -275,18 +285,14 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
           value={activeTab}
           onChange={(value) => {
             setActiveTab(value);
-            if (value === 'monitor') {
-              router.push(
-                getAgentRoute(agentId, { tab: 'monitor', query: router.query }),
-                undefined,
-                {
-                  shallow: true,
-                }
-              );
-            } else if (value === 'controls') {
+            if (
+              value === 'controls' ||
+              value === 'monitor' ||
+              value === 'events'
+            ) {
               router.push(
                 getAgentRoute(agentId, {
-                  tab: 'controls',
+                  tab: value,
                   query: router.query,
                 }),
                 undefined,
@@ -311,6 +317,12 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
                   leftSection={<IconChartBar size={16} />}
                 >
                   Monitor
+                </Tabs.Tab>
+                <Tabs.Tab
+                  value="events"
+                  leftSection={<IconListDetails size={16} />}
+                >
+                  Events
                 </Tabs.Tab>
               </Tabs.List>
 
@@ -361,6 +373,17 @@ const AgentDetailPage = ({ agentId, defaultTab }: AgentDetailPageProps) => {
               {agent?.agent.agent_name && activeTab === 'monitor' ? (
                 <AgentsMonitor
                   agentUuid={agent.agent.agent_name}
+                  timeRangeValue={timeRangeValue}
+                />
+              ) : null}
+            </ErrorBoundary>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="events" pt="lg">
+            <ErrorBoundary variant="page">
+              {agent?.agent.agent_name && activeTab === 'events' ? (
+                <AgentEvents
+                  agentName={agent.agent.agent_name}
                   timeRangeValue={timeRangeValue}
                 />
               ) : null}
