@@ -154,13 +154,14 @@ telemetry-typecheck:
 build: build-models build-server build-sdk engine-build telemetry-build evaluators-build contrib-build
 
 build-models:
-	cd $(MODELS_DIR) && uv build
+	uv run python scripts/build.py models
 
+# scripts/build.py copies vendored workspace packages before building wheels.
 build-server:
-	cd $(SERVER_DIR) && uv build
+	uv run python scripts/build.py server
 
 build-sdk:
-	cd $(SDK_DIR) && uv build
+	uv run python scripts/build.py sdk
 
 telemetry-build:
 	cd $(TELEMETRY_DIR) && uv build
