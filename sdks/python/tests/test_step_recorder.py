@@ -189,6 +189,43 @@ async def test_acall_records_exception_and_reraises():
     assert child.context == {"error": "ValueError('boom')"}
 
 
+def test_child_block_exception_is_recorded_in_context_and_reraised():
+    """A raising child() block still attaches to its parent, with the error
+    recorded in context - consistent with call()/acall()'s failure path."""
+    with record_step("trace", "t") as trace:
+        with pytest.raises(ValueError, match="boom"):
+            with trace.child("tool", "flaky", input={}):
+                raise ValueError("boom")
+
+    [child] = trace.build().children
+    assert child.name == "flaky"
+    assert child.context == {"error": "ValueError('boom')"}
+
+
+def test_child_block_exception_merges_with_existing_context():
+    """An error added by a raising child() block merges into, rather than
+    replacing, any context already supplied, and wins on key collision."""
+    with record_step("trace", "t") as trace:
+        with pytest.raises(ValueError, match="boom"):
+            with trace.child(
+                "tool", "flaky", input={}, context={"attempt": 1, "error": "overwritten"}
+            ):
+                raise ValueError("boom")
+
+    [child] = trace.build().children
+    assert child.context == {"attempt": 1, "error": "ValueError('boom')"}
+
+
+def test_top_level_block_exception_is_recorded_in_context():
+    """A top-level record_step() block (no parent) gets the same error-in-context
+    treatment, so a caller who catches and later calls .build() can see it."""
+    with pytest.raises(ValueError, match="boom"):
+        with record_step("trace", "t") as trace:
+            raise ValueError("boom")
+
+    assert trace.build().context == {"error": "ValueError('boom')"}
+
+
 def test_build_includes_context_tools_ground_truth():
     """build() carries context/tools/ground_truth through when supplied."""
     with record_step(
@@ -205,6 +242,33 @@ def test_build_includes_context_tools_ground_truth():
     assert step.context == {"locale": "en-US"}
     assert step.tools == [{"type": "function", "function": {"name": "search"}}]
     assert step.ground_truth == "hello"
+
+
+def test_build_defaults_missing_tool_input_to_empty_dict():
+    """A tool step with no input omitted would otherwise fail Step's
+    `tool steps require object input` validation; build() defaults it to {},
+    matching evaluate_controls()'s existing behavior for tool-type input."""
+    with record_step("tool", "lookup") as tool:
+        tool.output = {"balance": 100}
+
+    step = tool.build()
+    assert step.input == {}
+
+
+def test_build_preserves_explicit_tool_input():
+    """An explicitly supplied tool input is never overridden by the default."""
+    with record_step("tool", "lookup", input={"account_id": "acct-1"}) as tool:
+        tool.output = {"balance": 100}
+
+    assert tool.build().input == {"account_id": "acct-1"}
+
+
+def test_build_does_not_default_input_for_non_tool_types():
+    """The {} default is scoped to tool steps; other step types keep input=None."""
+    with record_step("llm", "respond") as leaf:
+        leaf.output = "hello"
+
+    assert leaf.build().input is None
 
 
 def test_container_types_opts_in_to_empty_children_list():

@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from typing import Any, Literal, TypeVar
 
-from agent_control_models import EvaluationResult, JSONObject, JSONValue, Step
+from agent_control_models import STEP_TYPE_TOOL, EvaluationResult, JSONObject, JSONValue, Step
 
 from ._state import state
 from .control_decorators import ToolsConfiguration, _create_evaluation_payload
@@ -86,7 +86,11 @@ class StepRecorder:
     def __enter__(self) -> StepRecorder:
         return self
 
-    def __exit__(self, *exc_info: object) -> None:
+    def __exit__(
+        self, exc_type: object, exc_value: BaseException | None, traceback: object
+    ) -> None:
+        if exc_value is not None:
+            self.context = {**(self.context or {}), "error": repr(exc_value)}
         if self._parent is not None:
             self._parent._children.append(self.build())
 
@@ -200,10 +204,15 @@ class StepRecorder:
 
     def build(self) -> Step:
         """Recursively construct the frozen ``Step`` for this node and its children."""
+        input_value = self.input
+        if input_value is None and self.type == STEP_TYPE_TOOL:
+            # Tool steps require object input (Step.validate_builtin_types); default to
+            # {} so an omitted input doesn't raise, matching evaluate_controls().
+            input_value = {}
         step_dict: dict[str, Any] = {
             "type": self.type,
             "name": self.name,
-            "input": self.input,
+            "input": input_value,
             "output": self.output,
         }
         if self.context is not None:
