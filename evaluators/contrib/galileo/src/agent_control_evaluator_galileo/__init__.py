@@ -32,8 +32,8 @@ except ImportError:
     LLM_AVAILABLE = False  # type: ignore[assignment]
     GalileoLLMClient = None  # type: ignore[assignment,misc]
     LlmEvaluator = None  # type: ignore[assignment,misc]
-    LlmEvaluatorConfig = None  # type: ignore[assignment]
-    LlmOperator = None  # type: ignore[assignment]
+    LlmEvaluatorConfig = None  # type: ignore[assignment,misc]
+    LlmOperator = None  # type: ignore[assignment,misc]
 from agent_control_evaluator_galileo.luna import (
     LUNA_AVAILABLE,
     GalileoLunaClient,
