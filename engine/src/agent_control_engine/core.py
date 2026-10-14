@@ -14,7 +14,6 @@ from typing import Any, Literal, Protocol
 
 import re2
 from agent_control_evaluators import get_evaluator_instance
-from agent_control_evaluators._discovery import is_evaluator_disabled
 from agent_control_models import (
     ConditionNode,
     ControlAction,
@@ -76,14 +75,6 @@ _SENSITIVE_KEY_PARTS = (
     "secret",
     "token",
 )
-
-
-class EvaluatorDisabledError(Exception):
-    """Raised when an evaluator is known but disabled by a feature flag.
-
-    Caught in ``evaluate_control`` to leave ``eval_task.result`` as ``None``,
-    which suppresses control span emission entirely.
-    """
 
 
 def _env_flag(name: str, *, default: bool = False) -> bool:
@@ -324,12 +315,6 @@ class ControlEngine:
 
         selector_path = selector.path or "*"
         data = select_data(request.step, selector_path)
-
-        if is_evaluator_disabled(evaluator_spec.name):
-            raise EvaluatorDisabledError(
-                f"Evaluator '{evaluator_spec.name}' is disabled; "
-                "no control span will be emitted."
-            )
 
         try:
             async with semaphore:
@@ -708,14 +693,6 @@ class ControlEngine:
                     deny_found.set()
             except asyncio.CancelledError:
                 raise
-            except EvaluatorDisabledError as disabled_error:
-                # Evaluator disabled by feature flag — leave result as None so
-                # no control span is emitted.
-                logger.debug(
-                    "Skipping control '%s': %s",
-                    eval_task.item.name,
-                    disabled_error,
-                )
             except Exception as error:
                 error_msg = self._format_exception(error)
                 logger.exception(
