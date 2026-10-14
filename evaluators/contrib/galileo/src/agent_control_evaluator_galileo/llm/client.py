@@ -238,7 +238,7 @@ class ScorerInvokeRequest(BaseModel):
     Attributes:
         scorer_id: Required scorer identifier.
         scorer_version_id: Required scorer version identifier. Orbit uses this
-            to send the structured record alongside the legacy inputs.
+            to route the request to the correct scorer version.
         scorer_label: Optional display/metadata label.
         record: Optional Orbit-compatible structured runtime record.
         execution_context: Required authenticated execution context; Orbit uses
@@ -256,8 +256,7 @@ class ScorerInvokeRequest(BaseModel):
     def to_dict(self) -> JSONObject:
         """Convert to the LLM scorer invoke request shape."""
         request = self.model_dump(mode="json", exclude_none=True)
-        if self.execution_context is not None:
-            request["execution_context"] = self.execution_context.model_dump(mode="json")
+        request["execution_context"] = self.execution_context.model_dump(mode="json")
         return request
 
 
@@ -276,16 +275,15 @@ def _scorer_invoke_record_from_step(
     representations so Orbit's conflict validation cannot observe two meanings.
     The complete step supplies the unselected side and additional record context.
 
-    Unknown Agent Control step types intentionally fall back to the legacy
-    ``inputs`` contract. This keeps the open-source Step model extensible without
-    sending an invalid discriminator to Orbit.
+    Unknown Agent Control step types are not supported. ``None`` is returned
+    so the caller can raise a clear error before sending the request.
 
     Args:
         step: Complete Agent Control step, when contextual evaluation is used.
-        selected_input: Selector-selected value sent as ``inputs.query``.
-        selected_output: Selector-selected value sent as ``inputs.response``.
+        selected_input: Selector-selected value written to the record's input field.
+        selected_output: Selector-selected value written to the record's output field.
         selected_data: Raw selector-selected value used to construct the record,
-            preserving its structure independently from serialized legacy inputs.
+            preserving its structure for the scorer.
         payload_field: Record input/output side for scalar selector values.
 
     Returns:
@@ -504,13 +502,13 @@ class GalileoLLMClient:
         Args:
             scorer_id: Required scorer identifier.
             scorer_version_id: Required scorer version identifier. Orbit uses this
-                to send the structured record alongside the legacy inputs.
+                to route the request to the correct scorer version.
             scorer_label: Optional display/metadata label.
             input: Optional user/system prompt text.
             output: Optional model response text.
             step: Required runtime step; invocation is rejected without it.
             selected_data: Raw selector-selected value used to construct the record,
-                preserving its structure independently from serialized legacy inputs.
+                preserving its structure for the scorer.
             selected_data_payload_field: Record input/output side for scalar selector values.
             execution_context: Required authenticated Galileo scorer context; Orbit uses
                 it to fetch LLM credentials.
@@ -523,7 +521,8 @@ class GalileoLLMClient:
 
         Raises:
             ValueError: If step or execution_context are absent, neither input nor
-                output is provided, or the timeout ordering is invalid.
+                output is provided, the step type is unsupported, or the timeout
+                ordering is invalid.
             RuntimeError: If the API response is not a JSON object.
             httpx.HTTPStatusError: If the invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
@@ -547,6 +546,12 @@ class GalileoLLMClient:
             selected_data=selected_data,
             payload_field=selected_data_payload_field,
         )
+        if record is None:
+            raise ValueError(
+                f"LLM scorer invocation requires a supported step type; "
+                f"step type '{step.type}' is not supported. "
+                f"Supported types: {', '.join(sorted(SUPPORTED_SCORER_INVOKE_RECORD_TYPES))}."
+            )
         request_body = ScorerInvokeRequest(
             scorer_id=scorer_id,
             scorer_version_id=scorer_version_id,

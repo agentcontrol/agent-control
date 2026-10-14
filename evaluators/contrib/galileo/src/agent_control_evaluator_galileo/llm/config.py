@@ -64,7 +64,7 @@ class LlmEvaluatorConfig(EvaluatorConfig):
     Attributes:
         scorer_id: Required scorer identifier for LLM scorer invocation.
         scorer_version_id: Required scorer version identifier. Orbit uses this
-            to send the structured record alongside the legacy inputs.
+            to route the request to the correct scorer version.
         scorer_label: Optional display/metadata label.
         threshold: Local threshold used by the evaluator for comparison.
         operator: Local comparison operator. Numeric operators use threshold as a number.
