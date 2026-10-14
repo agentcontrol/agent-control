@@ -20,13 +20,20 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0.dev"
 
-from agent_control_evaluator_galileo.llm import (
-    LLM_AVAILABLE,
-    GalileoLLMClient,
-    LlmEvaluator,
-    LlmEvaluatorConfig,
-    LlmOperator,
-)
+try:
+    from agent_control_evaluator_galileo.llm import (
+        LLM_AVAILABLE,
+        GalileoLLMClient,
+        LlmEvaluator,
+        LlmEvaluatorConfig,
+        LlmOperator,
+    )
+except ImportError:
+    LLM_AVAILABLE = False  # type: ignore[assignment]
+    GalileoLLMClient = None  # type: ignore[assignment,misc]
+    LlmEvaluator = None  # type: ignore[assignment,misc]
+    LlmEvaluatorConfig = None  # type: ignore[assignment]
+    LlmOperator = None  # type: ignore[assignment]
 from agent_control_evaluator_galileo.luna import (
     LUNA_AVAILABLE,
     GalileoLunaClient,

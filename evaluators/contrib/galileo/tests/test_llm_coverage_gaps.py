@@ -926,6 +926,37 @@ async def test_invoke_always_emits_config_field(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_invoke_raises_for_unsupported_step_type(monkeypatch):
+    """invoke() must raise a clear ValueError before sending a request when the
+    step type is not in SUPPORTED_SCORER_INVOKE_RECORD_TYPES."""
+    for key, value in LLM_ENV.items():
+        monkeypatch.setenv(key, value)
+    from agent_control_models import Step
+
+    from agent_control_evaluator_galileo.llm.client import (
+        GalileoExecutionContext,
+        GalileoLLMClient,
+    )
+
+    client = GalileoLLMClient()
+    # "custom_step" is not a supported Orbit record type
+    step = Step(type="custom_step", name="test", input="hello")
+    context = GalileoExecutionContext(organization_id="org-1")
+
+    try:
+        with pytest.raises(ValueError, match="custom_step"):
+            await client.invoke(
+                scorer_id="scorer-123",
+                scorer_version_id="ver-1",
+                input="hello",
+                step=step,
+                execution_context=context,
+            )
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_client_pool_round_robin(monkeypatch):
     """With pool_size > 1, the client rotates through multiple connections."""
     for key, value in LLM_ENV.items():
