@@ -7,6 +7,8 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from hashlib import sha256
 from hmac import compare_digest
 from hmac import new as hmac_new
+from importlib import reload
+from importlib.metadata import PackageNotFoundError
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -20,6 +22,9 @@ from agent_control_evaluator_galileo.jev import (
     JevInvokeRequest,
     JevInvokeResponse,
 )
+from agent_control_evaluator_galileo.jev import evaluator as jev_evaluator_module
+from agent_control_evaluator_galileo.jev.client import _normalize_invoke_url
+from agent_control_evaluator_galileo.jev.evaluator import _contains
 from agent_control_evaluator_galileo.luna.client import (
     GalileoExecutionContext,
     ScorerInvokeInputs,
@@ -62,6 +67,69 @@ def test_jev_registration_and_required_configuration() -> None:
         JevEvaluatorConfig(scorer_version_id="version-a")  # type: ignore[call-arg]
     with pytest.raises(ValidationError, match="scorer_version_id"):
         JevEvaluatorConfig(scorer_id="scorer-a")  # type: ignore[call-arg]
+
+
+def test_missing_distribution_metadata_uses_development_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_distribution(_: str) -> str:
+        raise PackageNotFoundError
+
+    from agent_control_evaluators import clear_evaluators, get_all_evaluators, register_evaluator
+
+    registered_evaluators = get_all_evaluators()
+    monkeypatch.setattr(jev_evaluator_module, "version", missing_distribution)
+    try:
+        clear_evaluators()
+        reloaded_module = reload(jev_evaluator_module)
+        assert reloaded_module.JevEvaluator.metadata.version == "0.0.0.dev"
+    finally:
+        clear_evaluators()
+        for evaluator_class in registered_evaluators.values():
+            register_evaluator(evaluator_class)
+
+
+@pytest.mark.parametrize(
+    ("value", "threshold", "expected"),
+    [
+        ("unsafe answer", "unsafe", True),
+        ({"label": "unsafe"}, "unsafe", True),
+        ({"label": "safe"}, "unsafe", False),
+        (42, "unsafe", False),
+    ],
+)
+def test_contains_comparison_handles_supported_and_unsupported_values(
+    value: Any, threshold: Any, expected: bool
+) -> None:
+    assert _contains(value, threshold) is expected
+
+
+def test_config_rejects_non_numeric_or_missing_thresholds() -> None:
+    with pytest.raises(ValidationError, match="requires a numeric threshold"):
+        JevEvaluatorConfig(
+            scorer_id="scorer-a",
+            scorer_version_id="version-a",
+            operator="gt",
+            threshold=True,
+        )
+    with pytest.raises(ValidationError, match="threshold is required"):
+        JevEvaluatorConfig(
+            scorer_id="scorer-a",
+            scorer_version_id="version-a",
+            operator="eq",
+            threshold=None,
+        )
+
+
+def test_config_allows_missing_threshold_for_any_operator() -> None:
+    config = JevEvaluatorConfig(
+        scorer_id="scorer-a",
+        scorer_version_id="version-a",
+        operator="any",
+        threshold=None,
+    )
+
+    assert config.threshold is None
 
 
 @pytest.mark.asyncio
@@ -597,6 +665,159 @@ async def test_non_success_response_without_score_uses_provider_status_error(
     assert result.matched is False
     assert result.error == "provider rejected request"
     await evaluator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_direct_evaluation_and_context_method_report_missing_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evaluator = _evaluator(monkeypatch)
+    step = Step(type="llm", name="answer", input="question")
+
+    direct_result = await evaluator.evaluate("question")
+    context_result = await evaluator.evaluate_with_context("question", step)
+
+    assert "requires Step context" in (direct_result.error or "")
+    assert "requires execution_context" in (context_result.error or "")
+    await evaluator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_extensions_without_organization_id_return_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evaluator = _evaluator(monkeypatch)
+    extensions = {"caller_id": "user-7", "target_type": "log_stream"}
+
+    result = await evaluator.evaluate_with_extensions(
+        "question", Step(type="llm", name="answer", input="question"), extensions
+    )
+
+    assert result.matched is False
+    assert "missing organization_id" in (result.error or "")
+    await evaluator.aclose()
+
+
+@pytest.mark.parametrize(
+    ("score", "threshold", "operator", "expected"),
+    [("yes", None, "any", True), ("", None, "any", False)],
+)
+def test_any_operator_uses_score_truthiness(
+    monkeypatch: pytest.MonkeyPatch,
+    score: Any,
+    threshold: Any,
+    operator: str,
+    expected: bool,
+) -> None:
+    evaluator = _evaluator(monkeypatch, threshold=threshold, operator=operator)
+
+    assert evaluator._matches(score) is expected
+
+
+def test_numeric_comparison_rejects_non_numeric_threshold_from_unvalidated_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://runners:8090")
+    config = JevEvaluatorConfig.model_construct(
+        scorer_id="scorer-a",
+        scorer_version_id="version-a",
+        threshold="not numeric",
+        operator="gte",
+    )
+    evaluator = JevEvaluator(config)
+
+    with pytest.raises(ValueError, match="threshold .* is not numeric"):
+        evaluator._matches(0.8)
+
+
+def test_http_status_errors_include_status_code_in_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evaluator = _evaluator(monkeypatch)
+    response = httpx.Response(401, request=httpx.Request("POST", "http://runners"))
+    error = httpx.HTTPStatusError("unauthorized", request=response.request, response=response)
+
+    result = evaluator._error(error)
+
+    assert result.metadata["http_status_code"] == 401
+
+
+def test_invoke_url_with_existing_path_is_preserved() -> None:
+    url = "https://runners.example/custom?tenant=one#invoke"
+
+    assert _normalize_invoke_url(url) == url
+
+
+def test_client_falls_back_to_legacy_api_secret_environment_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
+    monkeypatch.setenv("GALILEO_API_SECRET", "legacy-secret")
+
+    client = GalileoJevClient(invoke_url="http://runners:8090")
+
+    assert client.api_secret == "legacy-secret"
+
+
+def test_client_requires_api_secret_when_environment_variables_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
+    monkeypatch.delenv("GALILEO_API_SECRET", raising=False)
+
+    with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_SECRET"):
+        GalileoJevClient(invoke_url="http://runners:8090")
+
+
+@pytest.mark.asyncio
+async def test_client_rejects_invoke_when_runtime_is_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "disabled")
+    client = GalileoJevClient(invoke_url="http://runners:8090")
+
+    with pytest.raises(RuntimeError, match="runtime is disabled"):
+        await client.invoke(
+            scorer_id="scorer-a",
+            scorer_version_id="version-a",
+            scorer_label=None,
+            step=Step(type="llm", name="answer", input="question"),
+            execution_context=GalileoExecutionContext(organization_id="org-1"),
+            inputs=JevInvokeInputs(),
+            timeout=5.0,
+        )
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_client_rejects_non_object_invoke_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
+    client = GalileoJevClient(invoke_url="http://runners:8090")
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[{"score": 0.9}])
+
+    await client._client.aclose()
+    client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(RuntimeError, match="expected a JSON object"):
+        await client.invoke(
+            scorer_id="scorer-a",
+            scorer_version_id="version-a",
+            scorer_label=None,
+            step=Step(type="llm", name="answer", input="question"),
+            execution_context=GalileoExecutionContext(organization_id="org-1"),
+            inputs=JevInvokeInputs(),
+            timeout=5.0,
+        )
+
+    await client.close()
 
 
 def test_luna_and_jev_request_shape_parity() -> None:
