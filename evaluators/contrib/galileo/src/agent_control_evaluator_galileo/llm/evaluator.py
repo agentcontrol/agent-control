@@ -104,7 +104,26 @@ def _http_status_error_metadata(error: httpx.HTTPStatusError) -> dict[str, Any]:
 
 @register_evaluator
 class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
-    """Galileo LLM-as-judge evaluator using the direct scorer invocation API."""
+    """Galileo LLM-as-judge evaluator using the direct scorer invocation API.
+
+    This evaluator requires Agent Control's authenticated execution context to
+    invoke the Galileo scorer.  ``target_type`` and ``target_id`` are optional
+    fields in the general SDK API, but ``galileo.llm`` depends on them being
+    supplied via a *targeted* SDK initialisation (e.g. a log-stream or
+    agent-stream target) so that a ``run_id`` can be forwarded to Galileo.
+    Without a supported ``target_type`` (``"log_stream"`` or
+    ``"agent_stream"``) the ``run_id`` in the execution context will be
+    ``None``, which may limit Galileo's ability to associate the scorer result
+    with a specific run.
+
+    Typical targeted SDK usage::
+
+        agent_control.init(
+            agent_name="my-agent",
+            target_type="log_stream",
+            target_id="<log-stream-id>",
+        )
+    """
 
     metadata = EvaluatorMetadata(
         name="galileo.llm",
@@ -223,7 +242,20 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
         step: Step,
         extensions: JSONObject | None,
     ) -> EvaluatorResult:
-        """Evaluate using opaque authenticated metadata supplied by Agent Control."""
+        """Evaluate using opaque authenticated metadata supplied by Agent Control.
+
+        ``extensions`` carries the authenticated principal's ``namespace_key``
+        (mapped to ``organization_id``), optional ``caller_id`` (``user_id``),
+        and optional ``metadata.project_id``.  When ``target_type`` is
+        ``"log_stream"`` or ``"agent_stream"``, ``target_id`` is forwarded as
+        ``run_id`` in the Galileo execution context.  If ``target_type`` /
+        ``target_id`` are absent or unsupported, ``run_id`` will be ``None``.
+
+        Note: ``target_type`` and ``target_id`` are optional in the general SDK
+        API.  Pass them via :func:`agent_control.init` (or the equivalent SDK
+        call) when using ``galileo.llm`` so that Galileo can associate scorer
+        results with the correct run.
+        """
         return await self._evaluate(
             data,
             step=step,
