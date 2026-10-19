@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v8.14.0 (2026-10-19)
+
+### Features
+
+- **evaluators**: Add evaluator for LLM
+  ([#290](https://github.com/agentcontrol/agent-control/pull/290),
+  [`607a91d`](https://github.com/agentcontrol/agent-control/commit/607a91da0cd7fb98ab1f42ede9410f0565591066))
+
+
 ## v8.13.0 (2026-10-13)
 
 ### Features
