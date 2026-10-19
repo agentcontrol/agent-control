@@ -1,0 +1,39 @@
+"""Configuration for Galileo Jev decision scorer evaluation."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from agent_control_evaluators import EvaluatorConfig
+from agent_control_models import JSONValue
+from pydantic import Field, model_validator
+
+JevOperator = Literal["gt", "gte", "lt", "lte", "eq", "ne", "contains", "any"]
+JevPayloadField = Literal["input", "output"]
+_NUMERIC_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
+
+
+class JevEvaluatorConfig(EvaluatorConfig):
+    """Pinned Jev scorer and local result comparison settings."""
+
+    scorer_id: str = Field(min_length=1)
+    scorer_version_id: str = Field(min_length=1)
+    scorer_label: str | None = Field(default=None, min_length=1)
+    threshold: JSONValue = 0.5
+    operator: JevOperator = "gte"
+    payload_field: JevPayloadField = Field(
+        default="input",
+        description="Record side to use when the selector returns a scalar value.",
+    )
+    timeout_ms: int = Field(default=10000, ge=1, le=60000)
+
+    @model_validator(mode="after")
+    def validate_threshold(self) -> JevEvaluatorConfig:
+        """Ensure ordered comparisons use a numeric threshold."""
+        if self.operator in _NUMERIC_OPERATORS and (
+            isinstance(self.threshold, bool) or not isinstance(self.threshold, (int, float))
+        ):
+            raise ValueError(f"operator '{self.operator}' requires a numeric threshold")
+        if self.operator != "any" and self.threshold is None:
+            raise ValueError("threshold is required unless operator is 'any'")
+        return self

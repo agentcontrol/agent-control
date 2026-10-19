@@ -28,6 +28,7 @@ dev = [
 
 [project.entry-points."agent_control.evaluators"]
 "galileo.luna" = "agent_control_evaluator_galileo.luna:LunaEvaluator"
+"galileo.jev" = "agent_control_evaluator_galileo.jev:JevEvaluator"
 
 [build-system]
 requires = ["hatchling"]
