@@ -7,6 +7,7 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from hashlib import sha256
 from hmac import compare_digest
 from hmac import new as hmac_new
+from importlib import metadata as importlib_metadata
 from importlib import reload
 from importlib.metadata import PackageNotFoundError
 from typing import Any
@@ -78,7 +79,7 @@ def test_missing_distribution_metadata_uses_development_version(
     from agent_control_evaluators import clear_evaluators, get_all_evaluators, register_evaluator
 
     registered_evaluators = get_all_evaluators()
-    monkeypatch.setattr(jev_evaluator_module, "version", missing_distribution)
+    monkeypatch.setattr(importlib_metadata, "version", missing_distribution)
     try:
         clear_evaluators()
         reloaded_module = reload(jev_evaluator_module)
