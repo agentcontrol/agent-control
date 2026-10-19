@@ -1,3 +1,27 @@
+## [3.4.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.3.0...ts-sdk-v3.4.0) (2026-10-19)
+
+### Features
+
+* **engine:** capture per-control execution duration [SAO-18023] ([#283](https://github.com/agentcontrol/agent-control/issues/283)) ([d1b9d21](https://github.com/agentcontrol/agent-control/commit/d1b9d21f900129a33661f0f1449f989166da27ce))
+* **evaluators:** 17516 request payload contract ([#271](https://github.com/agentcontrol/agent-control/issues/271)) ([1f07d7c](https://github.com/agentcontrol/agent-control/commit/1f07d7cee069c5515c384d2fa794dfbaa8fcdce0))
+* **evaluators:** Add evaluator for LLM ([#290](https://github.com/agentcontrol/agent-control/issues/290)) ([607a91d](https://github.com/agentcontrol/agent-control/commit/607a91da0cd7fb98ab1f42ede9410f0565591066))
+* **evaluators:** add extensions/metadata for additional fields that we want to pass as context to execution of evaluator ([#276](https://github.com/agentcontrol/agent-control/issues/276)) ([4e6b025](https://github.com/agentcontrol/agent-control/commit/4e6b02530559baec320b3f7b25a9fe37969f6202))
+* **evaluators:** add shared galileo record factory to convert step to galileo models ([#267](https://github.com/agentcontrol/agent-control/issues/267)) ([bd7d91f](https://github.com/agentcontrol/agent-control/commit/bd7d91fe1bee33bfb27ac686c47d539cfe675d58))
+* **evaluators:** put runtime records behind a flag ([#288](https://github.com/agentcontrol/agent-control/issues/288)) ([59b2ec5](https://github.com/agentcontrol/agent-control/commit/59b2ec5fa7f27d1951bf2af8b73cc3f2d543b0f5))
+* **evaluators:** send authenticated execution context to runners api ([#278](https://github.com/agentcontrol/agent-control/issues/278)) ([60814a8](https://github.com/agentcontrol/agent-control/commit/60814a8d839cb5c50262e87ff9196e41b6e7d69a))
+* **examples:** add TypeSafe Jev evaluator example ([#279](https://github.com/agentcontrol/agent-control/issues/279)) ([095edf0](https://github.com/agentcontrol/agent-control/commit/095edf0321e7c2ed46f16cffcfb66bfcbd79f2ed))
+* **sdk:** add Step.children ([#282](https://github.com/agentcontrol/agent-control/issues/282)) ([86fbbfe](https://github.com/agentcontrol/agent-control/commit/86fbbfe42bf95a332c100fa29e3d7056ea7f9ad4))
+* **sdk:** add StepRecorder for incremental trace/session Step trees ([#287](https://github.com/agentcontrol/agent-control/issues/287)) ([4f342ed](https://github.com/agentcontrol/agent-control/commit/4f342edc2f58900b977a5a88d009c4e457e26055)), closes [#271](https://github.com/agentcontrol/agent-control/issues/271)
+* **server:** Report sanitized diagnostics on upstream 4xx rejections [SAO-17523] ([#270](https://github.com/agentcontrol/agent-control/issues/270)) ([db9c667](https://github.com/agentcontrol/agent-control/commit/db9c6676f058d91b08f761626cdad5113696df92))
+
+### Bug Fixes
+
+* **evaluators:** normalize records with galileo-core ([#277](https://github.com/agentcontrol/agent-control/issues/277)) ([a0d2660](https://github.com/agentcontrol/agent-control/commit/a0d266074c69344abd1d323f5262f9cddfc4a858))
+* **sdk:** resolve all condition leaf selectors into control event input ([#269](https://github.com/agentcontrol/agent-control/issues/269)) ([b7a76cf](https://github.com/agentcontrol/agent-control/commit/b7a76cf83d8ba6896dcd735ecd239de267ba381b))
+* **server:** annotate SQLAlchemy result rows for 2.1 type inference [SAO-17580] ([#272](https://github.com/agentcontrol/agent-control/issues/272)) ([ad6a257](https://github.com/agentcontrol/agent-control/commit/ad6a257ce9055c384ab6d1278f85ef15fabfbf87)), closes [#268](https://github.com/agentcontrol/agent-control/issues/268)
+* **server:** Reject malformed runtime-token target context before authorization [SAO-17522] ([#268](https://github.com/agentcontrol/agent-control/issues/268)) ([364ff45](https://github.com/agentcontrol/agent-control/commit/364ff454d14ebf3e92cb3faaad6d0686ef541b9c))
+* **server:** repair Orbit binding ID auth and preserve legacy upstreams [SAO-17527] ([#273](https://github.com/agentcontrol/agent-control/issues/273)) ([06dc211](https://github.com/agentcontrol/agent-control/commit/06dc2117bb299416c1afb4c84a05ca4b580f91de))
+
 ## [3.3.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.2.0...ts-sdk-v3.3.0) (2026-09-22)
 
 ### Features
