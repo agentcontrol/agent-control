@@ -1,4 +1,4 @@
-"""HTTP client for Galileo Jev scorer invocation."""
+"""HTTP client for Galileo Decision Models scorer invocation."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from ..luna.client import GalileoExecutionContext
 from ..luna.config import scorer_invoke_runtime_enabled
 from ..records import record_from_step
-from .config import JevPayloadField
+from .config import DecisionModelsPayloadField
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ def _b64url(data: bytes) -> str:
     return urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
 
-def _jev_internal_auth_token(
+def _decision_models_internal_auth_token(
     api_secret: str,
     ttl_seconds: int = DEFAULT_INTERNAL_TOKEN_TTL_SECS,
 ) -> str:
@@ -66,7 +66,7 @@ def _normalize_invoke_url(raw_url: str) -> str:
     return f"{url}{DEFAULT_INVOKE_PATH}"
 
 
-class JevInvokeInputs(BaseModel):
+class DecisionModelsInvokeInputs(BaseModel):
     """Legacy inputs accepted alongside the structured Galileo record."""
 
     query: JSONValue = ""
@@ -75,7 +75,7 @@ class JevInvokeInputs(BaseModel):
     tools: list[JSONObject] | None = None
 
 
-class JevInvokeRequest(BaseModel):
+class DecisionModelsInvokeRequest(BaseModel):
     """Structured Runners scorer-invoke request."""
 
     scorer_id: str = Field(min_length=1)
@@ -83,7 +83,7 @@ class JevInvokeRequest(BaseModel):
     scorer_label: str | None = None
     execution_context: GalileoExecutionContext
     record: JSONObject
-    inputs: JevInvokeInputs
+    inputs: DecisionModelsInvokeInputs
     config: JSONObject = Field(default_factory=dict)
 
     def to_dict(self) -> JSONObject:
@@ -93,8 +93,8 @@ class JevInvokeRequest(BaseModel):
         return request
 
 
-class JevInvokeResponse(BaseModel):
-    """Response returned by the Jev scorer-invoke runtime."""
+class DecisionModelsInvokeResponse(BaseModel):
+    """Response returned by the Decision Models scorer-invoke runtime."""
 
     score: JSONValue | None = None
     status: str = "unknown"
@@ -103,7 +103,7 @@ class JevInvokeResponse(BaseModel):
     error_message: str | None = None
 
 
-class GalileoJevClient:
+class GalileoDecisionModelsClient:
     """Small HTTP client for the Runners scorer-invoke endpoint."""
 
     def __init__(
@@ -118,11 +118,12 @@ class GalileoJevClient:
         )
         if not resolved_secret:
             raise ValueError(
-                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for galileo.jev"
+                "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for "
+                "galileo.decision_models"
             )
         resolved_url = invoke_url or os.getenv(LUNA_INVOKE_URL_ENV)
         if not resolved_url or not resolved_url.strip():
-            raise ValueError(f"{LUNA_INVOKE_URL_ENV} is required for galileo.jev")
+            raise ValueError(f"{LUNA_INVOKE_URL_ENV} is required for galileo.decision_models")
         self.api_secret = resolved_secret
         self.invoke_url = _normalize_invoke_url(resolved_url)
         self.runtime_enabled = scorer_invoke_runtime_enabled()
@@ -140,15 +141,15 @@ class GalileoJevClient:
         scorer_label: str | None,
         step: Step,
         execution_context: GalileoExecutionContext,
-        inputs: JevInvokeInputs,
+        inputs: DecisionModelsInvokeInputs,
         timeout: float,
         selected_data: Any = None,
-        payload_field: JevPayloadField = "input",
-    ) -> JevInvokeResponse:
+        payload_field: DecisionModelsPayloadField = "input",
+    ) -> DecisionModelsInvokeResponse:
         """Invoke the pinned scorer with the complete Galileo Core record."""
         if not self.runtime_enabled:
             raise RuntimeError(
-                "Galileo scorer-invoke runtime is disabled; galileo.jev requires "
+                "Galileo scorer-invoke runtime is disabled; galileo.decision_models requires "
                 "GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME=enabled."
             )
         record = record_from_step(
@@ -156,7 +157,7 @@ class GalileoJevClient:
             selected_data=selected_data,
             payload_field=payload_field,
         ).model_dump(mode="json", exclude_none=True)
-        request = JevInvokeRequest(
+        request = DecisionModelsInvokeRequest(
             scorer_id=scorer_id,
             scorer_version_id=scorer_version_id,
             scorer_label=scorer_label,
@@ -168,14 +169,16 @@ class GalileoJevClient:
         response = await self._client.post(
             self.invoke_url,
             json=request.to_dict(),
-            headers={"Authorization": f"Bearer {_jev_internal_auth_token(self.api_secret)}"},
+            headers={
+                "Authorization": f"Bearer {_decision_models_internal_auth_token(self.api_secret)}"
+            },
             timeout=timeout,
         )
         response.raise_for_status()
         body: Any = response.json()
         if not isinstance(body, dict):
-            raise RuntimeError("Invalid Jev scorer response: expected a JSON object")
-        return JevInvokeResponse.model_validate(body)
+            raise RuntimeError("Invalid Decision Models scorer response: expected a JSON object")
+        return DecisionModelsInvokeResponse.model_validate(body)
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""

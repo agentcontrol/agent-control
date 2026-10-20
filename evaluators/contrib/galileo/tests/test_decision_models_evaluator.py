@@ -1,4 +1,4 @@
-"""Tests for the Galileo Jev evaluator and Runners client."""
+"""Tests for the Galileo Decision Models evaluator and Runners client."""
 
 from __future__ import annotations
 
@@ -15,17 +15,19 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-from agent_control_evaluator_galileo.jev import (
-    GalileoJevClient,
-    JevEvaluator,
-    JevEvaluatorConfig,
-    JevInvokeInputs,
-    JevInvokeRequest,
-    JevInvokeResponse,
+from agent_control_evaluator_galileo.decision_models import (
+    DecisionModelsEvaluator,
+    DecisionModelsEvaluatorConfig,
+    DecisionModelsInvokeInputs,
+    DecisionModelsInvokeRequest,
+    DecisionModelsInvokeResponse,
+    GalileoDecisionModelsClient,
 )
-from agent_control_evaluator_galileo.jev import evaluator as jev_evaluator_module
-from agent_control_evaluator_galileo.jev.client import _normalize_invoke_url
-from agent_control_evaluator_galileo.jev.evaluator import _contains
+from agent_control_evaluator_galileo.decision_models import (
+    evaluator as decision_models_evaluator_module,
+)
+from agent_control_evaluator_galileo.decision_models.client import _normalize_invoke_url
+from agent_control_evaluator_galileo.decision_models.evaluator import _contains
 from agent_control_evaluator_galileo.luna.client import (
     GalileoExecutionContext,
     ScorerInvokeInputs,
@@ -48,26 +50,26 @@ def _decode_jwt_segment(segment: str) -> dict[str, Any]:
     return json.loads(urlsafe_b64decode(padded.encode()).decode())
 
 
-def _evaluator(monkeypatch: pytest.MonkeyPatch, **config: Any) -> JevEvaluator:
+def _evaluator(monkeypatch: pytest.MonkeyPatch, **config: Any) -> DecisionModelsEvaluator:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://runners:8090")
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
-    evaluator = JevEvaluator(
-        JevEvaluatorConfig(scorer_id="scorer-a", scorer_version_id="version-a", **config)
+    evaluator = DecisionModelsEvaluator(
+        DecisionModelsEvaluatorConfig(scorer_id="scorer-a", scorer_version_id="version-a", **config)
     )
     return evaluator
 
 
-def test_jev_registration_and_required_configuration() -> None:
-    # Given: the separate Jev entry point and required pinned scorer config
-    # Then: Jev is registered independently and both scorer identifiers are required
+def test_decision_models_registration_and_required_configuration() -> None:
+    # Given: the separate Decision Models entry point and required pinned scorer config
+    # Then: Decision Models is registered independently and both scorer identifiers are required
     from agent_control_evaluators import get_evaluator
 
-    assert get_evaluator("galileo.jev") is JevEvaluator
+    assert get_evaluator("galileo.decision_models") is DecisionModelsEvaluator
     with pytest.raises(ValidationError, match="scorer_id"):
-        JevEvaluatorConfig(scorer_version_id="version-a")  # type: ignore[call-arg]
+        DecisionModelsEvaluatorConfig(scorer_version_id="version-a")  # type: ignore[call-arg]
     with pytest.raises(ValidationError, match="scorer_version_id"):
-        JevEvaluatorConfig(scorer_id="scorer-a")  # type: ignore[call-arg]
+        DecisionModelsEvaluatorConfig(scorer_id="scorer-a")  # type: ignore[call-arg]
 
 
 def test_missing_distribution_metadata_uses_development_version(
@@ -82,8 +84,8 @@ def test_missing_distribution_metadata_uses_development_version(
     monkeypatch.setattr(importlib_metadata, "version", missing_distribution)
     try:
         clear_evaluators()
-        reloaded_module = reload(jev_evaluator_module)
-        assert reloaded_module.JevEvaluator.metadata.version == "0.0.0.dev"
+        reloaded_module = reload(decision_models_evaluator_module)
+        assert reloaded_module.DecisionModelsEvaluator.metadata.version == "0.0.0.dev"
     finally:
         clear_evaluators()
         for evaluator_class in registered_evaluators.values():
@@ -107,14 +109,14 @@ def test_contains_comparison_handles_supported_and_unsupported_values(
 
 def test_config_rejects_non_numeric_or_missing_thresholds() -> None:
     with pytest.raises(ValidationError, match="requires a numeric threshold"):
-        JevEvaluatorConfig(
+        DecisionModelsEvaluatorConfig(
             scorer_id="scorer-a",
             scorer_version_id="version-a",
             operator="gt",
             threshold=True,
         )
     with pytest.raises(ValidationError, match="threshold is required"):
-        JevEvaluatorConfig(
+        DecisionModelsEvaluatorConfig(
             scorer_id="scorer-a",
             scorer_version_id="version-a",
             operator="eq",
@@ -123,7 +125,7 @@ def test_config_rejects_non_numeric_or_missing_thresholds() -> None:
 
 
 def test_config_allows_missing_threshold_for_any_operator() -> None:
-    config = JevEvaluatorConfig(
+    config = DecisionModelsEvaluatorConfig(
         scorer_id="scorer-a",
         scorer_version_id="version-a",
         operator="any",
@@ -140,8 +142,8 @@ async def test_client_url_resolution_prefers_explicit_url_then_luna_environment(
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna:8090")
 
-    explicit_client = GalileoJevClient(invoke_url="http://explicit:8090")
-    environment_client = GalileoJevClient()
+    explicit_client = GalileoDecisionModelsClient(invoke_url="http://explicit:8090")
+    environment_client = GalileoDecisionModelsClient()
 
     expected_path = "/api/v1/scorers/invoke"
     assert explicit_client.invoke_url == f"http://explicit:8090{expected_path}"
@@ -157,7 +159,7 @@ def test_client_requires_luna_invoke_url_when_no_explicit_url_is_given(
     monkeypatch.delenv("GALILEO_LUNA_INVOKE_URL", raising=False)
 
     with pytest.raises(ValueError, match="GALILEO_LUNA_INVOKE_URL"):
-        GalileoJevClient()
+        GalileoDecisionModelsClient()
 
 
 def test_invoke_request_requires_execution_context_and_serializes_nested_record() -> None:
@@ -170,12 +172,12 @@ def test_invoke_request_requires_execution_context_and_serializes_nested_record(
         "output": "",
         "spans": [{"type": "llm", "input": [{"role": "user", "content": "q"}]}],
     }
-    request = JevInvokeRequest(
+    request = DecisionModelsInvokeRequest(
         scorer_id="scorer-a",
         scorer_version_id="version-a",
         execution_context=context,
         record=record,
-        inputs=JevInvokeInputs(),
+        inputs=DecisionModelsInvokeInputs(),
         config={"request_timeout_seconds": 8.0},
     )
 
@@ -202,7 +204,7 @@ def test_invoke_request_requires_execution_context_and_serializes_nested_record(
         (["unsafe"], "unsafe", "contains", True),
     ],
 )
-async def test_jev_applies_local_comparison(
+async def test_decision_models_applies_local_comparison(
     monkeypatch: pytest.MonkeyPatch,
     score: Any,
     threshold: Any,
@@ -211,7 +213,7 @@ async def test_jev_applies_local_comparison(
 ) -> None:
     evaluator = _evaluator(monkeypatch, threshold=threshold, operator=operator)
     evaluator._client.invoke = AsyncMock(
-        return_value=JevInvokeResponse(score=score, status="success")
+        return_value=DecisionModelsInvokeResponse(score=score, status="success")
     )
     result = await evaluator.evaluate_with_extensions(
         "",
@@ -232,7 +234,7 @@ async def test_child_only_trace_keeps_nested_span_and_execution_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     evaluator = _evaluator(monkeypatch)
-    invoke = AsyncMock(return_value=JevInvokeResponse(score=0.82, status="success"))
+    invoke = AsyncMock(return_value=DecisionModelsInvokeResponse(score=0.82, status="success"))
     evaluator._client.invoke = invoke
     step = Step(
         type="trace",
@@ -268,7 +270,7 @@ async def test_supported_record_types_are_built_from_step_children(
     monkeypatch: pytest.MonkeyPatch, record_type: str
 ) -> None:
     evaluator = _evaluator(monkeypatch)
-    invoke = AsyncMock(return_value=JevInvokeResponse(score="yes", status="success"))
+    invoke = AsyncMock(return_value=DecisionModelsInvokeResponse(score="yes", status="success"))
     evaluator._client.invoke = invoke
     if record_type == "session":
         step = Step(
@@ -352,7 +354,7 @@ async def test_client_serializes_full_record_context_and_uses_timeout(
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://runners:8090")
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
-    client = GalileoJevClient()
+    client = GalileoDecisionModelsClient()
     seen: dict[str, Any] = {}
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -423,7 +425,7 @@ async def test_client_serializes_full_record_context_and_uses_timeout(
         scorer_label=None,
         step=step,
         execution_context=GalileoExecutionContext(organization_id="org-1", user_id="user-7"),
-        inputs=JevInvokeInputs(),
+        inputs=DecisionModelsInvokeInputs(),
         timeout=5.0,
     )
     assert response.score == 0.9
@@ -625,7 +627,7 @@ async def test_successful_zero_and_false_scores_are_valid(
 ) -> None:
     evaluator = _evaluator(monkeypatch, threshold=threshold, operator="eq")
     evaluator._client.invoke = AsyncMock(
-        return_value=JevInvokeResponse(score=score, status="success")
+        return_value=DecisionModelsInvokeResponse(score=score, status="success")
     )
     result = await evaluator.evaluate_with_extensions(
         "input", Step(type="llm", name="answer", input="input"), EXTENSIONS
@@ -640,13 +642,13 @@ async def test_successful_response_without_score_is_an_error(
 ) -> None:
     evaluator = _evaluator(monkeypatch)
     evaluator._client.invoke = AsyncMock(
-        return_value=JevInvokeResponse(status="success", score=None)
+        return_value=DecisionModelsInvokeResponse(status="success", score=None)
     )
     result = await evaluator.evaluate_with_extensions(
         "input", Step(type="llm", name="answer", input="input"), EXTENSIONS
     )
     assert result.matched is False
-    assert result.error == "Jev scorer response did not include a score"
+    assert result.error == "Decision Models scorer response did not include a score"
     await evaluator.aclose()
 
 
@@ -656,7 +658,7 @@ async def test_non_success_response_without_score_uses_provider_status_error(
 ) -> None:
     evaluator = _evaluator(monkeypatch)
     evaluator._client.invoke = AsyncMock(
-        return_value=JevInvokeResponse(
+        return_value=DecisionModelsInvokeResponse(
             status="error", score=None, error_message="provider rejected request"
         )
     )
@@ -720,13 +722,13 @@ def test_numeric_comparison_rejects_non_numeric_threshold_from_unvalidated_confi
 ) -> None:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://runners:8090")
-    config = JevEvaluatorConfig.model_construct(
+    config = DecisionModelsEvaluatorConfig.model_construct(
         scorer_id="scorer-a",
         scorer_version_id="version-a",
         threshold="not numeric",
         operator="gte",
     )
-    evaluator = JevEvaluator(config)
+    evaluator = DecisionModelsEvaluator(config)
 
     with pytest.raises(ValueError, match="threshold .* is not numeric"):
         evaluator._matches(0.8)
@@ -756,7 +758,7 @@ def test_client_falls_back_to_legacy_api_secret_environment_variable(
     monkeypatch.delenv("GALILEO_API_SECRET_KEY", raising=False)
     monkeypatch.setenv("GALILEO_API_SECRET", "legacy-secret")
 
-    client = GalileoJevClient(invoke_url="http://runners:8090")
+    client = GalileoDecisionModelsClient(invoke_url="http://runners:8090")
 
     assert client.api_secret == "legacy-secret"
 
@@ -768,7 +770,7 @@ def test_client_requires_api_secret_when_environment_variables_are_missing(
     monkeypatch.delenv("GALILEO_API_SECRET", raising=False)
 
     with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_SECRET"):
-        GalileoJevClient(invoke_url="http://runners:8090")
+        GalileoDecisionModelsClient(invoke_url="http://runners:8090")
 
 
 @pytest.mark.asyncio
@@ -777,7 +779,7 @@ async def test_client_rejects_invoke_when_runtime_is_disabled(
 ) -> None:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "disabled")
-    client = GalileoJevClient(invoke_url="http://runners:8090")
+    client = GalileoDecisionModelsClient(invoke_url="http://runners:8090")
 
     with pytest.raises(RuntimeError, match="runtime is disabled"):
         await client.invoke(
@@ -786,7 +788,7 @@ async def test_client_rejects_invoke_when_runtime_is_disabled(
             scorer_label=None,
             step=Step(type="llm", name="answer", input="question"),
             execution_context=GalileoExecutionContext(organization_id="org-1"),
-            inputs=JevInvokeInputs(),
+            inputs=DecisionModelsInvokeInputs(),
             timeout=5.0,
         )
 
@@ -799,7 +801,7 @@ async def test_client_rejects_non_object_invoke_response(
 ) -> None:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
-    client = GalileoJevClient(invoke_url="http://runners:8090")
+    client = GalileoDecisionModelsClient(invoke_url="http://runners:8090")
 
     async def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=[{"score": 0.9}])
@@ -814,14 +816,14 @@ async def test_client_rejects_non_object_invoke_response(
             scorer_label=None,
             step=Step(type="llm", name="answer", input="question"),
             execution_context=GalileoExecutionContext(organization_id="org-1"),
-            inputs=JevInvokeInputs(),
+            inputs=DecisionModelsInvokeInputs(),
             timeout=5.0,
         )
 
     await client.close()
 
 
-def test_luna_and_jev_request_shape_parity() -> None:
+def test_luna_and_decision_models_request_shape_parity() -> None:
     context = GalileoExecutionContext(organization_id="org-1", user_id="user-7")
     luna = ScorerInvokeRequest(
         scorer_id="scorer-a",
@@ -830,13 +832,13 @@ def test_luna_and_jev_request_shape_parity() -> None:
         record={"type": "llm", "input": "q", "output": "a"},
         execution_context=context,
     ).to_dict()
-    jev = JevInvokeRequest(
+    decision_models = DecisionModelsInvokeRequest(
         scorer_id="scorer-a",
         scorer_version_id="version-a",
-        inputs=JevInvokeInputs(query="q", response="a"),
+        inputs=DecisionModelsInvokeInputs(query="q", response="a"),
         record={"type": "llm", "input": "q", "output": "a"},
         execution_context=context,
     ).to_dict()
-    assert set(luna) == set(jev)
-    assert set(luna["inputs"]) == set(jev["inputs"])
-    assert luna["execution_context"] == jev["execution_context"]
+    assert set(luna) == set(decision_models)
+    assert set(luna["inputs"]) == set(decision_models["inputs"])
+    assert luna["execution_context"] == decision_models["execution_context"]

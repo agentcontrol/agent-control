@@ -1,4 +1,4 @@
-"""Configuration for Galileo Jev decision scorer evaluation."""
+"""Configuration for Galileo Decision Models scoring."""
 
 from __future__ import annotations
 
@@ -8,27 +8,27 @@ from agent_control_evaluators import EvaluatorConfig
 from agent_control_models import JSONValue
 from pydantic import Field, model_validator
 
-JevOperator = Literal["gt", "gte", "lt", "lte", "eq", "ne", "contains", "any"]
-JevPayloadField = Literal["input", "output"]
+DecisionModelsOperator = Literal["gt", "gte", "lt", "lte", "eq", "ne", "contains", "any"]
+DecisionModelsPayloadField = Literal["input", "output"]
 _NUMERIC_OPERATORS = frozenset({"gt", "gte", "lt", "lte"})
 
 
-class JevEvaluatorConfig(EvaluatorConfig):
-    """Pinned Jev scorer and local result comparison settings."""
+class DecisionModelsEvaluatorConfig(EvaluatorConfig):
+    """Pinned Decision Models scorer and local result comparison settings."""
 
     scorer_id: str = Field(min_length=1)
     scorer_version_id: str = Field(min_length=1)
     scorer_label: str | None = Field(default=None, min_length=1)
     threshold: JSONValue = 0.5
-    operator: JevOperator = "gte"
-    payload_field: JevPayloadField = Field(
+    operator: DecisionModelsOperator = "gte"
+    payload_field: DecisionModelsPayloadField = Field(
         default="input",
         description="Record side to use when the selector returns a scalar value.",
     )
     timeout_ms: int = Field(default=10000, ge=1, le=60000)
 
     @model_validator(mode="after")
-    def validate_threshold(self) -> JevEvaluatorConfig:
+    def validate_threshold(self) -> DecisionModelsEvaluatorConfig:
         """Ensure ordered comparisons use a numeric threshold."""
         if self.operator in _NUMERIC_OPERATORS and (
             isinstance(self.threshold, bool) or not isinstance(self.threshold, (int, float))

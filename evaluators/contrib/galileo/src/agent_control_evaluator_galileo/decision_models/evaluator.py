@@ -1,4 +1,4 @@
-"""Galileo Jev decision-model evaluator."""
+"""Galileo Decision Models evaluator."""
 
 from __future__ import annotations
 
@@ -12,8 +12,12 @@ from agent_control_models import EvaluatorResult, JSONObject, JSONValue, Step
 
 from ..luna.client import GalileoExecutionContext
 from ..luna.config import scorer_invoke_runtime_enabled
-from .client import GalileoJevClient, JevInvokeInputs, JevInvokeResponse
-from .config import JevEvaluatorConfig
+from .client import (
+    DecisionModelsInvokeInputs,
+    DecisionModelsInvokeResponse,
+    GalileoDecisionModelsClient,
+)
+from .config import DecisionModelsEvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
@@ -34,32 +38,34 @@ def _contains(value: JSONValue, threshold: JSONValue) -> bool:
 
 
 @register_evaluator
-class JevEvaluator(Evaluator[JevEvaluatorConfig]):
-    """Evaluate data using a pinned Galileo Jev decision scorer."""
+class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
+    """Evaluate data using a pinned Galileo Decision Models scorer."""
 
     metadata = EvaluatorMetadata(
-        name="galileo.jev",
+        name="galileo.decision_models",
         version=_PACKAGE_VERSION,
-        description="Galileo Jev decision scorer evaluation",
+        description="Galileo Decision Models scoring",
         requires_api_key=True,
         timeout_ms=10000,
     )
-    config_model = JevEvaluatorConfig
+    config_model = DecisionModelsEvaluatorConfig
 
-    def __init__(self, config: JevEvaluatorConfig) -> None:
+    def __init__(self, config: DecisionModelsEvaluatorConfig) -> None:
         super().__init__(config)
-        self._client = GalileoJevClient()
+        self._client = GalileoDecisionModelsClient()
 
     async def evaluate(self, data: Any) -> EvaluatorResult:
-        """Return an actionable error because Jev requires runtime context."""
+        """Return an actionable error because Decision Models requires runtime context."""
         if not scorer_invoke_runtime_enabled() or not self._client.runtime_enabled:
             return self._error(
                 RuntimeError(
-                    "Galileo scorer-invoke runtime is disabled; galileo.jev requires "
+                    "Galileo scorer-invoke runtime is disabled; galileo.decision_models requires "
                     "GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME=enabled."
                 )
             )
-        return self._error(RuntimeError("galileo.jev requires Step context and execution_context"))
+        return self._error(
+            RuntimeError("galileo.decision_models requires Step context and execution_context")
+        )
 
     async def evaluate_with_context(self, data: Any, step: Step) -> EvaluatorResult:
         """Evaluate a step when an authenticated execution context is supplied by extensions."""
@@ -72,7 +78,7 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
         try:
             context = self._execution_context(extensions)
             if context is None:
-                raise ValueError("galileo.jev requires execution_context")
+                raise ValueError("galileo.decision_models requires execution_context")
             return await self._evaluate(data, step, context)
         except Exception as exc:
             return self._error(exc)
@@ -83,11 +89,11 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
         try:
             if not scorer_invoke_runtime_enabled() or not self._client.runtime_enabled:
                 raise RuntimeError(
-                    "Galileo scorer-invoke runtime is disabled; galileo.jev requires "
+                    "Galileo scorer-invoke runtime is disabled; galileo.decision_models requires "
                     "GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME=enabled."
                 )
             if execution_context is None:
-                raise ValueError("galileo.jev requires execution_context")
+                raise ValueError("galileo.decision_models requires execution_context")
             inputs = self._inputs(data, step)
             response = await self._client.invoke(
                 scorer_id=self.config.scorer_id,
@@ -102,10 +108,10 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
             )
             if response.status.lower() != "success":
                 raise RuntimeError(
-                    response.error_message or f"Jev scorer status: {response.status}"
+                    response.error_message or f"Decision Models scorer status: {response.status}"
                 )
             if response.score is None:
-                raise RuntimeError("Jev scorer response did not include a score")
+                raise RuntimeError("Decision Models scorer response did not include a score")
             matched = self._matches(response.score)
             metadata = self._metadata(response)
             confidence = (
@@ -117,14 +123,14 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
                 matched=matched,
                 confidence=confidence,
                 message=(
-                    f"Jev result {response.score!r} {self.config.operator} "
+                    f"Decision Models result {response.score!r} {self.config.operator} "
                     f"threshold {self.config.threshold!r}: control "
                     f"{'triggered' if matched else 'not triggered'}."
                 ),
                 metadata=metadata,
             )
         except Exception as exc:
-            logger.error("Jev evaluation error: %s", exc, exc_info=True)
+            logger.error("Decision Models evaluation error: %s", exc, exc_info=True)
             return self._error(exc)
 
     @staticmethod
@@ -149,7 +155,7 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
         )
 
     @staticmethod
-    def _inputs(data: Any, step: Step) -> JevInvokeInputs:
+    def _inputs(data: Any, step: Step) -> DecisionModelsInvokeInputs:
         """Build the legacy inputs without rejecting valid child-only records."""
         if isinstance(data, dict) and ("input" in data or "output" in data):
             query = data.get("input", "")
@@ -158,7 +164,7 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
             query, response = data, ""
         else:
             query, response = step.input, step.output if step.output is not None else ""
-        return JevInvokeInputs(
+        return DecisionModelsInvokeInputs(
             query=query,
             response=response,
             ground_truth=step.ground_truth,
@@ -177,9 +183,11 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
         if operator == "contains":
             return _contains(value, threshold)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(f"Jev result {value!r} is not numeric for operator '{operator}'")
+            raise ValueError(
+                f"Decision Models result {value!r} is not numeric for operator '{operator}'"
+            )
         if isinstance(threshold, bool) or not isinstance(threshold, (int, float)):
-            raise ValueError(f"Jev threshold {threshold!r} is not numeric")
+            raise ValueError(f"Decision Models threshold {threshold!r} is not numeric")
         return {
             "gt": value > threshold,
             "gte": value >= threshold,
@@ -187,7 +195,7 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
             "lte": value <= threshold,
         }[operator]
 
-    def _metadata(self, response: JevInvokeResponse) -> dict[str, Any]:
+    def _metadata(self, response: DecisionModelsInvokeResponse) -> dict[str, Any]:
         return {
             "scorer_id": self.config.scorer_id,
             "scorer_version_id": self.config.scorer_version_id,
@@ -212,11 +220,11 @@ class JevEvaluator(Evaluator[JevEvaluatorConfig]):
         return EvaluatorResult(
             matched=False,
             confidence=0.0,
-            message=f"Jev evaluation error: {detail}",
+            message=f"Decision Models evaluation error: {detail}",
             metadata=metadata,
             error=detail,
         )
 
     async def aclose(self) -> None:
-        """Close the Jev HTTP client."""
+        """Close the Decision Models HTTP client."""
         await self._client.close()
