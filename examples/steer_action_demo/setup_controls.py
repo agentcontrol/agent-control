@@ -56,7 +56,7 @@ async def setup_banking_controls():
                 "evaluator": {
                     "name": "list",
                     "config": {
-                        "values": ["north korea", "iran", "syria", "cuba", "crimea"],
+                        "values": ["north korea", "iran", "cuba", "crimea"],
                         "logic": "any",
                         "match_mode": "contains",
                         "case_sensitive": False
