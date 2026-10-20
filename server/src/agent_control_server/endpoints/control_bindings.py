@@ -156,6 +156,7 @@ async def create_control_binding(
         target_id=request.target_id,
         control_id=request.control_id,
         enabled=request.enabled,
+        authorized_project_id=principal.project_id,
     )
     await db.commit()
     await db.refresh(binding)
@@ -278,6 +279,13 @@ async def patch_control_binding_by_key(
     creates a missing binding.
     """
     service = ControlBindingsService(db)
+    await service.guard_write(
+        principal.namespace_key,
+        principal.project_id,
+        request.target_type,
+        request.target_id,
+        request.control_id,
+    )
     binding = await service.set_enabled_by_natural_key(
         namespace_key=principal.namespace_key,
         target_type=request.target_type,
@@ -308,6 +316,16 @@ async def patch_control_binding(
     remains scoped to the authorized namespace.
     """
     service = ControlBindingsService(db)
+    stored = await service.get_binding_or_404(
+        namespace_key=principal.namespace_key, binding_id=binding_id
+    )
+    await service.guard_write(
+        principal.namespace_key,
+        principal.project_id,
+        stored.target_type,
+        stored.target_id,
+        stored.control_id,
+    )
     binding = await service.set_enabled(
         namespace_key=principal.namespace_key,
         binding_id=binding_id,
@@ -335,6 +353,16 @@ async def delete_control_binding(
     remains scoped to the authorized namespace.
     """
     service = ControlBindingsService(db)
+    stored = await service.get_binding_or_404(
+        namespace_key=principal.namespace_key, binding_id=binding_id
+    )
+    await service.guard_write(
+        principal.namespace_key,
+        principal.project_id,
+        stored.target_type,
+        stored.target_id,
+        stored.control_id,
+    )
     await service.delete_binding(namespace_key=principal.namespace_key, binding_id=binding_id)
     await db.commit()
     return DeleteControlBindingResponse(success=True)
@@ -367,6 +395,7 @@ async def upsert_control_binding_by_key(
         target_id=request.target_id,
         control_id=request.control_id,
         enabled=request.enabled,
+        authorized_project_id=principal.project_id,
     )
     await db.commit()
     await db.refresh(binding)
@@ -397,6 +426,13 @@ async def delete_control_binding_by_key(
     matching binding exists.
     """
     service = ControlBindingsService(db)
+    await service.guard_write(
+        principal.namespace_key,
+        principal.project_id,
+        request.target_type,
+        request.target_id,
+        request.control_id,
+    )
     deleted = await service.delete_by_natural_key(
         namespace_key=principal.namespace_key,
         target_type=request.target_type,

@@ -9,9 +9,42 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from agent_control_models import TemplateControlInput
 
 import agent_control
-from agent_control_models import TemplateControlInput
+
+
+@pytest.mark.asyncio
+async def test_project_owner_is_forwarded_by_control_wrappers() -> None:
+    # Given: the SDK public wrappers and a stubbed management transport.
+    response = Mock()
+    response.raise_for_status = Mock()
+    response.json = Mock(return_value={"control_id": 123})
+    transport = SimpleNamespace(
+        get=AsyncMock(return_value=response),
+        put=AsyncMock(return_value=response),
+        post=AsyncMock(return_value=response),
+    )
+    client = SimpleNamespace(http_client=transport)
+    # When: using explicit project ownership through the SDK.
+    await agent_control.controls.list_controls(client, owner_project_id="project-A")
+    await agent_control.controls.create_control(
+        client, "project-control", {}, owner_project_id="project-A"
+    )
+    await agent_control.controls.clone_and_bind_control(
+        client, 123, target_type="log_stream", target_id="stream-A", owner_project_id="project-A"
+    )
+    await agent_control.controls.validate_control_data(client, {}, owner_project_id="project-A")
+    await agent_control.controls.render_control_template(
+        client, {}, {}, owner_project_id="project-A"
+    )
+    # Then: ownership is transmitted separately from evaluator data/target IDs.
+    assert transport.get.call_args.kwargs["params"]["owner_project_id"] == "project-A"
+    assert transport.put.call_args.kwargs["json"]["owner_project_id"] == "project-A"
+    assert all(
+        call.kwargs["json"]["owner_project_id"] == "project-A"
+        for call in transport.post.await_args_list
+    )
 
 
 @pytest.mark.asyncio

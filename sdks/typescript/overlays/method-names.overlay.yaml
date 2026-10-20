@@ -145,6 +145,16 @@ actions:
       x-speakeasy-group: controlBindings
       x-speakeasy-name-override: delete
 
+  - target: $["paths"]["/api/v1/control-projects/{project_id}/targets/{target_id}:detach"]["post"]
+    update:
+      x-speakeasy-group: controlProjects
+      x-speakeasy-name-override: detachDeletedStream
+
+  - target: $["paths"]["/api/v1/control-projects/{project_id}:cleanup"]["post"]
+    update:
+      x-speakeasy-group: controlProjects
+      x-speakeasy-name-override: cleanup
+
   - target: $["paths"]["/api/v1/control-templates/render"]["post"]
     update:
       x-speakeasy-group: controls

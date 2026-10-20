@@ -335,7 +335,8 @@ def test_delete_control_rollback_on_failure(
             bindings_result.scalars.return_value.__iter__ = lambda self: iter([])
             bindings_result.scalars.return_value = []
             mock_session.execute = AsyncMock(
-                side_effect=[control_result, assoc_result, bindings_result]
+                # Stored-owner authorization reads before the mutation lookup.
+                side_effect=[control_result, control_result, assoc_result, bindings_result]
             )
             mock_session.delete = AsyncMock()
             mock_session.rollback = AsyncMock()
@@ -536,7 +537,8 @@ def test_patch_control_rollback_on_failure(
             name_check_result = MagicMock()
             name_check_result.first.return_value = None
             mock_session.execute = AsyncMock(
-                side_effect=[control_result, name_check_result]
+                # Stored-owner authorization reads before the mutation lookup.
+                side_effect=[control_result, control_result, name_check_result]
             )
             mock_session.rollback = AsyncMock()
             yield mock_session

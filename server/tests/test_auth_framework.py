@@ -621,9 +621,7 @@ async def test_http_upstream_default_forward_set_unchanged():
     provider = _build_upstream(factory)
 
     # When: the inbound carries an unlisted header alongside a default one
-    inbound = _build_request(
-        headers={"X-API-Key": "k1", "X-Deployer-Auth": "should-not-forward"}
-    )
+    inbound = _build_request(headers={"X-API-Key": "k1", "X-Deployer-Auth": "should-not-forward"})
     await provider.authorize(inbound, Operation.CONTROL_BINDINGS_READ)
 
     # Then: only the default-set header reaches the upstream
@@ -1050,8 +1048,7 @@ async def test_http_upstream_4xx_diagnostics_bound_the_logged_error_list(
             422,
             json={
                 "detail": [
-                    {"type": "missing", "loc": ["body", f"field_{index}"]}
-                    for index in range(12)
+                    {"type": "missing", "loc": ["body", f"field_{index}"]} for index in range(12)
                 ]
             },
         )
@@ -1965,10 +1962,7 @@ def test_runtime_ttl_loader_accepts_max(monkeypatch):
         "AGENT_CONTROL_RUNTIME_TOKEN_TTL_SECONDS",
         str(auth_config._MAX_RUNTIME_TOKEN_TTL_SECONDS),
     )
-    assert (
-        auth_config._load_runtime_ttl_seconds()
-        == auth_config._MAX_RUNTIME_TOKEN_TTL_SECONDS
-    )
+    assert auth_config._load_runtime_ttl_seconds() == auth_config._MAX_RUNTIME_TOKEN_TTL_SECONDS
 
 
 def test_build_default_provider_accepts_none_mode(monkeypatch):
@@ -2615,13 +2609,9 @@ def test_resolve_runtime_token_header_defaults_to_authorization(monkeypatch):
 def test_resolve_runtime_token_header_reads_env(monkeypatch):
     from agent_control_server.auth_framework import config as auth_config
 
-    monkeypatch.setenv(
-        "AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "  X-Agent-Control-Runtime-Token  "
-    )
+    monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "  X-Agent-Control-Runtime-Token  ")
     # Value is honored and trimmed.
-    assert (
-        auth_config._resolve_runtime_token_header() == "X-Agent-Control-Runtime-Token"
-    )
+    assert auth_config._resolve_runtime_token_header() == "X-Agent-Control-Runtime-Token"
 
 
 def test_resolve_runtime_token_header_blank_env_falls_back(monkeypatch):
@@ -2629,3 +2619,41 @@ def test_resolve_runtime_token_header_blank_env_falls_back(monkeypatch):
 
     monkeypatch.setenv("AGENT_CONTROL_RUNTIME_TOKEN_HEADER", "   ")
     assert auth_config._resolve_runtime_token_header() == "Authorization"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation", [Operation.PROJECT_CONTROLS_READ, Operation.PROJECT_CONTROLS_CLEANUP]
+)
+@pytest.mark.parametrize("granted_project", [None, "wrong-project", "project-A"])
+async def test_project_upstream_requires_matching_typed_grant(operation, granted_project):
+    # Given: a trusted upstream whose project claim is missing, mismatched or valid.
+    def factory(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content)["context"] == {"project_id": "project-A"}
+        payload = {"namespace_key": "org-7"}
+        if granted_project is not None:
+            payload["project_id"] = granted_project
+        return httpx.Response(200, json=payload)
+
+    provider = _build_upstream(factory)
+    # When/Then: a successful HTTP status alone cannot authorize another project.
+    if granted_project == "project-A":
+        grant = await provider.authorize(_build_request(), operation, {"project_id": "project-A"})
+        assert grant.project_id == "project-A"
+    else:
+        with pytest.raises(ForbiddenError):
+            await provider.authorize(_build_request(), operation, {"project_id": "project-A"})
+
+
+@pytest.mark.asyncio
+async def test_project_upstream_rejects_wrong_type_project_claim():
+    # Given: project scope cannot be represented by an integer/opaque unchecked extra.
+    provider = _build_upstream(
+        lambda request: httpx.Response(200, json={"namespace_key": "org-7", "project_id": 123})
+    )
+    # When/Then: the strict grant parser rejects the malformed upstream result.
+    with pytest.raises(APIError) as exc:
+        await provider.authorize(
+            _build_request(), Operation.PROJECT_CONTROLS_READ, {"project_id": "project-A"}
+        )
+    assert exc.value.status_code == 502

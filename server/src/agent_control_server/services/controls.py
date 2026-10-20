@@ -127,6 +127,7 @@ class ControlService:
         data: dict[str, Any],
         cloned_from_control_id: int | None = None,
         seed_source_id: str | None = None,
+        owner_project_id: str | None = None,
     ) -> Control:
         """Create a new pending control row."""
         control = Control(
@@ -135,6 +136,7 @@ class ControlService:
             data=data,
             cloned_from_control_id=cloned_from_control_id,
             seed_source_id=seed_source_id,
+            owner_project_id=owner_project_id,
         )
         self._db.add(control)
         return control
@@ -253,6 +255,18 @@ class ControlService:
         result = await self._db.execute(stmt)
         return result.first() is not None
 
+    async def require_organization_control(self, control_id: int, *, namespace_key: str) -> Control:
+        """Prevent organization agent/policy associations from bypassing ownership."""
+        control = await self.get_active_control_or_404(control_id, namespace_key=namespace_key)
+        if control.owner_project_id is not None:
+            raise NotFoundError(
+                error_code=ErrorCode.CONTROL_NOT_FOUND,
+                detail="Control not found.",
+                resource="Control",
+                resource_id=str(control_id),
+            )
+        return control
+
     async def create_version(
         self,
         control: Control,
@@ -359,7 +373,11 @@ class ControlService:
         stmt = (
             select(Control)
             .join(policy_controls, Control.id == policy_controls.c.control_id)
-            .where(policy_controls.c.policy_id == policy_id, Control.deleted_at.is_(None))
+            .where(
+                policy_controls.c.policy_id == policy_id,
+                Control.deleted_at.is_(None),
+                Control.owner_project_id.is_(None),
+            )
             .order_by(Control.id)
         )
         if namespace_key is not None:
@@ -380,6 +398,7 @@ class ControlService:
                 policy_controls.c.policy_id == policy_id,
                 Control.namespace_key == namespace_key,
                 Control.deleted_at.is_(None),
+                Control.owner_project_id.is_(None),
             )
             .order_by(policy_controls.c.control_id)
         )
@@ -481,6 +500,8 @@ class ControlService:
         tag: str | None,
         attachment_target_type: str | None = None,
         attachment_target_id: str | None = None,
+        owner_project_id: str | None = None,
+        include_org_controls: bool = False,
     ) -> ControlListPage:
         """Return paginated active controls for the browse endpoint."""
         query = (
@@ -488,6 +509,16 @@ class ControlService:
             .where(Control.namespace_key == namespace_key, Control.deleted_at.is_(None))
             .order_by(Control.id.desc())
         )
+        ownership = (
+            Control.owner_project_id.is_(None)
+            if owner_project_id is None
+            else or_(
+                Control.owner_project_id == owner_project_id, Control.owner_project_id.is_(None)
+            )
+            if include_org_controls
+            else Control.owner_project_id == owner_project_id
+        )
+        query = query.where(ownership)
         query = self._apply_control_list_filters(
             query,
             name=name,
@@ -516,6 +547,7 @@ class ControlService:
             .select_from(Control)
             .where(Control.namespace_key == namespace_key, Control.deleted_at.is_(None))
         )
+        total_query = total_query.where(ownership)
         total_query = self._apply_control_list_filters(
             total_query,
             name=name,
@@ -645,27 +677,28 @@ class ControlService:
             agent_names_by_control[cast(int, control_id)].add(cast(str, agent_name))
 
         if include_targets:
-            target_rank = func.row_number().over(
-                partition_by=ControlBinding.control_id,
-                order_by=ControlBinding.id.desc(),
-            ).label("target_rank")
-            target_total = func.count().over(
-                partition_by=ControlBinding.control_id
-            ).label("target_total")
-            target_query = (
-                select(
-                    ControlBinding.control_id,
-                    ControlBinding.id,
-                    ControlBinding.target_type,
-                    ControlBinding.target_id,
-                    ControlBinding.enabled,
-                    target_rank,
-                    target_total,
+            target_rank = (
+                func.row_number()
+                .over(
+                    partition_by=ControlBinding.control_id,
+                    order_by=ControlBinding.id.desc(),
                 )
-                .where(
-                    ControlBinding.namespace_key == namespace_key,
-                    ControlBinding.control_id.in_(unique_control_ids),
-                )
+                .label("target_rank")
+            )
+            target_total = (
+                func.count().over(partition_by=ControlBinding.control_id).label("target_total")
+            )
+            target_query = select(
+                ControlBinding.control_id,
+                ControlBinding.id,
+                ControlBinding.target_type,
+                ControlBinding.target_id,
+                ControlBinding.enabled,
+                target_rank,
+                target_total,
+            ).where(
+                ControlBinding.namespace_key == namespace_key,
+                ControlBinding.control_id.in_(unique_control_ids),
             )
             if target_type is not None:
                 target_query = target_query.where(ControlBinding.target_type == target_type)
@@ -681,10 +714,7 @@ class ControlService:
                     target_rows.c.enabled,
                     target_rows.c.target_total,
                 )
-                .where(
-                    target_rows.c.target_rank
-                    <= _MAX_INLINE_TARGET_ATTACHMENTS_PER_CONTROL
-                )
+                .where(target_rows.c.target_rank <= _MAX_INLINE_TARGET_ATTACHMENTS_PER_CONTROL)
                 .order_by(target_rows.c.control_id, target_rows.c.target_rank)
             )
             for (
@@ -694,9 +724,7 @@ class ControlService:
                 binding_target_id,
                 enabled,
                 target_total,
-            ) in (
-                target_result.all()
-            ):
+            ) in target_result.all():
                 typed_control_id = cast(int, control_id)
                 target_totals_by_control[typed_control_id] = cast(int, target_total)
                 targets_by_control[typed_control_id].append(
@@ -715,8 +743,7 @@ class ControlService:
                 targets=targets_by_control[control_id],
                 targets_total=target_totals_by_control[control_id],
                 targets_truncated=(
-                    target_totals_by_control[control_id]
-                    > len(targets_by_control[control_id])
+                    target_totals_by_control[control_id] > len(targets_by_control[control_id])
                 ),
             )
             for control_id in unique_control_ids
@@ -781,6 +808,7 @@ class ControlService:
         self, *, policy_id: int, control_id: int, namespace_key: str
     ) -> None:
         """Create a policy-control association if it does not already exist."""
+        await self.require_organization_control(control_id, namespace_key=namespace_key)
         await self._db.execute(
             pg_insert(policy_controls)
             .values(
@@ -812,6 +840,7 @@ class ControlService:
         and the agent/control composite FKs, so writes must include it
         explicitly rather than relying on the column's server default.
         """
+        await self.require_organization_control(control_id, namespace_key=namespace_key)
         await self._db.execute(
             pg_insert(agent_controls)
             .values(
@@ -905,9 +934,7 @@ class ControlService:
         self, control_id: int, *, namespace_key: str
     ) -> ControlAssociations:
         """Remove all policy and direct agent associations for a control."""
-        associations = await self.list_control_associations(
-            control_id, namespace_key=namespace_key
-        )
+        associations = await self.list_control_associations(control_id, namespace_key=namespace_key)
         if associations.policy_ids:
             await self._db.execute(
                 delete(policy_controls).where(
@@ -1093,14 +1120,13 @@ class ControlService:
     def _build_snapshot(control: Control) -> dict[str, Any]:
         """Serialize the persisted control state stored in version history."""
         deleted_at = control.deleted_at.isoformat() if control.deleted_at is not None else None
-        cloned_from_control_id = cast(
-            int | None, getattr(control, "cloned_from_control_id", None)
-        )
+        cloned_from_control_id = cast(int | None, getattr(control, "cloned_from_control_id", None))
         return {
             "name": control.name,
             "data": control.data,
             "deleted_at": deleted_at,
             "cloned_from_control_id": cloned_from_control_id,
+            "owner_project_id": control.owner_project_id,
             # Legacy snapshot alias; remove after consumers have migrated.
             "cloned_control_id": cloned_from_control_id,
         }

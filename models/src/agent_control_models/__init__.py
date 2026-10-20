@@ -25,6 +25,7 @@ from .agent import (
     Step,
     StepSchema,
 )
+from .control_projects import CleanupProjectControlsRequest, CleanupProjectControlsResponse
 from .controls import (
     BooleanTemplateParameter,
     ConditionNode,
@@ -123,6 +124,8 @@ from .server import (
 )
 
 __all__ = [
+    "CleanupProjectControlsRequest",
+    "CleanupProjectControlsResponse",
     # Health
     "HealthResponse",
     # Agent

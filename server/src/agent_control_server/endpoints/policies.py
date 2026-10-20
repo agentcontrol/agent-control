@@ -134,7 +134,7 @@ async def add_control_to_policy(
         )
 
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(
+    control = await control_service.require_organization_control(
         control_id, namespace_key=namespace_key
     )
 
@@ -158,8 +158,7 @@ async def add_control_to_policy(
         )
         raise DatabaseError(
             detail=(
-                f"Failed to add control '{control.name}' to "
-                f"policy '{policy.name}': database error"
+                f"Failed to add control '{control.name}' to policy '{policy.name}': database error"
             ),
             resource="Policy",
             operation="add control",
@@ -216,7 +215,7 @@ async def remove_control_from_policy(
         )
 
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(
+    control = await control_service.require_organization_control(
         control_id, namespace_key=namespace_key
     )
 
