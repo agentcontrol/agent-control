@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from agent_control_evaluator_galileo.decision_models import (
+    DecisionModelsExecutionContext,
     DecisionModelsEvaluator,
     DecisionModelsEvaluatorConfig,
     DecisionModelsInvokeInputs,
@@ -163,7 +164,7 @@ def test_client_requires_luna_invoke_url_when_no_explicit_url_is_given(
 
 
 def test_invoke_request_requires_execution_context_and_serializes_nested_record() -> None:
-    context = GalileoExecutionContext(
+    context = DecisionModelsExecutionContext(
         organization_id="org-1", user_id="user-7", project_id="project-3", run_id="run-9"
     )
     record = {
@@ -424,7 +425,9 @@ async def test_client_serializes_full_record_context_and_uses_timeout(
         scorer_version_id="version-a",
         scorer_label=None,
         step=step,
-        execution_context=GalileoExecutionContext(organization_id="org-1", user_id="user-7"),
+        execution_context=DecisionModelsExecutionContext(
+            organization_id="org-1", user_id="user-7"
+        ),
         inputs=DecisionModelsInvokeInputs(),
         timeout=5.0,
     )
@@ -787,7 +790,7 @@ async def test_client_rejects_invoke_when_runtime_is_disabled(
             scorer_version_id="version-a",
             scorer_label=None,
             step=Step(type="llm", name="answer", input="question"),
-            execution_context=GalileoExecutionContext(organization_id="org-1"),
+            execution_context=DecisionModelsExecutionContext(organization_id="org-1"),
             inputs=DecisionModelsInvokeInputs(),
             timeout=5.0,
         )
@@ -815,7 +818,7 @@ async def test_client_rejects_non_object_invoke_response(
             scorer_version_id="version-a",
             scorer_label=None,
             step=Step(type="llm", name="answer", input="question"),
-            execution_context=GalileoExecutionContext(organization_id="org-1"),
+            execution_context=DecisionModelsExecutionContext(organization_id="org-1"),
             inputs=DecisionModelsInvokeInputs(),
             timeout=5.0,
         )
@@ -824,20 +827,23 @@ async def test_client_rejects_non_object_invoke_response(
 
 
 def test_luna_and_decision_models_request_shape_parity() -> None:
-    context = GalileoExecutionContext(organization_id="org-1", user_id="user-7")
+    luna_context = GalileoExecutionContext(organization_id="org-1", user_id="user-7")
+    decision_models_context = DecisionModelsExecutionContext(
+        organization_id="org-1", user_id="user-7"
+    )
     luna = ScorerInvokeRequest(
         scorer_id="scorer-a",
         scorer_version_id="version-a",
         inputs=ScorerInvokeInputs(query="q", response="a"),
         record={"type": "llm", "input": "q", "output": "a"},
-        execution_context=context,
+        execution_context=luna_context,
     ).to_dict()
     decision_models = DecisionModelsInvokeRequest(
         scorer_id="scorer-a",
         scorer_version_id="version-a",
         inputs=DecisionModelsInvokeInputs(query="q", response="a"),
         record={"type": "llm", "input": "q", "output": "a"},
-        execution_context=context,
+        execution_context=decision_models_context,
     ).to_dict()
     assert set(luna) == set(decision_models)
     assert set(luna["inputs"]) == set(decision_models["inputs"])

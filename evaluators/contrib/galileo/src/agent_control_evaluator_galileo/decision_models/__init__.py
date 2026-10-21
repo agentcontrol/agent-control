@@ -1,6 +1,7 @@
 """Galileo Decision Models evaluator."""
 
 from .client import (
+    DecisionModelsExecutionContext,
     DecisionModelsInvokeInputs,
     DecisionModelsInvokeRequest,
     DecisionModelsInvokeResponse,
@@ -14,6 +15,7 @@ from .config import (
 from .evaluator import DecisionModelsEvaluator
 
 __all__ = [
+    "DecisionModelsExecutionContext",
     "GalileoDecisionModelsClient",
     "DecisionModelsEvaluator",
     "DecisionModelsEvaluatorConfig",

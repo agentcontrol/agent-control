@@ -10,14 +10,13 @@ import httpx
 from agent_control_evaluators import Evaluator, EvaluatorMetadata, register_evaluator
 from agent_control_models import EvaluatorResult, JSONObject, JSONValue, Step
 
-from ..luna.client import GalileoExecutionContext
-from ..luna.config import scorer_invoke_runtime_enabled
 from .client import (
+    DecisionModelsExecutionContext,
     DecisionModelsInvokeInputs,
     DecisionModelsInvokeResponse,
     GalileoDecisionModelsClient,
 )
-from .config import DecisionModelsEvaluatorConfig
+from .config import DecisionModelsEvaluatorConfig, scorer_invoke_runtime_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +83,7 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
             return self._error(exc)
 
     async def _evaluate(
-        self, data: Any, step: Step, execution_context: GalileoExecutionContext | None
+        self, data: Any, step: Step, execution_context: DecisionModelsExecutionContext | None
     ) -> EvaluatorResult:
         try:
             if not scorer_invoke_runtime_enabled() or not self._client.runtime_enabled:
@@ -134,7 +133,7 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
             return self._error(exc)
 
     @staticmethod
-    def _execution_context(extensions: JSONObject | None) -> GalileoExecutionContext | None:
+    def _execution_context(extensions: JSONObject | None) -> DecisionModelsExecutionContext | None:
         if extensions is None:
             return None
         metadata = extensions.get("metadata")
@@ -147,7 +146,7 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
         project_id = metadata_obj.get("project_id")
         if not isinstance(organization_id, str) or not organization_id:
             raise ValueError("Authenticated execution metadata is missing organization_id")
-        return GalileoExecutionContext(
+        return DecisionModelsExecutionContext(
             organization_id=organization_id,
             user_id=user_id if isinstance(user_id, str) and user_id else None,
             project_id=project_id if isinstance(project_id, str) else None,

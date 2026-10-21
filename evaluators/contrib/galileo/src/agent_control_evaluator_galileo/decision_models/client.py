@@ -16,10 +16,8 @@ import httpx
 from agent_control_models import JSONObject, JSONValue, Step
 from pydantic import BaseModel, Field
 
-from ..luna.client import GalileoExecutionContext
-from ..luna.config import scorer_invoke_runtime_enabled
 from ..records import record_from_step
-from .config import DecisionModelsPayloadField
+from .config import DecisionModelsPayloadField, scorer_invoke_runtime_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +26,15 @@ DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 DEFAULT_INVOKE_PATH = "/api/v1/scorers/invoke"
 LUNA_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
 AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
+
+
+class DecisionModelsExecutionContext(BaseModel):
+    """Authenticated organization and optional identity fields for scorer invocation."""
+
+    organization_id: str = Field(min_length=1)
+    user_id: str | None = Field(default=None, min_length=1)
+    project_id: str | None = Field(default=None, min_length=1)
+    run_id: str | None = Field(default=None, min_length=1)
 
 
 def _b64url(data: bytes) -> str:
@@ -81,7 +88,7 @@ class DecisionModelsInvokeRequest(BaseModel):
     scorer_id: str = Field(min_length=1)
     scorer_version_id: str = Field(min_length=1)
     scorer_label: str | None = None
-    execution_context: GalileoExecutionContext
+    execution_context: DecisionModelsExecutionContext
     record: JSONObject
     inputs: DecisionModelsInvokeInputs
     config: JSONObject = Field(default_factory=dict)
@@ -140,7 +147,7 @@ class GalileoDecisionModelsClient:
         scorer_version_id: str,
         scorer_label: str | None,
         step: Step,
-        execution_context: GalileoExecutionContext,
+        execution_context: DecisionModelsExecutionContext,
         inputs: DecisionModelsInvokeInputs,
         timeout: float,
         selected_data: Any = None,
