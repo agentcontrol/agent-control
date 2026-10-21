@@ -68,8 +68,8 @@ You must **duplicate** them and configure the copy.
    - **Output type**: `Percentage`
    - **Roll-up**: `AVG`
    - **Thresholds**: green `>= 50%`, red `<= 0%`
-   - **Prompt**: `Return 100 if the output contains the phrase "Please try again later", otherwise return 0.`
-3. Save the evaluator. Note the **scorer ID** and **version ID**.
+   - **Prompt**: `Return 1 if the output contains the phrase "Please try again later", otherwise return 0.`
+3. Save the evaluator.
 
 ---
 
@@ -119,8 +119,8 @@ Controls can be created and attached in two ways:
    - Evaluator type: `llm`
    - Path: `output`
    - Evaluator: select **Action Advancement** from the scorer dropdown
-   - Comparison value: `0.5`
-   - Operator: `gte`
+   - Comparison value: `1`
+   - Operator: `eq`
    - Payload Field: `output`
    - Timeout Ms: `30000`
 
