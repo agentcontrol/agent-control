@@ -61,16 +61,29 @@ def _evaluator(monkeypatch: pytest.MonkeyPatch, **config: Any) -> DecisionModels
     return evaluator
 
 
-def test_decision_models_registration_and_required_configuration() -> None:
-    # Given: the separate Decision Models entry point and required pinned scorer config
-    # Then: Decision Models is registered independently and both scorer identifiers are required
-    from agent_control_evaluators import get_evaluator
+def test_decision_models_registration_and_required_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: the scorer-invoke runtime is available and pinned scorer config is required
+    from agent_control_evaluators import get_evaluator, register_evaluator
 
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
+    register_evaluator(DecisionModelsEvaluator)
     assert get_evaluator("galileo.decision_models") is DecisionModelsEvaluator
     with pytest.raises(ValidationError, match="scorer_id"):
         DecisionModelsEvaluatorConfig(scorer_version_id="version-a")  # type: ignore[call-arg]
     with pytest.raises(ValidationError, match="scorer_version_id"):
         DecisionModelsEvaluatorConfig(scorer_id="scorer-a")  # type: ignore[call-arg]
+
+
+def test_decision_models_availability_follows_runtime_feature_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", raising=False)
+    assert DecisionModelsEvaluator.is_available() is False
+
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
+    assert DecisionModelsEvaluator.is_available() is True
 
 
 def test_missing_distribution_metadata_uses_development_version(
@@ -327,8 +340,75 @@ async def test_runtime_disabled_and_missing_context_return_errors_without_fallba
         "question", Step(type="llm", name="answer", input=""), None
     )
     assert missing_context.matched is False
-    assert "execution_context" in (missing_context.error or "")
+    assert "authenticated execution metadata" in (missing_context.error or "")
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
+    step_only_context = await evaluator.evaluate_with_context(
+        "question", Step(type="llm", name="answer", input="question")
+    )
+    assert "Step context alone is not sufficient" in (step_only_context.error or "")
     await evaluator.aclose()
+
+
+@pytest.mark.asyncio
+async def test_empty_project_id_is_omitted_from_execution_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evaluator = _evaluator(monkeypatch)
+    invoke = AsyncMock(return_value=DecisionModelsInvokeResponse(score=0.9, status="success"))
+    evaluator._client.invoke = invoke
+    extensions = {**EXTENSIONS, "metadata": {"project_id": ""}}
+
+    result = await evaluator.evaluate_with_extensions(
+        "question", Step(type="llm", name="answer", input="question"), extensions
+    )
+
+    assert result.error is None
+    assert invoke.await_args.kwargs["execution_context"].project_id is None
+    await evaluator.aclose()
+
+
+def test_client_applies_connection_pool_environment_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS", "0.25")
+    monkeypatch.setenv("GALILEO_LUNA_MAX_CONNECTIONS", "17")
+    monkeypatch.setenv("GALILEO_LUNA_MAX_KEEPALIVE_CONNECTIONS", "4")
+    monkeypatch.setenv("GALILEO_LUNA_CLIENT_POOL_SIZE", "3")
+
+    client = GalileoDecisionModelsClient(invoke_url="http://runners:8090")
+
+    assert client.keepalive_expiry_seconds == 0.25
+    assert client.max_connections == 17
+    assert client.max_keepalive_connections == 4
+    assert client.client_pool_size == 3
+
+
+@pytest.mark.asyncio
+async def test_client_pool_rotates_across_configured_http_clients(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GALILEO_LUNA_CLIENT_POOL_SIZE", "2")
+    client = GalileoDecisionModelsClient(invoke_url="http://runners:8090")
+
+    first = await client._get_client()
+    second = await client._get_client()
+    third = await client._get_client()
+
+    assert first is third
+    assert first is not second
+    await client.close()
+
+
+def test_client_rejects_invalid_connection_pool_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GALILEO_LUNA_MAX_CONNECTIONS", "0")
+
+    with pytest.raises(ValueError, match="GALILEO_LUNA_MAX_CONNECTIONS"):
+        GalileoDecisionModelsClient(invoke_url="http://runners:8090")
 
 
 @pytest.mark.asyncio
@@ -684,7 +764,7 @@ async def test_direct_evaluation_and_context_method_report_missing_context(
     context_result = await evaluator.evaluate_with_context("question", step)
 
     assert "requires Step context" in (direct_result.error or "")
-    assert "requires execution_context" in (context_result.error or "")
+    assert "Step context alone is not sufficient" in (context_result.error or "")
     await evaluator.aclose()
 
 

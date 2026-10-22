@@ -49,6 +49,11 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
     )
     config_model = DecisionModelsEvaluatorConfig
 
+    @classmethod
+    def is_available(cls) -> bool:
+        """Expose Decision Models only when the scorer-invoke runtime is enabled."""
+        return scorer_invoke_runtime_enabled()
+
     def __init__(self, config: DecisionModelsEvaluatorConfig) -> None:
         super().__init__(config)
         self._client = GalileoDecisionModelsClient()
@@ -63,11 +68,19 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
                 )
             )
         return self._error(
-            RuntimeError("galileo.decision_models requires Step context and execution_context")
+            RuntimeError(
+                "galileo.decision_models requires Step context and authenticated execution "
+                "metadata from runtime extensions"
+            )
         )
 
     async def evaluate_with_context(self, data: Any, step: Step) -> EvaluatorResult:
-        """Evaluate a step when an authenticated execution context is supplied by extensions."""
+        """Evaluate a step when only step context is available.
+
+        Decision Models also needs authenticated execution metadata, which this method does not
+        receive. The explicit error helps callers distinguish missing runtime metadata from a
+        missing step.
+        """
         return await self._evaluate(data, step, None)
 
     async def evaluate_with_extensions(
@@ -77,7 +90,10 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
         try:
             context = self._execution_context(extensions)
             if context is None:
-                raise ValueError("galileo.decision_models requires execution_context")
+                raise ValueError(
+                    "galileo.decision_models requires authenticated execution metadata from "
+                    "runtime extensions"
+                )
             return await self._evaluate(data, step, context)
         except Exception as exc:
             return self._error(exc)
@@ -92,7 +108,10 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
                     "GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME=enabled."
                 )
             if execution_context is None:
-                raise ValueError("galileo.decision_models requires execution_context")
+                raise ValueError(
+                    "galileo.decision_models requires authenticated execution metadata from "
+                    "runtime extensions; Step context alone is not sufficient"
+                )
             inputs = self._inputs(data, step)
             response = await self._client.invoke(
                 scorer_id=self.config.scorer_id,
@@ -149,7 +168,7 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
         return DecisionModelsExecutionContext(
             organization_id=organization_id,
             user_id=user_id if isinstance(user_id, str) and user_id else None,
-            project_id=project_id if isinstance(project_id, str) else None,
+            project_id=project_id if isinstance(project_id, str) and project_id else None,
             run_id=run_id if isinstance(run_id, str) and run_id else None,
         )
 
