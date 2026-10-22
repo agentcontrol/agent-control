@@ -16,7 +16,11 @@ from .client import (
     DecisionModelsInvokeResponse,
     GalileoDecisionModelsClient,
 )
-from .config import DecisionModelsEvaluatorConfig, scorer_invoke_runtime_enabled
+from .config import (
+    DecisionModelsEvaluatorConfig,
+    decision_models_evaluator_enabled,
+    scorer_invoke_runtime_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +55,8 @@ class DecisionModelsEvaluator(Evaluator[DecisionModelsEvaluatorConfig]):
 
     @classmethod
     def is_available(cls) -> bool:
-        """Expose Decision Models only when the scorer-invoke runtime is enabled."""
-        return scorer_invoke_runtime_enabled()
+        """Expose Decision Models only when its feature flag and scorer runtime are enabled."""
+        return decision_models_evaluator_enabled() and scorer_invoke_runtime_enabled()
 
     def __init__(self, config: DecisionModelsEvaluatorConfig) -> None:
         super().__init__(config)

@@ -55,6 +55,7 @@ def _evaluator(monkeypatch: pytest.MonkeyPatch, **config: Any) -> DecisionModels
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://runners:8090")
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_DECISION_MODELS_EVALUATOR", "enabled")
     evaluator = DecisionModelsEvaluator(
         DecisionModelsEvaluatorConfig(scorer_id="scorer-a", scorer_version_id="version-a", **config)
     )
@@ -68,6 +69,7 @@ def test_decision_models_registration_and_required_configuration(
     from agent_control_evaluators import get_evaluator, register_evaluator
 
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_DECISION_MODELS_EVALUATOR", "enabled")
     register_evaluator(DecisionModelsEvaluator)
     assert get_evaluator("galileo.decision_models") is DecisionModelsEvaluator
     with pytest.raises(ValidationError, match="scorer_id"):
@@ -76,14 +78,18 @@ def test_decision_models_registration_and_required_configuration(
         DecisionModelsEvaluatorConfig(scorer_id="scorer-a")  # type: ignore[call-arg]
 
 
-def test_decision_models_availability_follows_runtime_feature_flag(
+def test_decision_models_availability_requires_both_feature_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", raising=False)
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
+    monkeypatch.delenv("GALILEO_FEATURE_FLAG_DECISION_MODELS_EVALUATOR", raising=False)
     assert DecisionModelsEvaluator.is_available() is False
 
-    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_DECISION_MODELS_EVALUATOR", "enabled")
     assert DecisionModelsEvaluator.is_available() is True
+
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "disabled")
+    assert DecisionModelsEvaluator.is_available() is False
 
 
 def test_missing_distribution_metadata_uses_development_version(
