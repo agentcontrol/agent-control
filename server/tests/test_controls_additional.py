@@ -147,9 +147,7 @@ def test_clone_and_bind_generated_name_falls_back_for_legacy_name(
     legacy_name = "legacy control name"
     with engine.begin() as conn:
         conn.execute(
-            text(
-                "INSERT INTO controls (name, data) VALUES (:name, CAST(:data AS JSONB))"
-            ),
+            text("INSERT INTO controls (name, data) VALUES (:name, CAST(:data AS JSONB))"),
             {
                 "name": legacy_name,
                 "data": json.dumps(VALID_CONTROL_PAYLOAD),
@@ -198,9 +196,7 @@ def test_list_controls_filters_by_cloned_state(client: TestClient) -> None:
     assert source_id in root_ids
     assert clone_id not in root_ids
 
-    clone_list_resp = client.get(
-        "/api/v1/controls", params={"cloned": True, "limit": 100}
-    )
+    clone_list_resp = client.get("/api/v1/controls", params={"cloned": True, "limit": 100})
     assert clone_list_resp.status_code == 200
     cloned_controls = clone_list_resp.json()["controls"]
     cloned_ids = {control["id"] for control in cloned_controls}
@@ -427,9 +423,7 @@ def test_clone_and_bind_requires_source_read_authorization(
         ) -> Principal:
             calls.append((operation, context))
             namespace_key = (
-                "other-namespace"
-                if operation == Operation.CONTROLS_READ
-                else DEFAULT_NAMESPACE_KEY
+                "other-namespace" if operation == Operation.CONTROLS_READ else DEFAULT_NAMESPACE_KEY
             )
             return Principal(namespace_key=namespace_key, is_admin=True)
 
@@ -445,8 +439,10 @@ def test_clone_and_bind_requires_source_read_authorization(
         },
     )
 
-    assert resp.status_code == 403
-    assert resp.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
+    # The owner lookup uses the authorized namespace and does not disclose a
+    # source that exists only under the mismatched namespace.
+    assert resp.status_code == 404
+    assert resp.json()["error_code"] == "CONTROL_NOT_FOUND"
     read_contexts = [
         context for operation, context in calls if operation == Operation.CONTROLS_READ
     ]
@@ -502,9 +498,7 @@ def test_clone_and_bind_context_drops_invalid_target_fields(
 
     assert resp.status_code == 422
     binding_contexts = [
-        context
-        for operation, context in calls
-        if operation == Operation.CONTROL_BINDINGS_WRITE
+        context for operation, context in calls if operation == Operation.CONTROL_BINDINGS_WRITE
     ]
     assert binding_contexts == [{}]
 
@@ -538,9 +532,7 @@ def test_clone_and_bind_context_drops_overlong_target_fields(
 
     assert resp.status_code == 422
     binding_contexts = [
-        context
-        for operation, context in calls
-        if operation == Operation.CONTROL_BINDINGS_WRITE
+        context for operation, context in calls if operation == Operation.CONTROL_BINDINGS_WRITE
     ]
     assert binding_contexts == [{}]
 
@@ -581,9 +573,7 @@ def test_create_control_integrity_error_returns_conflict(
         mock_session.execute = AsyncMock(return_value=existing_result)
         mock_session.add = MagicMock()
         mock_session.refresh = AsyncMock()
-        mock_session.commit = AsyncMock(
-            side_effect=_make_integrity_error(constraint_name)
-        )
+        mock_session.commit = AsyncMock(side_effect=_make_integrity_error(constraint_name))
         yield mock_session
 
     app.dependency_overrides[get_async_db] = mock_db_integrity_error
@@ -612,6 +602,7 @@ def test_patch_control_rename_integrity_error_returns_conflict(
         name="old-control",
         data=deepcopy(VALID_CONTROL_PAYLOAD),
         deleted_at=None,
+        owner_project_id=None,
     )
 
     async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
@@ -630,14 +621,13 @@ def test_patch_control_rename_integrity_error_returns_conflict(
         mock_session.execute = AsyncMock(
             side_effect=[
                 control_lookup_result,
+                control_lookup_result,
                 name_lookup_result,
                 lock_result,
                 version_lookup_result,
             ]
         )
-        mock_session.commit = AsyncMock(
-            side_effect=_make_integrity_error(constraint_name)
-        )
+        mock_session.commit = AsyncMock(side_effect=_make_integrity_error(constraint_name))
         yield mock_session
 
     app.dependency_overrides[get_async_db] = mock_db_integrity_error
@@ -657,6 +647,7 @@ def test_patch_control_non_name_integrity_error_returns_500(client: TestClient) 
         name="old-control",
         data=deepcopy(VALID_CONTROL_PAYLOAD),
         deleted_at=None,
+        owner_project_id=None,
     )
 
     async def mock_db_integrity_error() -> AsyncGenerator[AsyncSession, None]:
@@ -671,6 +662,7 @@ def test_patch_control_non_name_integrity_error_returns_500(client: TestClient) 
 
         mock_session.execute = AsyncMock(
             side_effect=[
+                control_lookup_result,
                 control_lookup_result,
                 lock_result,
                 version_lookup_result,
@@ -866,9 +858,7 @@ def test_patch_control_legacy_name_preserved_when_name_omitted(
     # Insert a control with a legacy name that would not pass current SlugName validation.
     with engine.begin() as conn:
         conn.execute(
-            text(
-                "INSERT INTO controls (name, data) VALUES (:name, CAST(:data AS JSONB))"
-            ),
+            text("INSERT INTO controls (name, data) VALUES (:name, CAST(:data AS JSONB))"),
             {
                 "name": "legacy control name",
                 "data": json.dumps(VALID_CONTROL_PAYLOAD),
@@ -979,7 +969,9 @@ def test_list_controls_enabled_true_includes_missing_enabled(client: TestClient)
     # Given: controls with enabled true, enabled false, and missing enabled
     control_true_id, control_true_name = _create_control(client, name=f"Enabled-{uuid.uuid4()}")
     control_false_id, control_false_name = _create_control(client, name=f"Disabled-{uuid.uuid4()}")
-    control_missing_id, control_missing_name = _create_control(client, name=f"Missing-{uuid.uuid4()}")
+    control_missing_id, control_missing_name = _create_control(
+        client, name=f"Missing-{uuid.uuid4()}"
+    )
 
     data_true = deepcopy(VALID_CONTROL_PAYLOAD)
     data_true["enabled"] = True
@@ -1623,9 +1615,7 @@ def test_delete_control_blocks_when_target_binding_exists(
     assert resp.status_code == 409
     body = resp.json()
     assert body["error_code"] == "CONTROL_IN_USE"
-    binding_messages = [
-        e for e in body.get("errors", []) if e.get("resource") == "ControlBinding"
-    ]
+    binding_messages = [e for e in body.get("errors", []) if e.get("resource") == "ControlBinding"]
     assert any(e.get("value") == binding_id for e in binding_messages)
 
 
@@ -1660,7 +1650,9 @@ def test_create_control_allows_reusing_soft_deleted_name(client: TestClient) -> 
     assert delete_resp.status_code == 200
 
     # When: creating a new control with the same name
-    recreate_resp = client.put("/api/v1/controls", json={"name": name, "data": VALID_CONTROL_PAYLOAD})
+    recreate_resp = client.put(
+        "/api/v1/controls", json={"name": name, "data": VALID_CONTROL_PAYLOAD}
+    )
 
     # Then: creation succeeds because uniqueness only applies to active rows
     assert recreate_resp.status_code == 200, recreate_resp.text
@@ -1769,7 +1761,10 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
 
     control_id, _ = _create_control(client)
     payload = deepcopy(VALID_CONTROL_PAYLOAD)
-    payload["condition"]["evaluator"] = {"name": f"{agent_name}:missing", "config": {"pattern": "x"}}
+    payload["condition"]["evaluator"] = {
+        "name": f"{agent_name}:missing",
+        "config": {"pattern": "x"},
+    }
 
     # When: setting data with evaluator not registered on agent
     resp = client.put(f"/api/v1/controls/{control_id}/data", json={"data": payload})
@@ -1778,7 +1773,9 @@ def test_set_control_data_agent_scoped_evaluator_missing(client: TestClient) -> 
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "EVALUATOR_NOT_FOUND"
-    assert any(err.get("field") == "data.condition.evaluator.name" for err in body.get("errors", []))
+    assert any(
+        err.get("field") == "data.condition.evaluator.name" for err in body.get("errors", [])
+    )
 
 
 def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> None:
@@ -1816,7 +1813,9 @@ def test_set_control_data_agent_scoped_invalid_schema(client: TestClient) -> Non
     assert resp.status_code == 422
     body = resp.json()
     assert body["error_code"] == "INVALID_CONFIG"
-    assert any(err.get("field") == "data.condition.evaluator.config" for err in body.get("errors", []))
+    assert any(
+        err.get("field") == "data.condition.evaluator.config" for err in body.get("errors", [])
+    )
 
 
 def test_patch_control_updates_name_and_enabled(client: TestClient) -> None:
@@ -1943,8 +1942,7 @@ def test_set_control_data_builtin_evaluator_validation_error(
     body = resp.json()
     assert body["error_code"] == "INVALID_CONFIG"
     assert any(
-        "data.condition.evaluator.config" in err.get("field", "")
-        for err in body.get("errors", [])
+        "data.condition.evaluator.config" in err.get("field", "") for err in body.get("errors", [])
     )
 
 

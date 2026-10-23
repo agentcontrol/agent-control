@@ -118,12 +118,8 @@ agent_controls: Table = Table(
 class Policy(Base):
     __tablename__ = "policies"
     __table_args__ = (
-        UniqueConstraint(
-            "namespace_key", "name", name="uq_policies_namespace_name"
-        ),
-        UniqueConstraint(
-            "namespace_key", "id", name="uq_policies_namespace_id"
-        ),
+        UniqueConstraint("namespace_key", "name", name="uq_policies_namespace_name"),
+        UniqueConstraint("namespace_key", "id", name="uq_policies_namespace_id"),
         # Plain index on name preserves name-only lookup performance while
         # service code is still namespace-blind.
         Index("ix_policies_name", "name"),
@@ -154,9 +150,13 @@ class Control(Base):
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
-        UniqueConstraint(
-            "namespace_key", "id", name="uq_controls_namespace_id"
+        UniqueConstraint("namespace_key", "id", name="uq_controls_namespace_id"),
+        ForeignKeyConstraint(
+            ["namespace_key", "owner_project_id"],
+            ["control_project_scopes.namespace_key", "control_project_scopes.project_id"],
+            name="controls_owner_project_fkey",
         ),
+        Index("idx_controls_namespace_owner", "namespace_key", "owner_project_id"),
         # Hard deletes of clone sources are restricted. The request path
         # soft-deletes controls so clone lineage remains intact.
         ForeignKeyConstraint(
@@ -200,16 +200,13 @@ class Control(Base):
     data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb"), nullable=False
     )
-    cloned_from_control_id: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )
+    cloned_from_control_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    owner_project_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     seed_source_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     seed_opted_out_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    deleted_at: Mapped[dt.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Many-to-many backref: Control <> Policy
     policies: Mapped[list["Policy"]] = relationship(
         "Policy", secondary=lambda: policy_controls, back_populates="controls"
@@ -217,6 +214,45 @@ class Control(Base):
     # Many-to-many backref: Control <> Agent (direct relationship)
     agents: Mapped[list["Agent"]] = relationship(
         "Agent", secondary=lambda: agent_controls, back_populates="controls"
+    )
+
+
+class ControlProjectScope(Base):
+    """Durable per-project lifecycle barrier, independent of stream bindings."""
+
+    __tablename__ = "control_project_scopes"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('active', 'deleting', 'deleted')", name="ck_control_project_scope_state"
+        ),
+    )
+
+    namespace_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", server_default="active"
+    )
+
+
+class ControlTargetScope(Base):
+    """Target tombstones serialize stream cleanup against attachment writes."""
+
+    __tablename__ = "control_target_scopes"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('active', 'deleting', 'deleted')", name="ck_control_target_scope_state"
+        ),
+        ForeignKeyConstraint(
+            ["namespace_key", "project_id"],
+            ["control_project_scopes.namespace_key", "control_project_scopes.project_id"],
+        ),
+    )
+    namespace_key: Mapped[str] = mapped_column(String(255), primary_key=True)
+    target_type: Mapped[str] = mapped_column(String(255), primary_key=True)
+    target_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active", server_default="active"
     )
 
 
@@ -228,9 +264,7 @@ class ControlVersion(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    control_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("controls.id"), nullable=False
-    )
+    control_id: Mapped[int] = mapped_column(Integer, ForeignKey("controls.id"), nullable=False)
     version_num: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(String(255), nullable=False)
     snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -336,18 +370,14 @@ class ControlBinding(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     namespace_key: Mapped[str] = mapped_column(
         String(255), nullable=False, server_default=_NAMESPACE_SERVER_DEFAULT
     )
     target_type: Mapped[str] = mapped_column(Text, nullable=False)
     target_id: Mapped[str] = mapped_column(Text, nullable=False)
     control_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("TRUE")
-    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("CURRENT_TIMESTAMP"),
@@ -383,9 +413,7 @@ class ControlExecutionEventDB(Base):
     __tablename__ = "control_execution_events"
 
     # Primary key
-    control_execution_id: Mapped[str] = mapped_column(
-        String(36)
-    )
+    control_execution_id: Mapped[str] = mapped_column(String(36))
 
     # Minimal indexed columns for efficient queries
     namespace_key: Mapped[str] = mapped_column(
@@ -402,7 +430,8 @@ class ControlExecutionEventDB(Base):
 
     # Full event data as JSONB
     data: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False,
+        JSONB,
+        nullable=False,
     )
 
     # Composite index for agent + time queries (primary access pattern)

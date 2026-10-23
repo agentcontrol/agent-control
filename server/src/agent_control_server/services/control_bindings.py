@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..errors import BadRequestError, ConflictError, NotFoundError
 from ..models import Control, ControlBinding
+from .control_projects import ensure_project_active, ensure_target_active
 from .evaluator_utils import parse_evaluator_ref_full
 
 
@@ -47,6 +48,7 @@ class ControlBindingsService:
         target_id: str,
         control_id: int,
         enabled: bool = True,
+        authorized_project_id: str | None = None,
     ) -> ControlBinding:
         """Insert a new binding row.
 
@@ -55,6 +57,9 @@ class ControlBindingsService:
         ``(namespace_key, target_type, target_id, control_id)`` already
         exists.
         """
+        await self.guard_write(
+            namespace_key, authorized_project_id, target_type, target_id, control_id
+        )
         await self._require_control(namespace_key=namespace_key, control_id=control_id)
         binding = ControlBinding(
             namespace_key=namespace_key,
@@ -92,6 +97,7 @@ class ControlBindingsService:
         target_id: str,
         control_id: int,
         enabled: bool = True,
+        authorized_project_id: str | None = None,
     ) -> tuple[ControlBinding, bool]:
         """Idempotent attach by natural key.
 
@@ -106,6 +112,9 @@ class ControlBindingsService:
         calls return successfully; the create flag is true only for the
         caller whose insert actually wrote the row.
         """
+        await self.guard_write(
+            namespace_key, authorized_project_id, target_type, target_id, control_id
+        )
         await self._require_control(namespace_key=namespace_key, control_id=control_id)
         existing = await self._find_by_natural_key(
             namespace_key=namespace_key,
@@ -358,6 +367,33 @@ class ControlBindingsService:
         )
         await self._db.flush()
         return binding_ids
+
+    async def guard_write(
+        self,
+        namespace_key: str,
+        authorized_project_id: str | None,
+        target_type: str,
+        target_id: str,
+        control_id: int,
+    ) -> None:
+        """Serialize target writes and compare stored owner with the trusted grant."""
+        if authorized_project_id is not None:
+            await ensure_project_active(self._db, namespace_key, authorized_project_id)
+            await ensure_target_active(
+                self._db, namespace_key, authorized_project_id, target_type, target_id
+            )
+        result = await self._db.execute(
+            select(Control.owner_project_id).where(
+                Control.namespace_key == namespace_key, Control.id == control_id
+            )
+        )
+        owner = result.scalar_one_or_none()
+        if owner is not None and owner != authorized_project_id:
+            raise NotFoundError(
+                error_code=ErrorCode.CONTROL_NOT_FOUND,
+                detail="Control not found.",
+                resource="Control",
+            )
 
     async def _require_control(self, *, namespace_key: str, control_id: int) -> None:
         """Require an active control in this namespace, eligible for target binding.

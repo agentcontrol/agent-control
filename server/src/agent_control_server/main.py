@@ -28,6 +28,7 @@ from .db import AsyncSessionLocal, async_engine
 from .endpoints.agents import router as agent_router
 from .endpoints.auth import router as auth_router
 from .endpoints.control_bindings import router as control_binding_router
+from .endpoints.control_projects import router as control_project_router
 from .endpoints.controls import router as control_router
 from .endpoints.controls import template_router as control_template_router
 from .endpoints.evaluation import router as evaluation_router
@@ -277,6 +278,7 @@ app.add_middleware(
     allow_headers=settings.get_allow_headers(),
 )
 
+
 @app.middleware("http")
 async def attach_version_header(request, call_next):  # type: ignore[no-untyped-def]
     """Attach server version metadata to every response."""
@@ -314,6 +316,11 @@ app.include_router(
 )
 app.include_router(
     policy_router,
+    prefix=api_v1_prefix,
+    dependencies=[Depends(get_api_key_from_header)],
+)
+app.include_router(
+    control_project_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(get_api_key_from_header)],
 )
@@ -407,9 +414,7 @@ def custom_openapi() -> dict[str, Any]:
     # API-key security for it, so patch only this operation in the generated spec.
     controls_schema_path = f"{api_v1_prefix}/controls/schema"
     controls_schema_operation = (
-        openapi_schema.get("paths", {})
-        .get(controls_schema_path, {})
-        .get("get")
+        openapi_schema.get("paths", {}).get(controls_schema_path, {}).get("get")
     )
     if isinstance(controls_schema_operation, dict):
         controls_schema_operation["security"] = []

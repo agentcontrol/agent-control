@@ -28,9 +28,10 @@ async def list_controls(
     include_attachments: bool = False,
     attachment_target_type: str | None = None,
     attachment_target_id: str | None = None,
+    owner_project_id: str | None = None,
 ) -> dict[str, Any]:
     """
-    List all controls with optional filtering and pagination.
+    List organization controls, or one project's controls, with pagination.
 
     Controls are returned ordered by ID descending (newest first).
 
@@ -49,6 +50,9 @@ async def list_controls(
         include_attachments: Whether to include attachment details
         attachment_target_type: Optional target binding type filter for attachments
         attachment_target_id: Optional target binding ID filter for attachments
+        owner_project_id: Select this project's definitions, including detached copies.
+            Omit for the organization collection; target filters use the authorized
+            target project's collection and separately authorized legacy org controls.
 
     Returns:
         Dictionary containing:
@@ -78,6 +82,8 @@ async def list_controls(
                 )
     """
     params: dict[str, Any] = {"limit": limit}
+    if owner_project_id is not None:
+        params["owner_project_id"] = owner_project_id
     if cursor is not None:
         params["cursor"] = cursor
     if name is not None:
@@ -188,9 +194,7 @@ async def get_control_version(
     Returns:
         Dictionary containing version metadata and the raw snapshot payload.
     """
-    response = await client.http_client.get(
-        f"/api/v1/controls/{control_id}/versions/{version_num}"
-    )
+    response = await client.http_client.get(f"/api/v1/controls/{control_id}/versions/{version_num}")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
@@ -199,6 +203,8 @@ async def create_control(
     client: AgentControlClient,
     name: str,
     data: dict[str, Any] | ControlDefinition | TemplateControlInput,
+    *,
+    owner_project_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Create a new control with a unique name and configuration.
@@ -210,6 +216,8 @@ async def create_control(
         client: AgentControlClient instance
         name: Unique name for the control
         data: Raw control definition or template-backed control input
+        owner_project_id: Owning project ID. Omit for an organization definition.
+            The server requires an ownership-aware upstream project-create grant.
 
     Returns:
         Dictionary containing:
@@ -243,6 +251,8 @@ async def create_control(
             print(f"Created and configured control: {result['control_id']}")
     """
     payload: dict[str, Any] = {"name": name}
+    if owner_project_id is not None:
+        payload["owner_project_id"] = owner_project_id
     if isinstance(data, (ControlDefinition, TemplateControlInput)):
         payload["data"] = data.model_dump(mode="json", exclude_none=True)
     else:
@@ -267,6 +277,7 @@ async def clone_and_bind_control(
     target_id: str,
     name: str | None = None,
     enabled: bool = True,
+    owner_project_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Clone an existing control and bind the clone to a target in one API call.
@@ -278,6 +289,9 @@ async def clone_and_bind_control(
         target_id: Opaque external target identifier
         name: Optional unique name for the cloned control
         enabled: Whether the created binding is active
+        owner_project_id: Owning project ID for the new clone. Its binding target
+            must belong to that project. Omit to create an organization clone;
+            a project-owned source cannot be promoted to organization scope.
 
     Returns:
         Dictionary containing id, name, cloned_from_control_id, and binding_id.
@@ -291,6 +305,8 @@ async def clone_and_bind_control(
     }
     if name is not None:
         payload["name"] = name
+    if owner_project_id is not None:
+        payload["owner_project_id"] = owner_project_id
 
     response = await client.http_client.post(
         f"/api/v1/controls/{control_id}/clone-and-bind",
@@ -303,7 +319,7 @@ async def clone_and_bind_control(
 async def set_control_data(
     client: AgentControlClient,
     control_id: int,
-    data: dict[str, Any] | ControlDefinition | TemplateControlInput
+    data: dict[str, Any] | ControlDefinition | TemplateControlInput,
 ) -> dict[str, Any]:
     """
     Set the configuration data for a control.
@@ -330,8 +346,7 @@ async def set_control_data(
         payload = cast(dict[str, Any], data)
 
     response = await client.http_client.put(
-        f"/api/v1/controls/{control_id}/data",
-        json={"data": payload}
+        f"/api/v1/controls/{control_id}/data", json={"data": payload}
     )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
@@ -340,6 +355,8 @@ async def set_control_data(
 async def validate_control_data(
     client: AgentControlClient,
     data: dict[str, Any] | ControlDefinition | TemplateControlInput,
+    *,
+    owner_project_id: str | None = None,
 ) -> dict[str, Any]:
     """Validate raw or template-backed control data without saving it."""
     if isinstance(data, (ControlDefinition, TemplateControlInput)):
@@ -347,9 +364,12 @@ async def validate_control_data(
     else:
         payload = cast(dict[str, Any], data)
 
+    body: dict[str, Any] = {"data": payload}
+    if owner_project_id is not None:
+        body["owner_project_id"] = owner_project_id
     response = await client.http_client.post(
         "/api/v1/controls/validate",
-        json={"data": payload},
+        json=body,
     )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
@@ -359,6 +379,8 @@ async def render_control_template(
     client: AgentControlClient,
     template: dict[str, Any] | TemplateDefinition,
     template_values: dict[str, TemplateValue],
+    *,
+    owner_project_id: str | None = None,
 ) -> dict[str, Any]:
     """Render a control template preview without persisting it."""
     if isinstance(template, TemplateDefinition):
@@ -366,12 +388,12 @@ async def render_control_template(
     else:
         serialized_template = cast(dict[str, Any], template)
 
+    body: dict[str, Any] = {"template": serialized_template, "template_values": template_values}
+    if owner_project_id is not None:
+        body["owner_project_id"] = owner_project_id
     response = await client.http_client.post(
         "/api/v1/control-templates/render",
-        json={
-            "template": serialized_template,
-            "template_values": template_values,
-        },
+        json=body,
     )
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
@@ -412,9 +434,7 @@ def to_template_control_input(
 
 
 async def add_rule_to_control(
-    client: AgentControlClient,
-    control_id: int,
-    rule_id: int
+    client: AgentControlClient, control_id: int, rule_id: int
 ) -> dict[str, Any]:
     """
     Associate a rule with a control.
@@ -441,17 +461,13 @@ async def add_rule_to_control(
             result = await add_rule_to_control(client, control_id=5, rule_id=10)
             print(f"Success: {result['success']}")
     """
-    response = await client.http_client.post(
-        f"/api/v1/controls/{control_id}/rules/{rule_id}"
-    )
+    response = await client.http_client.post(f"/api/v1/controls/{control_id}/rules/{rule_id}")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
 
 async def remove_rule_from_control(
-    client: AgentControlClient,
-    control_id: int,
-    rule_id: int
+    client: AgentControlClient, control_id: int, rule_id: int
 ) -> dict[str, Any]:
     """
     Remove a rule from a control.
@@ -478,17 +494,12 @@ async def remove_rule_from_control(
             result = await remove_rule_from_control(client, control_id=5, rule_id=10)
             print(f"Success: {result['success']}")
     """
-    response = await client.http_client.delete(
-        f"/api/v1/controls/{control_id}/rules/{rule_id}"
-    )
+    response = await client.http_client.delete(f"/api/v1/controls/{control_id}/rules/{rule_id}")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 
 
-async def list_control_rules(
-    client: AgentControlClient,
-    control_id: int
-) -> dict[str, Any]:
+async def list_control_rules(client: AgentControlClient, control_id: int) -> dict[str, Any]:
     """
     List all rules associated with a control.
 
@@ -510,9 +521,7 @@ async def list_control_rules(
             rule_ids = result["rule_ids"]
             print(f"Control has {len(rule_ids)} rules: {rule_ids}")
     """
-    response = await client.http_client.get(
-        f"/api/v1/controls/{control_id}/rules"
-    )
+    response = await client.http_client.get(f"/api/v1/controls/{control_id}/rules")
     response.raise_for_status()
     return cast(dict[str, Any], response.json())
 

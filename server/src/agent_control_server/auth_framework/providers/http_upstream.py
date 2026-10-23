@@ -202,14 +202,13 @@ class _UpstreamGrant(BaseModel):
     caller_id: str | None = None
     target_type: str | None = Field(default=None, min_length=1)
     target_id: str | None = Field(default=None, min_length=1)
+    project_id: str | None = Field(default=None, min_length=1, max_length=255)
     scopes: tuple[str, ...] = ()
     expires_at: datetime | None = None
 
     @field_validator("expires_at", mode="after")
     @classmethod
-    def _expires_at_must_be_timezone_aware(
-        cls, value: datetime | None
-    ) -> datetime | None:
+    def _expires_at_must_be_timezone_aware(cls, value: datetime | None) -> datetime | None:
         """Reject naive ``expires_at`` values.
 
         A naive datetime carries no timezone, so comparing it against
@@ -219,9 +218,7 @@ class _UpstreamGrant(BaseModel):
         rest of the strict-grant rejections.
         """
         if value is not None and value.tzinfo is None:
-            raise ValueError(
-                "expires_at must include timezone information (e.g., a UTC offset)"
-            )
+            raise ValueError("expires_at must include timezone information (e.g., a UTC offset)")
         return value
 
     @model_validator(mode="after")
@@ -235,9 +232,7 @@ class _UpstreamGrant(BaseModel):
         intended authorization.
         """
         if (self.target_type is None) != (self.target_id is None):
-            raise ValueError(
-                "target_type and target_id must both be supplied or both omitted"
-            )
+            raise ValueError("target_type and target_id must both be supplied or both omitted")
         return self
 
 
@@ -303,8 +298,7 @@ class HttpUpstreamConfig:
         if self.service_token is None:
             return
         forwarded = {
-            name.lower()
-            for name in (*_DEFAULT_FORWARDED_HEADERS, *self.extra_forward_headers)
+            name.lower() for name in (*_DEFAULT_FORWARDED_HEADERS, *self.extra_forward_headers)
         }
         if self.service_token_header.lower() in forwarded:
             raise ValueError(
@@ -314,6 +308,8 @@ class HttpUpstreamConfig:
 
 class HttpUpstreamAuthProvider(RequestAuthorizer):
     """Delegates authorization to an upstream HTTP service."""
+
+    project_control_authorization = True
 
     def __init__(
         self,
@@ -453,6 +449,14 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         if status == 200:
             principal = self._parse_principal(response)
             _ensure_target_context_matches_grant(context, principal)
+            if operation.startswith("project_controls."):
+                expected = context.get("project_id") if context else None
+                if not isinstance(expected, str) or principal.project_id != expected:
+                    raise ForbiddenError(
+                        error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                        detail="The project grant does not match the requested project.",
+                        hint="Deploy an ownership-aware authorization upstream first.",
+                    )
             return principal
         if status == 401:
             raise AuthenticationError(
@@ -480,10 +484,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             # detail/hint preserves the structured error code while
             # naming the failure mode.
             retry_after = response.headers.get("Retry-After")
-            hint = (
-                "The authorization service is rate-limiting requests; "
-                "back off and retry."
-            )
+            hint = "The authorization service is rate-limiting requests; back off and retry."
             if retry_after is not None:
                 hint = f"{hint} Retry-After: {retry_after}."
             _logger.warning(
@@ -529,8 +530,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
                 error_code=ErrorCode.AUTH_UPSTREAM_REJECTED,
                 reason=ErrorReason.INTERNAL_ERROR,
                 detail=(
-                    "Authorization service rejected the authorization check "
-                    f"(status {status})."
+                    f"Authorization service rejected the authorization check (status {status})."
                 ),
                 hint=(
                     "Check that the Agent Control authorization request shape "
@@ -598,6 +598,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             scopes=grant.scopes,
             grant_expires_at=grant.expires_at,
             extensions=extensions or None,
+            project_id=grant.project_id,
         )
 
 

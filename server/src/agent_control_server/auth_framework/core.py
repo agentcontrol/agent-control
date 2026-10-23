@@ -42,6 +42,7 @@ class Operation(StrEnum):
     # Control bindings (target attachments).
     CONTROL_BINDINGS_READ = "control_bindings.read"
     CONTROL_BINDINGS_WRITE = "control_bindings.write"
+    CONTROL_BINDINGS_CLEANUP = "control_bindings.cleanup"
 
     # Runtime token exchange - wired on the exchange endpoint.
     RUNTIME_TOKEN_EXCHANGE = "runtime.token_exchange"
@@ -50,6 +51,11 @@ class Operation(StrEnum):
     CONTROLS_CREATE = "controls.create"
     CONTROLS_UPDATE = "controls.update"
     CONTROLS_DELETE = "controls.delete"
+    PROJECT_CONTROLS_CREATE = "project_controls.create"
+    PROJECT_CONTROLS_READ = "project_controls.read"
+    PROJECT_CONTROLS_UPDATE = "project_controls.update"
+    PROJECT_CONTROLS_DELETE = "project_controls.delete"
+    PROJECT_CONTROLS_CLEANUP = "project_controls.cleanup"
     POLICIES_READ = "policies.read"
     POLICIES_CREATE = "policies.create"
     POLICIES_UPDATE = "policies.update"
@@ -86,6 +92,8 @@ class Principal:
             lifetime.
         extensions: Opaque trusted metadata returned by the authorizer.
             Generic authorization code preserves this without interpreting it.
+        project_id: Authoritative upstream project for an owner or target grant.
+            Never derived from caller-supplied evaluator configuration.
     """
 
     namespace_key: str
@@ -96,6 +104,7 @@ class Principal:
     scopes: tuple[str, ...] = ()
     grant_expires_at: datetime | None = None
     extensions: JSONObject | None = None
+    project_id: str | None = None
 
 
 ContextBuilder = Callable[[Request], dict[str, Any] | Awaitable[dict[str, Any]]]

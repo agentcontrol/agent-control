@@ -1473,7 +1473,7 @@ async def add_agent_control(
     namespace_key = principal.namespace_key
     agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
     control_service = ControlService(db)
-    control = await control_service.get_active_control_or_404(
+    control = await control_service.require_organization_control(
         control_id, namespace_key=namespace_key
     )
 
@@ -1534,7 +1534,7 @@ async def remove_agent_control(
     namespace_key = principal.namespace_key
     agent = await _get_agent_or_404(agent_name, db, namespace_key=namespace_key)
     control_service = ControlService(db)
-    await control_service.get_active_control_or_404(control_id, namespace_key=namespace_key)
+    await control_service.require_organization_control(control_id, namespace_key=namespace_key)
 
     try:
         removal_result = await control_service.remove_control_from_agent(

@@ -1,6 +1,7 @@
 import datetime as dt
 import uuid
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any
 
 from agent_control_engine import list_evaluators
@@ -57,6 +58,12 @@ from ..models import Agent, AgentData
 from ..services.condition_traversal import iter_condition_leaves_with_paths
 from ..services.control_bindings import ControlBindingsService
 from ..services.control_definitions import parse_control_definition_or_api_error
+from ..services.control_ownership import (
+    authorize_owner,
+    require_control_create,
+    require_control_operation,
+)
+from ..services.control_projects import ensure_project_active, ensure_target_active
 from ..services.control_templates import (
     can_render_template,
     remap_template_api_error,
@@ -96,11 +103,7 @@ _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
 
 
 def _is_target_context_value(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and bool(value)
-        and len(value) <= _MAX_TARGET_CONTEXT_VALUE_LENGTH
-    )
+    return isinstance(value, str) and bool(value) and len(value) <= _MAX_TARGET_CONTEXT_VALUE_LENGTH
 
 
 def _ensure_same_namespace_authorization(
@@ -170,6 +173,56 @@ async def _optional_attachment_target_principal(request: Request) -> Principal |
         Operation.CONTROL_BINDINGS_READ,
         target_context,
     )
+
+
+@dataclass(frozen=True)
+class ControlListAuthorization:
+    principal: Principal
+    owner_project_id: str | None
+    include_org_controls: bool = False
+
+
+async def _control_list_authorization(
+    request: Request,
+    owner_project_id: str | None = Query(None, min_length=1, max_length=255),
+    target_principal: Principal | None = Depends(_optional_attachment_target_principal),
+) -> ControlListAuthorization:
+    trusted_project = target_principal.project_id if target_principal else None
+    if (
+        owner_project_id is not None
+        and target_principal is not None
+        and trusted_project != owner_project_id
+    ):
+        raise ForbiddenError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail="The stream grant does not match the requested project.",
+        )
+    owner = owner_project_id if owner_project_id is not None else trusted_project
+    principal = await authorize_owner(request, Operation.CONTROLS_READ, owner)
+    include_org = False
+    if owner is not None and target_principal is not None and owner_project_id is None:
+        # Legacy organization definitions remain visible only with their separate
+        # existing read grant. Project-scoped credentials do not inherit that grant.
+        try:
+            org = await authorize_owner(request, Operation.CONTROLS_READ, None)
+            _ensure_same_namespace_authorization(principal, org)
+            include_org = True
+        except ForbiddenError:
+            pass
+    if target_principal is not None:
+        _ensure_same_namespace_authorization(principal, target_principal)
+    return ControlListAuthorization(principal, owner, include_org)
+
+
+async def _clone_source_principal(
+    request: CloneAndBindControlRequest,
+    http_request: Request,
+    control_id: int,
+    db: AsyncSession = Depends(get_async_db),
+) -> Principal:
+    """Validate the clone body before attempting a source lookup."""
+    del request
+    return await require_control_operation(Operation.CONTROLS_READ)(http_request, control_id, db)
 
 
 def _generated_clone_name(source_id: int, source_name: str) -> str:
@@ -244,10 +297,7 @@ def _validate_attachment_filters(
                             else "attachment_target_id"
                         ),
                         code="missing_required_parameter",
-                        message=(
-                            "Set attachment_target_type and attachment_target_id "
-                            "together."
-                        ),
+                        message=("Set attachment_target_type and attachment_target_id together."),
                     )
                 ],
             )
@@ -284,9 +334,7 @@ def _serialize_control_data(
         exclude_unset=True,
     )
     if "scope" in data_json and isinstance(data_json["scope"], dict):
-        data_json["scope"] = {
-            k: v for k, v in data_json["scope"].items() if v is not None
-        }
+        data_json["scope"] = {k: v for k, v in data_json["scope"].items() if v is not None}
     # Always persist enabled explicitly so _enabled_from_stored_payload reads
     # the correct value (especially for unrendered templates where enabled=False).
     if "enabled" not in data_json:
@@ -379,9 +427,7 @@ def _is_control_name_conflict(error: IntegrityError) -> bool:
     if diag in _CONTROL_NAME_UNIQUE_CONSTRAINTS:
         return True
 
-    error_text = " ".join(
-        part for part in (str(error.orig), str(error)) if part and part != "None"
-    )
+    error_text = " ".join(part for part in (str(error.orig), str(error)) if part and part != "None")
     return any(name in error_text for name in _CONTROL_NAME_UNIQUE_CONSTRAINTS)
 
 
@@ -451,7 +497,8 @@ async def _materialize_control_input(
 
         validate_template_structure(control_input.template)
         validate_partial_template_values(
-            control_input.template, control_input.template_values,
+            control_input.template,
+            control_input.template_values,
         )
         return UnrenderedTemplateControl(
             template=control_input.template,
@@ -584,9 +631,7 @@ async def _validate_control_definition(
                         error_code=ErrorCode.INVALID_CONFIG,
                         detail=f"Config validation failed for evaluator '{evaluator_ref}'",
                         resource="Control",
-                        hint=(
-                            "Check the evaluator's config schema for required fields and types."
-                        ),
+                        hint=("Check the evaluator's config schema for required fields and types."),
                         errors=[
                             ValidationErrorItem(
                                 resource="Control",
@@ -659,7 +704,7 @@ async def _validate_control_definition(
 async def render_control_template(
     request: RenderControlTemplateRequest,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
+    principal: Principal = Depends(require_control_create),
 ) -> RenderControlTemplateResponse:
     """Render a template-backed control without persisting it."""
     control_def = await _render_and_validate_template_input(
@@ -683,7 +728,7 @@ async def render_control_template(
 async def create_control(
     request: CreateControlRequest,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
+    principal: Principal = Depends(require_control_create),
 ) -> CreateControlResponse:
     """
     Create a new control with a unique name.
@@ -704,11 +749,12 @@ async def create_control(
     """
     control_service = ControlService(db)
 
+    if request.owner_project_id is not None:
+        await ensure_project_active(db, principal.namespace_key, request.owner_project_id)
+
     # Uniqueness check
     namespace_key = principal.namespace_key
-    if await control_service.active_control_name_exists(
-        request.name, namespace_key=namespace_key
-    ):
+    if await control_service.active_control_name_exists(request.name, namespace_key=namespace_key):
         raise ConflictError(
             error_code=ErrorCode.CONTROL_NAME_CONFLICT,
             detail=f"Control with name '{request.name}' already exists",
@@ -728,6 +774,7 @@ async def create_control(
         namespace_key=namespace_key,
         name=request.name,
         data=control_data,
+        owner_project_id=request.owner_project_id,
     )
     try:
         await control_service.create_version(
@@ -780,8 +827,8 @@ async def clone_and_bind_control(
     control_id: int,
     request: CloneAndBindControlRequest,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
-    read_principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    principal: Principal = Depends(require_control_create),
+    read_principal: Principal = Depends(_clone_source_principal),
     binding_principal: Principal = Depends(
         require_operation(
             Operation.CONTROL_BINDINGS_WRITE,
@@ -802,6 +849,23 @@ async def clone_and_bind_control(
     )
 
     namespace_key = principal.namespace_key
+    if (
+        request.owner_project_id is not None
+        and binding_principal.project_id != request.owner_project_id
+    ):
+        raise ForbiddenError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail="The clone owner does not match the authorized stream project.",
+        )
+    if binding_principal.project_id is not None:
+        await ensure_project_active(db, namespace_key, binding_principal.project_id)
+        await ensure_target_active(
+            db,
+            namespace_key,
+            binding_principal.project_id,
+            request.target_binding.target_type,
+            request.target_binding.target_id,
+        )
     control_service = ControlService(db)
     bindings_service = ControlBindingsService(db)
 
@@ -810,6 +874,11 @@ async def clone_and_bind_control(
         namespace_key=namespace_key,
         for_update=True,
     )
+    if source.owner_project_id is not None and source.owner_project_id != request.owner_project_id:
+        raise ForbiddenError(
+            error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+            detail="A project-owned source cannot be promoted or cloned into another project.",
+        )
     clone_name = await _resolve_clone_name(
         control_service,
         namespace_key=namespace_key,
@@ -823,6 +892,7 @@ async def clone_and_bind_control(
         name=clone_name,
         data=deepcopy(source.data),
         cloned_from_control_id=source.id,
+        owner_project_id=request.owner_project_id,
     )
     try:
         await control_service.create_version(
@@ -836,6 +906,7 @@ async def clone_and_bind_control(
             target_id=request.target_binding.target_id,
             control_id=clone.id,
             enabled=request.target_binding.enabled,
+            authorized_project_id=binding_principal.project_id,
         )
         await db.commit()
     except APIError:
@@ -876,6 +947,7 @@ async def clone_and_bind_control(
 
     return CloneAndBindControlResponse(
         id=clone.id,
+        owner_project_id=clone.owner_project_id,
         name=clone.name,
         cloned_from_control_id=source.id,
         binding_id=binding.id,
@@ -891,9 +963,7 @@ async def clone_and_bind_control(
 # Public schema metadata: no tenant state, no auth operation.
 async def get_control_schema() -> GetControlSchemaResponse:
     """Return the canonical JSON schema for ControlDefinition."""
-    return GetControlSchemaResponse(
-        schema=ControlDefinition.model_json_schema(by_alias=True)
-    )
+    return GetControlSchemaResponse(schema=ControlDefinition.model_json_schema(by_alias=True))
 
 
 @router.get(
@@ -905,7 +975,7 @@ async def get_control_schema() -> GetControlSchemaResponse:
 async def get_control(
     control_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    principal: Principal = Depends(require_control_operation(Operation.CONTROLS_READ)),
 ) -> GetControlResponse:
     """
     Retrieve a control by ID including its name and configuration data.
@@ -933,6 +1003,7 @@ async def get_control(
         id=control.id,
         name=control.name,
         cloned_from_control_id=control.cloned_from_control_id,
+        owner_project_id=control.owner_project_id,
         data=control_data,
     )
 
@@ -947,7 +1018,7 @@ async def get_control(
 async def get_control_data(
     control_id: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    principal: Principal = Depends(require_control_operation(Operation.CONTROLS_READ)),
 ) -> GetControlDataResponse:
     """
     Retrieve the configuration data for a control.
@@ -989,7 +1060,7 @@ async def list_control_versions(
     ),
     limit: int = Query(_DEFAULT_PAGINATION_LIMIT, ge=1, le=_MAX_PAGINATION_LIMIT),
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    principal: Principal = Depends(require_control_operation(Operation.CONTROLS_READ)),
 ) -> ListControlVersionsResponse:
     """List control versions ordered newest-first using cursor-based pagination."""
     page = await ControlService(db).list_versions(
@@ -1028,7 +1099,7 @@ async def get_control_version(
     control_id: int,
     version_num: int,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    principal: Principal = Depends(require_control_operation(Operation.CONTROLS_READ)),
 ) -> GetControlVersionResponse:
     """Return a specific control version, including its raw persisted snapshot."""
     version = await ControlService(db).get_version_or_404(
@@ -1053,7 +1124,7 @@ async def set_control_data(
     control_id: int,
     request: SetControlDataRequest,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_UPDATE)),
+    principal: Principal = Depends(require_control_operation(Operation.CONTROLS_UPDATE)),
 ) -> SetControlDataResponse:
     """
     Update the configuration data for a control.
@@ -1074,6 +1145,8 @@ async def set_control_data(
         HTTPException 500: Database error during update
     """
     control_service = ControlService(db)
+    if principal.project_id is not None:
+        await ensure_project_active(db, principal.namespace_key, principal.project_id)
     control = await control_service.get_active_control_or_404(
         control_id, namespace_key=principal.namespace_key, for_update=True
     )
@@ -1122,7 +1195,7 @@ async def set_control_data(
 async def validate_control_data(
     request: ValidateControlDataRequest,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_CREATE)),
+    principal: Principal = Depends(require_control_create),
 ) -> ValidateControlDataResponse:
     """
     Validate control configuration data without saving it.
@@ -1198,7 +1271,7 @@ async def list_controls(
         ),
     ),
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_READ)),
+    authorization: ControlListAuthorization = Depends(_control_list_authorization),
     target_principal: Principal | None = Depends(_optional_attachment_target_principal),
 ) -> ListControlsResponse:
     """
@@ -1230,6 +1303,7 @@ async def list_controls(
     Example:
         GET /controls?limit=10&enabled=true&step_type=tool
     """
+    principal = authorization.principal
     _validate_attachment_filters(
         include_attachments=include_attachments,
         attachment_target_type=attachment_target_type,
@@ -1240,8 +1314,7 @@ async def list_controls(
             principal,
             target_principal,
             detail=(
-                "Control and target-binding read authorization resolved "
-                "to different namespaces."
+                "Control and target-binding read authorization resolved to different namespaces."
             ),
             hint=(
                 "Use credentials that grant control read and target-binding read "
@@ -1268,6 +1341,8 @@ async def list_controls(
         tag=tag,
         attachment_target_type=attachment_target_type if filter_by_attachment else None,
         attachment_target_id=attachment_target_id if filter_by_attachment else None,
+        owner_project_id=authorization.owner_project_id,
+        include_org_controls=authorization.include_org_controls,
     )
     usage_by_control_id = await control_service.list_control_usage(
         [control.id for control in page.controls],
@@ -1298,9 +1373,9 @@ async def list_controls(
                 id=ctrl.id,
                 name=ctrl.name,
                 cloned_from_control_id=ctrl.cloned_from_control_id,
+                owner_project_id=ctrl.owner_project_id,
                 description=(
-                    data.get("description")
-                    or (data.get("template") or {}).get("description")
+                    data.get("description") or (data.get("template") or {}).get("description")
                 ),
                 enabled=data.get("enabled", True),
                 execution=data.get("execution"),
@@ -1309,9 +1384,7 @@ async def list_controls(
                 stages=scope.get("stages"),
                 tags=data.get("tags", []),
                 template_backed="template" in data,
-                template_rendered=(
-                    "condition" in data if "template" in data else None
-                ),
+                template_rendered=("condition" in data if "template" in data else None),
                 used_by_agent=(
                     AgentRef(agent_name=usage.representative_agent_name)
                     if usage is not None and usage.representative_agent_name is not None
@@ -1325,8 +1398,7 @@ async def list_controls(
                             for agent_name in attachments.agent_names
                         ],
                         policies=[
-                            PolicyRef(policy_id=policy_id)
-                            for policy_id in attachments.policy_ids
+                            PolicyRef(policy_id=policy_id) for policy_id in attachments.policy_ids
                         ],
                         targets=[
                             TargetAttachmentRef(
@@ -1371,7 +1443,7 @@ async def delete_control(
         "If false, fail if control is associated with any policy or agent.",
     ),
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_DELETE)),
+    principal: Principal = Depends(require_control_operation(Operation.CONTROLS_DELETE)),
 ) -> DeleteControlResponse:
     """
     Delete a control by ID.
@@ -1393,6 +1465,8 @@ async def delete_control(
         HTTPException 500: Database error during deletion
     """
     control_service = ControlService(db)
+    if principal.project_id is not None:
+        await ensure_project_active(db, principal.namespace_key, principal.project_id)
     bindings_service = ControlBindingsService(db)
     namespace_key = principal.namespace_key
     control = await control_service.get_active_control_or_404(
@@ -1408,39 +1482,39 @@ async def delete_control(
         namespace_key=namespace_key, control_id=control_id
     )
 
-    if (
-        associated_policy_ids
-        or associated_agent_names
-        or target_binding_ids
-    ) and not force:
-        errors = [
-            ValidationErrorItem(
-                resource="Policy",
-                field="controls",
-                code="control_in_use",
-                message=f"Control is associated with policy ID {pid}",
-                value=pid,
-            )
-            for pid in associated_policy_ids
-        ] + [
-            ValidationErrorItem(
-                resource="Agent",
-                field="controls",
-                code="control_in_use",
-                message=f"Control is directly associated with agent '{agent_name}'",
-                value=agent_name,
-            )
-            for agent_name in associated_agent_names
-        ] + [
-            ValidationErrorItem(
-                resource="ControlBinding",
-                field="control_id",
-                code="control_in_use",
-                message=f"Control is attached to a target via binding ID {bid}",
-                value=bid,
-            )
-            for bid in target_binding_ids
-        ]
+    if (associated_policy_ids or associated_agent_names or target_binding_ids) and not force:
+        errors = (
+            [
+                ValidationErrorItem(
+                    resource="Policy",
+                    field="controls",
+                    code="control_in_use",
+                    message=f"Control is associated with policy ID {pid}",
+                    value=pid,
+                )
+                for pid in associated_policy_ids
+            ]
+            + [
+                ValidationErrorItem(
+                    resource="Agent",
+                    field="controls",
+                    code="control_in_use",
+                    message=f"Control is directly associated with agent '{agent_name}'",
+                    value=agent_name,
+                )
+                for agent_name in associated_agent_names
+            ]
+            + [
+                ValidationErrorItem(
+                    resource="ControlBinding",
+                    field="control_id",
+                    code="control_in_use",
+                    message=f"Control is attached to a target via binding ID {bid}",
+                    value=bid,
+                )
+                for bid in target_binding_ids
+            ]
+        )
         raise ConflictError(
             error_code=ErrorCode.CONTROL_IN_USE,
             detail=(
@@ -1525,7 +1599,7 @@ async def patch_control(
     control_id: int,
     request: PatchControlRequest,
     db: AsyncSession = Depends(get_async_db),
-    principal: Principal = Depends(require_operation(Operation.CONTROLS_UPDATE)),
+    principal: Principal = Depends(require_control_operation(Operation.CONTROLS_UPDATE)),
 ) -> PatchControlResponse:
     """
     Update control metadata (name and/or enabled status).
@@ -1549,6 +1623,8 @@ async def patch_control(
         HTTPException 500: Database error during update
     """
     control_service = ControlService(db)
+    if principal.project_id is not None:
+        await ensure_project_active(db, principal.namespace_key, principal.project_id)
     namespace_key = principal.namespace_key
     control = await control_service.get_active_control_or_404(
         control_id, namespace_key=namespace_key, for_update=True
@@ -1603,8 +1679,7 @@ async def patch_control(
                             field="enabled",
                             code="unrendered_template_cannot_enable",
                             message=(
-                                "Provide parameter values to render "
-                                "the template before enabling."
+                                "Provide parameter values to render the template before enabling."
                             ),
                         )
                     ],
