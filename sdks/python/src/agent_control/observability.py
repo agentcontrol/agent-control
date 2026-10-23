@@ -75,6 +75,7 @@ from agent_control_telemetry.sink_selection import (
 )
 from agent_control_telemetry.sinks import (
     BaseControlEventSink,
+    ControlCheckEventSink,
     ControlEventSink,
     SinkResult,
 )
@@ -82,7 +83,7 @@ from agent_control_telemetry.sinks import (
 from agent_control.settings import configure_settings, get_settings
 
 if TYPE_CHECKING:
-    from agent_control_models import ControlExecutionEvent
+    from agent_control_models import ControlCheckEvent, ControlExecutionEvent
     from opentelemetry.sdk.trace import TracerProvider
 
 from .otel_sink import (
@@ -1279,6 +1280,35 @@ def write_events(events: Sequence[ControlExecutionEvent]) -> SinkResult:
     dropped = max(max_dropped, len(events) - min_accepted)
     accepted = min(min_accepted, max(len(events) - dropped, 0))
     return SinkResult(accepted=accepted, dropped=dropped)
+
+
+def write_control_check_events(events: Sequence[ControlCheckEvent]) -> SinkResult:
+    """Deliver whole-check events to selected sinks with the optional capability.
+
+    Control-only sinks remain unchanged. No HTTP payload is sent for these
+    events. Delivery failures are best-effort and never change an evaluation.
+    """
+    check_sinks = tuple(
+        sink
+        for sink in _get_active_control_event_sinks()
+        if isinstance(sink, ControlCheckEventSink)
+    )
+    if not check_sinks:
+        return SinkResult(accepted=0, dropped=len(events))
+
+    accepted = len(events)
+    dropped = 0
+    for sink in check_sinks:
+        try:
+            result = sink.write_control_check_events(events)
+            accepted = min(accepted, result.accepted)
+            dropped = max(dropped, result.dropped)
+        except Exception:
+            logger.warning("Control-check sink write failed", exc_info=True)
+            accepted = 0
+            dropped = len(events)
+    dropped = max(dropped, len(events) - accepted)
+    return SinkResult(accepted=min(accepted, len(events) - dropped), dropped=dropped)
 
 
 def sync_shutdown_observability() -> None:
