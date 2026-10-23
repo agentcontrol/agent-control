@@ -55,6 +55,7 @@ from .observability.sinks import (
     resolve_control_event_backend,
 )
 from .observability.store import PostgresEventStore
+from .request_correlation import RequestCorrelationMiddleware
 from .ui_assets import configure_ui_routes
 
 logger = logging.getLogger(__name__)
@@ -267,6 +268,7 @@ Agent → Policy → Control(s)
 )
 
 add_prometheus_metrics(app, settings.prometheus_metrics_prefix)
+app.add_middleware(RequestCorrelationMiddleware)
 
 # Configure CORS
 app.add_middleware(

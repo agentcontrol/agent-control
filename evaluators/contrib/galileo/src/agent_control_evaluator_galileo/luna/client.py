@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue, Step
+from agent_control_models.request_context import get_request_id
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ..records import UnsupportedStepTypeError, record_from_step
@@ -584,6 +585,13 @@ class GalileoLunaClient:
         request_headers = {
             k: v for k, v in (headers or {}).items() if k.lower() not in _BLOCKED_REQUEST_HEADERS
         }
+        if parent_id := get_request_id():
+            request_headers = {
+                key: value
+                for key, value in request_headers.items()
+                if key.lower() != "x-request-id"
+            }
+            request_headers["X-Request-ID"] = parent_id
         request_headers["Authorization"] = auth_header
 
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
