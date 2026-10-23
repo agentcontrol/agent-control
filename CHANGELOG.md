@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v8.15.0 (2026-10-23)
+
+### Chores
+
+- **release**: Ts sdk v3.4.0 [skip ci]
+  ([`4b8b345`](https://github.com/agentcontrol/agent-control/commit/4b8b3454d42f1faa9ca9dcbedd2f03fa6ce5e989))
+
+### Features
+
+- **evaluators**: Add Galileo Decision Models evaluator
+  ([#293](https://github.com/agentcontrol/agent-control/pull/293),
+  [`c7cd862`](https://github.com/agentcontrol/agent-control/commit/c7cd86217332f92abfaa80b934a650e9bc8894f5))
+
+
 ## v8.14.0 (2026-10-19)
 
 ### Features
