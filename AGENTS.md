@@ -80,6 +80,16 @@ All testing guidance (including "behavior changes require tests") lives in `TEST
   3) add entry point using `org.name` format (e.g., `galileo.luna`)
   4) package is discovered automatically when installed alongside agent-control
 
+## Evaluator testing guides
+
+End-to-end testing guides for Galileo contrib evaluators (using the sample apps in [ace-demo](https://github.com/namrataghadi-galileo/ace-demo)):
+
+- **`galileo.llm` (LLM-as-judge)** — travel assistant demo:
+  [`evaluators/contrib/galileo/src/agent_control_evaluator_galileo/llm/README.md`](evaluators/contrib/galileo/src/agent_control_evaluator_galileo/llm/README.md)
+
+- **`galileo.luna` (SLM-as-judge)** — banking multilevel demo:
+  [`evaluators/contrib/galileo/src/agent_control_evaluator_galileo/luna/README.md`](evaluators/contrib/galileo/src/agent_control_evaluator_galileo/luna/README.md)
+
 ## Git/PR workflow
 
 - Branch naming: `feature/...`, `fix/...`, `refactor/...`
