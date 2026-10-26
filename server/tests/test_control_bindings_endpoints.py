@@ -9,6 +9,9 @@ from typing import Any
 import httpx
 import pytest
 from agent_control_models.errors import ErrorCode, ErrorReason
+from fastapi.testclient import TestClient
+from httpx import Response
+
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
 from agent_control_server.auth_framework.providers import (
     HeaderAuthProvider,
@@ -17,12 +20,137 @@ from agent_control_server.auth_framework.providers import (
 from agent_control_server.auth_framework.providers.http_upstream import HttpUpstreamConfig
 from agent_control_server.errors import APIError, ForbiddenError, NotFoundError
 from agent_control_server.models import DEFAULT_NAMESPACE_KEY
-from fastapi.testclient import TestClient
-from httpx import Response
 
 from .utils import VALID_CONTROL_PAYLOAD
 
 _BINDINGS_URL = "/api/v1/control-bindings"
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"control_id": "37"},
+        {"target_type": "log_stream"},
+        {"target_id": "stream-42"},
+        {"target_type": "", "target_id": "stream-42"},
+        {"target_type": "log_stream", "target_id": "  "},
+    ],
+)
+def test_target_required_binding_list_rejects_incomplete_queries_locally(
+    client: TestClient, params: dict[str, str]
+) -> None:
+    # Given: an upstream that requires a complete binding target.
+    upstream_requests: list[httpx.Request] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        upstream_requests.append(request)
+        return httpx.Response(400, json={"detail": "Binding reads require target context"})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    set_authorizer(
+        HttpUpstreamAuthProvider(
+            HttpUpstreamConfig(
+                url="https://orbit.example/internal/auth/agent_control/check_management_access",
+                binding_list_requires_target=True,
+            ),
+            client=upstream_client,
+        )
+    )
+
+    # When: the caller lists bindings without both non-empty target parameters.
+    response = client.get(_BINDINGS_URL, params=params)
+
+    # Then: the public response explains the required parameters without a 5xx.
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "VALIDATION_ERROR"
+    assert "target_type and target_id" in response.json()["detail"]
+    assert "control_id" in response.json()["hint"]
+    assert upstream_requests == []
+
+
+def test_target_required_binding_list_forwards_target_and_keeps_control_filter(
+    client: TestClient,
+) -> None:
+    # Given: two bindings on one target and another target using the same control.
+    control_id = _create_control(client)
+    other_control_id = _create_control(client)
+    target_id = str(uuid.uuid4())
+    matching_id = _create_binding(
+        client, control_id=control_id, target_type="log_stream", target_id=target_id
+    )["binding_id"]
+    _create_binding(
+        client, control_id=other_control_id, target_type="log_stream", target_id=target_id
+    )
+    _create_binding(
+        client, control_id=control_id, target_type="log_stream", target_id=str(uuid.uuid4())
+    )
+    upstream_payloads: list[dict[str, Any]] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        upstream_payloads.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "namespace_key": DEFAULT_NAMESPACE_KEY,
+                "target_type": "log_stream",
+                "target_id": target_id,
+            },
+        )
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    set_authorizer(
+        HttpUpstreamAuthProvider(
+            HttpUpstreamConfig(
+                url="https://orbit.example/internal/auth/agent_control/check_management_access",
+                binding_list_requires_target=True,
+            ),
+            client=upstream_client,
+        )
+    )
+
+    # When: the caller lists a control's bindings within an authorized target.
+    response = client.get(
+        _BINDINGS_URL,
+        params={"target_type": "log_stream", "target_id": target_id, "control_id": control_id},
+    )
+
+    # Then: authorization receives the target and storage applies both filters.
+    assert response.status_code == 200, response.text
+    assert [binding["id"] for binding in response.json()["bindings"]] == [matching_id]
+    assert upstream_payloads == [
+        {
+            "operation": Operation.CONTROL_BINDINGS_READ.value,
+            "context": {"target_type": "log_stream", "target_id": target_id},
+        }
+    ]
+
+
+def test_generic_http_upstream_keeps_namespace_wide_binding_lists(client: TestClient) -> None:
+    # Given: a generic upstream with independent identity resolution.
+    upstream_payloads: list[dict[str, Any]] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        upstream_payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={"namespace_key": DEFAULT_NAMESPACE_KEY})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    set_authorizer(
+        HttpUpstreamAuthProvider(
+            HttpUpstreamConfig(
+                url="https://auth.example/check",
+                identity_url="https://auth.example/identity",
+            ),
+            client=upstream_client,
+        )
+    )
+
+    # When: the caller lists bindings without a target.
+    response = client.get(_BINDINGS_URL)
+
+    # Then: configuring an identity URL alone does not require target-scoped lists.
+    assert response.status_code == 200, response.text
+    assert upstream_payloads == [{"operation": Operation.CONTROL_BINDINGS_READ.value}]
 
 
 def _create_control(client: TestClient, name: str | None = None) -> int:

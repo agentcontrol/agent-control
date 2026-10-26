@@ -63,7 +63,13 @@ from pydantic import (
     model_validator,
 )
 
-from ...errors import APIError, AuthenticationError, ForbiddenError, NotFoundError
+from ...errors import (
+    APIError,
+    APIValidationError,
+    AuthenticationError,
+    ForbiddenError,
+    NotFoundError,
+)
 from ...logging_utils import get_logger
 from ..core import Operation, Principal, RequestAuthorizer
 
@@ -289,6 +295,13 @@ class HttpUpstreamConfig:
     identity_url: str | None = None
     """Optional URL for credential and namespace resolution before target authorization."""
 
+    binding_list_requires_target: bool = False
+    """Require a complete target for binding reads when the upstream requires one.
+
+    Generic upstreams retain namespace-wide reads by default. Environment
+    configuration enables this for Orbit's management authorization route.
+    """
+
     def __post_init__(self) -> None:
         if self.keepalive_expiry_seconds < 0:
             raise ValueError("keepalive_expiry_seconds must be greater than or equal to 0")
@@ -355,6 +368,22 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         operation: Operation,
         context: dict[str, Any] | None = None,
     ) -> Principal:
+        if (
+            self._config.binding_list_requires_target
+            and operation == Operation.CONTROL_BINDINGS_READ
+            and any(
+                not isinstance(value := (context or {}).get(field), str) or not value.strip()
+                for field in ("target_type", "target_id")
+            )
+        ):
+            raise APIValidationError(
+                error_code=ErrorCode.VALIDATION_ERROR,
+                detail="Binding lists require both target_type and target_id in this deployment.",
+                hint=(
+                    "Pass both target_type and target_id query parameters. "
+                    "Add control_id only as a filter within that target."
+                ),
+            )
         headers = self._forward_headers(request)
         payload: dict[str, Any] = {"operation": operation.value}
         if context:

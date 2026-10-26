@@ -57,3 +57,21 @@ psycopg's bundled binary package.
 Server configuration is driven by environment variables (database, auth, observability, evaluators). For the full list and examples, see the docs.
 
 Full guide: https://docs.agentcontrol.dev/components/server
+
+### Binding lists with Orbit authorization
+
+When `AGENT_CONTROL_AUTH_UPSTREAM_URL` points to Orbit's
+`/internal/auth/agent_control/check_management_access` route, binding lists need
+both `target_type` and `target_id`:
+
+```http
+GET /api/v1/control-bindings?target_type=log_stream&target_id=<log-stream-uuid>&limit=100
+```
+
+Add `control_id` to filter bindings within that target. Include both target
+parameters on every pagination request. A missing, blank, or incomplete target
+returns `422 VALIDATION_ERROR` before calling the authorization service.
+
+This requirement follows Orbit's target-scoped authorization contract. Local
+authentication and generic HTTP upstreams keep their namespace-wide list behavior.
+Unexpected upstream rejections still return `502 AUTH_UPSTREAM_REJECTED`.
