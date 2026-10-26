@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from typing import Any
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -20,6 +21,7 @@ from agent_control_server.auth_framework.providers import (
 from agent_control_server.auth_framework.providers.http_upstream import HttpUpstreamConfig
 from agent_control_server.errors import APIError, ForbiddenError, NotFoundError
 from agent_control_server.models import DEFAULT_NAMESPACE_KEY
+from agent_control_server.services.control_bindings import ControlBindingsService
 
 from .utils import VALID_CONTROL_PAYLOAD
 
@@ -151,6 +153,87 @@ def test_generic_http_upstream_keeps_namespace_wide_binding_lists(client: TestCl
     # Then: configuring an identity URL alone does not require target-scoped lists.
     assert response.status_code == 200, response.text
     assert upstream_payloads == [{"operation": Operation.CONTROL_BINDINGS_READ.value}]
+
+
+@pytest.mark.parametrize("status", [401, 403, 404])
+def test_target_required_binding_list_preserves_upstream_denials(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    # Given: a complete target whose upstream authorization is denied.
+    target_id = str(uuid.uuid4())
+    payloads: list[dict[str, Any]] = []
+    storage = AsyncMock()
+    monkeypatch.setattr(ControlBindingsService, "list_bindings", storage)
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(status)
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    set_authorizer(
+        HttpUpstreamAuthProvider(
+            HttpUpstreamConfig(
+                url="https://orbit.example/internal/auth/agent_control/check_management_access",
+                binding_list_requires_target=True,
+            ),
+            client=upstream_client,
+        )
+    )
+
+    # When: the caller provides both target parameters.
+    response = client.get(
+        _BINDINGS_URL, params={"target_type": "log_stream", "target_id": target_id}
+    )
+
+    # Then: validation does not replace permission checks or read any bindings.
+    assert response.status_code == status, response.text
+    assert payloads == [
+        {
+            "operation": Operation.CONTROL_BINDINGS_READ.value,
+            "context": {"target_type": "log_stream", "target_id": target_id},
+        }
+    ]
+    storage.assert_not_awaited()
+
+
+def test_target_required_binding_list_rejects_a_mismatched_grant(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given: a successful upstream response granting a different target.
+    target_id = str(uuid.uuid4())
+    storage = AsyncMock()
+    monkeypatch.setattr(ControlBindingsService, "list_bindings", storage)
+    upstream_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "namespace_key": DEFAULT_NAMESPACE_KEY,
+                    "target_type": "log_stream",
+                    "target_id": str(uuid.uuid4()),
+                },
+            )
+        )
+    )
+    set_authorizer(
+        HttpUpstreamAuthProvider(
+            HttpUpstreamConfig(
+                url="https://orbit.example/internal/auth/agent_control/check_management_access",
+                binding_list_requires_target=True,
+            ),
+            client=upstream_client,
+        )
+    )
+
+    # When: the caller lists bindings for the original target.
+    response = client.get(
+        _BINDINGS_URL, params={"target_type": "log_stream", "target_id": target_id}
+    )
+
+    # Then: an upstream 200 cannot grant access to another target's bindings.
+    assert response.status_code == 403, response.text
+    assert response.json()["error_code"] == "AUTH_INSUFFICIENT_PRIVILEGES"
+    storage.assert_not_awaited()
 
 
 def _create_control(client: TestClient, name: str | None = None) -> int:
@@ -628,7 +711,13 @@ def test_binding_id_non_orbit_http_upstream_preserves_targetless_check(
         assert stored.json()["enabled"] is (method != "patch" or expected_status != 200)
 
 
-def test_binding_id_orbit_http_upstream_authorizes_stored_target(client: TestClient) -> None:
+@pytest.mark.parametrize(
+    ("method", "operation"),
+    [("GET", Operation.CONTROL_BINDINGS_READ), ("DELETE", Operation.CONTROL_BINDINGS_WRITE)],
+)
+def test_binding_id_orbit_http_upstream_authorizes_stored_target(
+    client: TestClient, method: str, operation: Operation
+) -> None:
     # Given: Orbit requires target context for management authorization.
     control_id = _create_control(client)
     target_id = str(uuid.uuid4())
@@ -652,13 +741,14 @@ def test_binding_id_orbit_http_upstream_authorizes_stored_target(client: TestCli
             HttpUpstreamConfig(
                 url="https://orbit.example/internal/auth/agent_control/check_management_access",
                 identity_url="https://orbit.example/internal/auth/resolve_tenant_context",
+                binding_list_requires_target=True,
             ),
             client=upstream_client,
         )
     )
 
-    # When: an ID-based delete is requested without a target in the request.
-    response = client.delete(f"{_BINDINGS_URL}/{binding_id}")
+    # When: an ID-based read or delete has no target parameters in the request.
+    response = client.request(method, f"{_BINDINGS_URL}/{binding_id}")
 
     # Then: identity resolution precedes a target-bound management check.
     assert response.status_code == 200, response.text
@@ -667,7 +757,7 @@ def test_binding_id_orbit_http_upstream_authorizes_stored_target(client: TestCli
         "/internal/auth/agent_control/check_management_access",
     ]
     assert json.loads(upstream_requests[1].content) == {
-        "operation": Operation.CONTROL_BINDINGS_WRITE.value,
+        "operation": operation.value,
         "context": {"target_type": "log_stream", "target_id": target_id},
     }
 
