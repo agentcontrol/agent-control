@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -14,6 +18,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
+from agent_control_server.auth_framework import config as auth_config
 from agent_control_server.auth_framework.providers import (
     HeaderAuthProvider,
     HttpUpstreamAuthProvider,
@@ -28,40 +33,95 @@ from .utils import VALID_CONTROL_PAYLOAD
 _BINDINGS_URL = "/api/v1/control-bindings"
 
 
+@pytest.fixture(
+    params=[
+        pytest.param(
+            "http://orbit.example:8088/internal/auth/agent_control/check_management_access",
+            id="us1-http",
+        ),
+        pytest.param(
+            "https://orbit.example:8088/internal/auth/agent_control/check_management_access",
+            id="multitenant-https",
+        ),
+    ]
+)
+def orbit_upstream_url(request: pytest.FixtureRequest) -> str:
+    return str(request.param)
+
+
+@contextmanager
+def _configured_orbit_authorizer(
+    monkeypatch: pytest.MonkeyPatch, url: str, upstream_client: httpx.AsyncClient
+) -> Iterator[None]:
+    """Exercise startup configuration with mocked upstream HTTP, not a manual opt-in."""
+    with monkeypatch.context() as env:
+        for key in list(os.environ):
+            if key.startswith("AGENT_CONTROL_AUTH_UPSTREAM_"):
+                env.delenv(key)
+        env.setenv("AGENT_CONTROL_AUTH_MODE", "http_upstream")
+        env.setenv("AGENT_CONTROL_AUTH_UPSTREAM_URL", url)
+        env.setenv("AGENT_CONTROL_RUNTIME_AUTH_MODE", "none")
+        with patch(
+            "agent_control_server.auth_framework.providers.http_upstream.httpx.AsyncClient",
+            return_value=upstream_client,
+        ):
+            auth_config.configure_auth_from_env()
+        try:
+            yield
+        finally:
+            asyncio.run(auth_config.teardown_auth())
+
+
 @pytest.mark.parametrize(
     "params",
     [
-        {},
-        {"control_id": "37"},
-        {"target_type": "log_stream"},
-        {"target_id": "stream-42"},
-        {"target_type": "", "target_id": "stream-42"},
-        {"target_type": "log_stream", "target_id": "  "},
+        pytest.param({}, id="no-query-parameters"),
+        # These control-only request shapes were observed in the us1 incident.
+        pytest.param({"control_id": "33"}, id="incident-control-33"),
+        pytest.param({"control_id": "37"}, id="incident-control-37"),
+        pytest.param({"control_id": "80"}, id="incident-control-80"),
+        pytest.param({"target_type": "log_stream"}, id="type-only"),
+        pytest.param({"target_id": "stream-42"}, id="id-only"),
+        pytest.param({"target_type": "", "target_id": "stream-42"}, id="empty-type"),
+        pytest.param({"target_type": " \t", "target_id": "stream-42"}, id="whitespace-type"),
+        pytest.param({"target_type": "log_stream", "target_id": ""}, id="empty-id"),
+        pytest.param({"target_type": "log_stream", "target_id": " \t"}, id="whitespace-id"),
+        pytest.param({"target_type": "", "target_id": ""}, id="both-empty"),
+        pytest.param({"control_id": "37", "target_type": "log_stream"}, id="control-and-type"),
+        pytest.param({"control_id": "37", "target_id": "stream-42"}, id="control-and-id"),
+        pytest.param({"limit": "1", "cursor": "2"}, id="pagination-without-target"),
+        pytest.param(
+            {"control_id": "37", "limit": "1", "cursor": "2"},
+            id="control-and-pagination-without-target",
+        ),
+        pytest.param(
+            {"targetType": "log_stream", "targetId": "stream-42"},
+            id="unsupported-camel-case-parameters",
+        ),
     ],
 )
 def test_target_required_binding_list_rejects_incomplete_queries_locally(
-    client: TestClient, params: dict[str, str]
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    orbit_upstream_url: str,
+    params: dict[str, str],
 ) -> None:
-    # Given: an upstream that requires a complete binding target.
+    # Given: the deployment's startup configuration and Orbit's observed rejection.
     upstream_requests: list[httpx.Request] = []
+    storage = AsyncMock()
+    monkeypatch.setattr(ControlBindingsService, "list_bindings", storage)
 
     def upstream_auth(request: httpx.Request) -> httpx.Response:
         upstream_requests.append(request)
-        return httpx.Response(400, json={"detail": "Binding reads require target context"})
+        return httpx.Response(
+            400,
+            json={"detail": "Operation 'control_bindings.read' requires target context."},
+        )
 
     upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
-    set_authorizer(
-        HttpUpstreamAuthProvider(
-            HttpUpstreamConfig(
-                url="https://orbit.example/internal/auth/agent_control/check_management_access",
-                binding_list_requires_target=True,
-            ),
-            client=upstream_client,
-        )
-    )
-
-    # When: the caller lists bindings without both non-empty target parameters.
-    response = client.get(_BINDINGS_URL, params=params)
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: the caller lists bindings without both non-empty target parameters.
+        response = client.get(_BINDINGS_URL, params=params)
 
     # Then: the public response explains the required parameters without a 5xx.
     assert response.status_code == 422, response.text
@@ -69,10 +129,101 @@ def test_target_required_binding_list_rejects_incomplete_queries_locally(
     assert "target_type and target_id" in response.json()["detail"]
     assert "control_id" in response.json()["hint"]
     assert upstream_requests == []
+    storage.assert_not_awaited()
+
+
+def test_orbit_binding_list_pagination_keeps_target_filter(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, orbit_upstream_url: str
+) -> None:
+    # Given: two controls on one target and a binding on a different target.
+    control_id = _create_control(client)
+    other_control_id = _create_control(client)
+    target_id = str(uuid.uuid4())
+    expected_ids = [
+        _create_binding(
+            client, control_id=control_id, target_type="log_stream", target_id=target_id
+        )["binding_id"]
+        for control_id in (control_id, other_control_id)
+    ]
+    _create_binding(
+        client, control_id=control_id, target_type="log_stream", target_id=str(uuid.uuid4())
+    )
+    upstream_payloads: list[dict[str, Any]] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        upstream_payloads.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "namespace_key": DEFAULT_NAMESPACE_KEY,
+                "target_type": "log_stream",
+                "target_id": target_id,
+            },
+        )
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    params = {
+        "target_type": "log_stream",
+        "target_id": target_id,
+        "limit": "1",
+    }
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: both page requests retain the target.
+        first = client.get(_BINDINGS_URL, params=params)
+        assert first.status_code == 200, first.text
+        cursor = first.json()["pagination"]["next_cursor"]
+        assert cursor is not None
+        second = client.get(_BINDINGS_URL, params={**params, "cursor": cursor})
+
+    # Then: each page is authorized and neither unrelated binding leaks into it.
+    assert second.status_code == 200, second.text
+    ids = [page.json()["bindings"][0]["id"] for page in (first, second)]
+    assert ids == sorted(expected_ids, reverse=True)
+    assert first.json()["pagination"]["total"] == 2
+    assert second.json()["pagination"]["has_more"] is False
+    assert upstream_payloads == [
+        {
+            "operation": Operation.CONTROL_BINDINGS_READ.value,
+            "context": {"target_type": "log_stream", "target_id": target_id},
+        }
+    ] * 2
+
+
+def test_orbit_binding_list_with_no_matches_is_successful(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, orbit_upstream_url: str
+) -> None:
+    # Given: a valid authorized target with no bindings, not missing target context.
+    target_id = str(uuid.uuid4())
+    upstream_requests: list[httpx.Request] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        upstream_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "namespace_key": DEFAULT_NAMESPACE_KEY,
+                "target_type": "log_stream",
+                "target_id": target_id,
+            },
+        )
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: the complete target is supplied without an optional control filter.
+        response = client.get(
+            _BINDINGS_URL, params={"target_type": "log_stream", "target_id": target_id}
+        )
+
+    # Then: zero matching bindings is a normal empty page, not a validation failure.
+    assert response.status_code == 200, response.text
+    assert response.json()["bindings"] == []
+    assert response.json()["pagination"]["total"] == 0
+    assert response.json()["pagination"]["has_more"] is False
+    assert len(upstream_requests) == 1
 
 
 def test_target_required_binding_list_forwards_target_and_keeps_control_filter(
-    client: TestClient,
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, orbit_upstream_url: str
 ) -> None:
     # Given: two bindings on one target and another target using the same control.
     control_id = _create_control(client)
@@ -101,21 +252,12 @@ def test_target_required_binding_list_forwards_target_and_keeps_control_filter(
         )
 
     upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
-    set_authorizer(
-        HttpUpstreamAuthProvider(
-            HttpUpstreamConfig(
-                url="https://orbit.example/internal/auth/agent_control/check_management_access",
-                binding_list_requires_target=True,
-            ),
-            client=upstream_client,
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: the caller lists a control's bindings within an authorized target.
+        response = client.get(
+            _BINDINGS_URL,
+            params={"target_type": "log_stream", "target_id": target_id, "control_id": control_id},
         )
-    )
-
-    # When: the caller lists a control's bindings within an authorized target.
-    response = client.get(
-        _BINDINGS_URL,
-        params={"target_type": "log_stream", "target_id": target_id, "control_id": control_id},
-    )
 
     # Then: authorization receives the target and storage applies both filters.
     assert response.status_code == 200, response.text
