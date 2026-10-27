@@ -62,14 +62,11 @@ def _normalize_sdk_metadata_version(file_path: Path) -> None:
         file_path.write_text(normalized, encoding="utf-8")
 
 
-def _strip_unstable_type_comments(file_path: Path) -> None:
+def _strip_unstable_type_comments(file_path: Path, type_name: str, description: str) -> None:
     original = file_path.read_text(encoding="utf-8")
     normalized = original.replace(
-        "/**\n"
-        " * Template-backed input payload for control create/update requests.\n"
-        " */\n"
-        "export type TemplateControlInput = {",
-        "export type TemplateControlInput = {",
+        f"/**\n * {description}\n */\nexport type {type_name} = {{",
+        f"export type {type_name} = {{",
     )
 
     if normalized != original:
@@ -82,9 +79,19 @@ def normalize_generated_sdk(_schema_path: Path, generated_dir: Path) -> None:
     if config_file.exists():
         _normalize_sdk_metadata_version(config_file)
 
-    template_control_input_file = generated_dir / "models" / "template-control-input.ts"
-    if template_control_input_file.exists():
-        _strip_unstable_type_comments(template_control_input_file)
+    # Speakeasy output varies in whether these type-level descriptions are present.
+    # Normalize only the known unstable comments; retain field documentation.
+    for filename, type_name, description in (
+        (
+            "template-control-input.ts",
+            "TemplateControlInput",
+            "Template-backed input payload for control create/update requests.",
+        ),
+        ("regex-template-parameter.ts", "RegexTemplateParameter", "RE2 regex template parameter."),
+    ):
+        model_file = generated_dir / "models" / filename
+        if model_file.exists():
+            _strip_unstable_type_comments(model_file, type_name, description)
 
     validation_error_file = generated_dir / "models" / "validation-error.ts"
     if not validation_error_file.exists():
