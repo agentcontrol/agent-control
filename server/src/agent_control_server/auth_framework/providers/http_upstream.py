@@ -371,19 +371,27 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         if (
             self._config.binding_list_requires_target
             and operation == Operation.CONTROL_BINDINGS_READ
-            and any(
-                not isinstance(value := (context or {}).get(field), str) or not value.strip()
-                for field in ("target_type", "target_id")
-            )
         ):
-            raise APIValidationError(
-                error_code=ErrorCode.VALIDATION_ERROR,
-                detail="Binding lists require both target_type and target_id in this deployment.",
-                hint=(
-                    "Pass both target_type and target_id query parameters. "
-                    "Add control_id only as a filter within that target."
-                ),
+            target_context = context or {}
+            target_type = target_context.get("target_type")
+            target_id = target_context.get("target_id")
+            has_complete_target = (
+                isinstance(target_type, str)
+                and bool(target_type.strip())
+                and isinstance(target_id, str)
+                and bool(target_id.strip())
             )
+            if not has_complete_target:
+                raise APIValidationError(
+                    error_code=ErrorCode.VALIDATION_ERROR,
+                    detail=(
+                        "Binding lists require both target_type and target_id in this deployment."
+                    ),
+                    hint=(
+                        "Pass both target_type and target_id query parameters. "
+                        "Add control_id only as a filter within that target."
+                    ),
+                )
         headers = self._forward_headers(request)
         payload: dict[str, Any] = {"operation": operation.value}
         if context:
