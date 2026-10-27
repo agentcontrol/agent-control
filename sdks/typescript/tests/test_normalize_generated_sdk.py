@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 
 SCRIPT_PATH = (
     Path(__file__).resolve().parent.parent / "scripts" / "normalize_generated_sdk.py"
@@ -262,3 +263,39 @@ def test_normalizer_removes_unstable_template_control_input_type_comment(
 
     normalized = template_control_input.read_text(encoding="utf-8")
     assert normalized == TEMPLATE_CONTROL_INPUT_WITHOUT_UNSTABLE_TYPE_COMMENT
+
+
+@pytest.mark.parametrize("include_type_comment", [True, False])
+def test_normalizer_stabilizes_regex_type_comment(
+    tmp_path: Path, include_type_comment: bool
+) -> None:
+    schema_path = _write_schema(tmp_path, include_context_fields=False)
+    generated_dir = tmp_path / "generated"
+    models_dir = generated_dir / "models"
+    models_dir.mkdir(parents=True)
+    model_file = models_dir / "regex-template-parameter.ts"
+    expected = (
+        "export type RegexTemplateParameter = {\n"
+        "  /** Optional default regex pattern */\n"
+        "  default?: string | undefined;\n"
+        "};\n"
+    )
+    type_comment = "/**\n * RE2 regex template parameter.\n */\n"
+    model_file.write_text(
+        (type_comment if include_type_comment else "") + expected, encoding="utf-8"
+    )
+
+    # Both generator variants converge, and a second normalization is a no-op.
+    for _ in range(2):
+        subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "--schema",
+                str(schema_path),
+                "--generated-dir",
+                str(generated_dir),
+            ],
+            check=True,
+        )
+        assert model_file.read_text(encoding="utf-8") == expected
