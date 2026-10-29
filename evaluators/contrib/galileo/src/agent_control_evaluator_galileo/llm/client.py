@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_SECS = 10.0
 SERVER_TIMEOUT_RATIO = 0.8
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
-DEFAULT_LLM_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
-LLM_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
+DEFAULT_LLM_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke/runtime"
+LLM_INVOKE_URL_ENV = "GALILEO_EXTERNAL_INVOKE_URL"
 LLM_INVOKE_CA_FILE_ENV = "GALILEO_LUNA_INVOKE_CA_FILE"
 AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
@@ -354,7 +354,7 @@ class GalileoLLMClient:
         GALILEO_FEATURE_FLAG_LLM_EVALUATOR: Set to ``enabled`` to activate the evaluator.
             Required; the evaluator is unavailable until this flag is set.
         GALILEO_API_SECRET_KEY or GALILEO_API_SECRET: JWT signing secret for internal auth.
-        GALILEO_LUNA_INVOKE_URL: LLM scorer invoke URL or service root (required).
+        GALILEO_EXTERNAL_INVOKE_URL: LLM scorer invoke URL or service root (required).
         GALILEO_LUNA_INVOKE_CA_FILE: CA bundle used to verify invoke TLS.
         AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE: Shared internal CA fallback.
         GALILEO_LUNA_KEEPALIVE_EXPIRY_SECONDS: HTTP pooled connection expiry.
@@ -375,7 +375,7 @@ class GalileoLLMClient:
             api_secret: Internal JWT signing secret. If not provided, reads from
                 GALILEO_API_SECRET_KEY or GALILEO_API_SECRET.
             llm_invoke_url: LLM scorer invoke URL or service root. If not provided,
-                reads from GALILEO_LUNA_INVOKE_URL.
+                reads from GALILEO_EXTERNAL_INVOKE_URL.
             llm_invoke_ca_file: Optional CA bundle used to verify invoke TLS. If not
                 provided, reads from GALILEO_LUNA_INVOKE_CA_FILE, then
                 AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE.
@@ -397,7 +397,7 @@ class GalileoLLMClient:
         resolved_llm_invoke_url = llm_invoke_url or os.getenv(LLM_INVOKE_URL_ENV)
         if resolved_llm_invoke_url is None or resolved_llm_invoke_url.strip() == "":
             raise ValueError(
-                "GALILEO_LUNA_INVOKE_URL is required for LLM scorer invocation. "
+                "GALILEO_EXTERNAL_INVOKE_URL is required for LLM scorer invocation. "
                 "Set it as an environment variable or pass it to the constructor."
             )
 

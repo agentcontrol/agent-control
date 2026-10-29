@@ -459,12 +459,13 @@ def test_client_posts_to_correct_luna_invoke_endpoint(monkeypatch):
     """_endpoint_and_auth_header must return the Luna invoke endpoint path."""
     for key, value in LUNA_ENV.items():
         monkeypatch.setenv(key, value)
+    monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
     from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
 
     client = GalileoLunaClient()
     endpoint, _ = client._endpoint_and_auth_header()
 
-    assert endpoint == "http://luna-invoke:8090/api/v1/scorers/invoke"
+    assert endpoint == "http://luna-invoke:8090/api/v1/scorers/invoke/runtime"
 
 
 def test_client_does_not_use_old_api_paths(monkeypatch):
