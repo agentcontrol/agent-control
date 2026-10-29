@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECS = 10.0
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
-DEFAULT_INVOKE_PATH = "/api/v1/scorers/invoke"
-LUNA_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
+DEFAULT_INVOKE_PATH = "/api/v1/scorers/invoke/runtime"
+EXTERNAL_INVOKE_URL_ENV = "GALILEO_EXTERNAL_INVOKE_URL"
 AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 DEFAULT_KEEPALIVE_EXPIRY_SECS = 1.0
 DEFAULT_MAX_CONNECTIONS = 100
@@ -185,9 +185,9 @@ class GalileoDecisionModelsClient:
                 "GALILEO_API_SECRET_KEY or GALILEO_API_SECRET is required for "
                 "galileo.decision_models"
             )
-        resolved_url = invoke_url or os.getenv(LUNA_INVOKE_URL_ENV)
+        resolved_url = invoke_url or os.getenv(EXTERNAL_INVOKE_URL_ENV)
         if not resolved_url or not resolved_url.strip():
-            raise ValueError(f"{LUNA_INVOKE_URL_ENV} is required for galileo.decision_models")
+            raise ValueError(f"{EXTERNAL_INVOKE_URL_ENV} is required for galileo.decision_models")
         self.api_secret = resolved_secret
         self.invoke_url = _normalize_invoke_url(resolved_url)
         self.runtime_enabled = scorer_invoke_runtime_enabled()

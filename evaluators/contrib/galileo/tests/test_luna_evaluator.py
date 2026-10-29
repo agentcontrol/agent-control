@@ -361,7 +361,9 @@ class TestGalileoLunaClient:
         ):
             client = GalileoLunaClient()
 
-        assert client.luna_invoke_url == "http://luna-invoke:8090/api/v1/scorers/invoke"
+        assert client.luna_invoke_url == (
+            "http://luna-invoke:8090/api/v1/scorers/invoke/runtime"
+        )
 
     def test_client_uses_full_luna_invoke_url_as_configured(self) -> None:
         from agent_control_evaluator_galileo.luna import GalileoLunaClient
@@ -693,9 +695,11 @@ class TestGalileoLunaClient:
         finally:
             await client.close()
 
-        # Then: posts to luna invoke endpoint /api/v1/scorers/invoke with JWT, no Galileo-API-Key
+        # Then: posts to the Luna runtime endpoint with JWT and no Galileo-API-Key
         assert response.score == 0.82
-        assert captured["url"] == "http://luna-invoke:8090/api/v1/scorers/invoke"
+        assert captured["url"] == (
+            "http://luna-invoke:8090/api/v1/scorers/invoke/runtime"
+        )
         expected_body = {
             "scorer_id": SCORER_ID,
             "execution_context": {
@@ -901,6 +905,7 @@ class TestGalileoLunaClient:
         captured: dict[str, object] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
             captured["body"] = json.loads(request.content.decode())
             return httpx.Response(200, json={"score": 0.8, "status": "success"})
 
@@ -933,6 +938,7 @@ class TestGalileoLunaClient:
 
         body = captured["body"]
         assert isinstance(body, dict)
+        assert captured["url"] == "http://luna-invoke:8090/api/v1/scorers/invoke"
         assert body["scorer_id"] == SCORER_ID
         assert body["scorer_version_id"] == SCORER_VERSION_ID
         assert body["inputs"] == {
