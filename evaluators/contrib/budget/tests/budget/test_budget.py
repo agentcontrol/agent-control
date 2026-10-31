@@ -5,25 +5,25 @@ Given/When/Then comment style per reviewer request.
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version
 import threading
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
-import pytest
-from pydantic import ValidationError
-
 import agent_control_evaluator_budget.budget.evaluator as budget_evaluator_module
+import pytest
 from agent_control_evaluator_budget.budget.config import (
     WINDOW_DAILY,
     WINDOW_MONTHLY,
     WINDOW_WEEKLY,
     BudgetEvaluatorConfig,
     BudgetLimitRule,
+    GatewayRoutingConfig,
     ModelPricing,
 )
 from agent_control_evaluator_budget.budget.evaluator import (
     BudgetEvaluator,
     _extract_tokens,
+    _gateway_route_metadata,
     clear_budget_stores,
     get_or_create_store,
 )
@@ -33,6 +33,8 @@ from agent_control_evaluator_budget.budget.memory_store import (
     _compute_utilization,
     _derive_period_key,
 )
+from agent_control_models import GatewayModelCandidate, GatewayModelTier
+from pydantic import ValidationError
 
 
 @pytest.fixture(autouse=True)
@@ -2103,3 +2105,161 @@ class TestNaNCostDefense:
         # Then: no crash
         assert len(snaps) == 1
         assert snaps[0].spent == 100
+
+
+def _gateway_routing_config(*, threshold_tier: str | None = "economy") -> GatewayRoutingConfig:
+    return GatewayRoutingConfig(
+        tiers={
+            "economy": GatewayModelTier(
+                models=[GatewayModelCandidate(provider="openai", model="small", protocol="openai")]
+            ),
+            "premium": GatewayModelTier(
+                models=[GatewayModelCandidate(provider="openai", model="large", protocol="openai")]
+            ),
+        },
+        task_tiers={"default": "economy", "analysis": "premium"},
+        threshold=0.8,
+        threshold_tier=threshold_tier,
+    )
+
+
+def _route_candidates(*models: str) -> list[dict[str, str]]:
+    return [
+        {"provider": "openai", "model": model, "protocol": "openai"} for model in models
+    ]
+
+
+def test_gateway_routing_config_rejects_unknown_tier_references() -> None:
+    economy_tier = {"economy": _gateway_routing_config().tiers["economy"]}
+
+    with pytest.raises(ValidationError, match="task_tiers references unknown tiers"):
+        GatewayRoutingConfig(tiers=economy_tier, task_tiers={"default": "premium"})
+    with pytest.raises(ValidationError, match="threshold_tier references unknown tier"):
+        GatewayRoutingConfig(
+            tiers=economy_tier,
+            task_tiers={"default": "economy"},
+            threshold_tier="premium",
+        )
+
+
+def test_budget_config_requires_token_limit_for_gateway_routing() -> None:
+    with pytest.raises(ValidationError, match="requires at least one token budget limit"):
+        BudgetEvaluatorConfig(
+            limits=[BudgetLimitRule(limit=100)],
+            pricing={"small": ModelPricing()},
+            model_path="model",
+            gateway_routing=_gateway_routing_config(),
+        )
+
+
+def test_gateway_routing_none_returns_no_route_metadata() -> None:
+    assert _gateway_route_metadata({}, None, [], over_limit=False) is None
+
+
+def test_gateway_route_uses_default_task_and_zero_budget_snapshot() -> None:
+    route = _gateway_route_metadata(
+        {"candidate_models": _route_candidates("small")},
+        _gateway_routing_config(),
+        [],
+        over_limit=False,
+    )
+
+    assert route is not None
+    assert route["allowed"] is True
+    assert route["model"] == "small"
+    assert route["task_type"] == "default"
+    assert route["budget"] == {
+        "used_tokens": 0,
+        "limit_tokens": 0,
+        "utilization": 0.0,
+        "threshold": 0.8,
+        "threshold_reached": False,
+        "over_limit": False,
+    }
+
+
+def test_gateway_threshold_without_override_keeps_task_tier() -> None:
+    route = _gateway_route_metadata(
+        {"task_type": "analysis", "candidate_models": _route_candidates("large")},
+        _gateway_routing_config(threshold_tier=None),
+        [{"limit_unit": "tokens", "spent_tokens": 8, "limit": 10, "utilization": 0.8}],
+        over_limit=False,
+    )
+
+    assert route is not None
+    assert route["model"] == "large"
+    assert route["budget"]["threshold_reached"] is True
+    assert "Budget threshold reached" in route["reason"]
+
+
+def test_gateway_route_supports_legacy_model_and_rejects_unknown_tier() -> None:
+    legacy_route = _gateway_route_metadata(
+        {
+            "task_type": "analysis",
+            "candidate_models": "not-a-list",
+            "model": "large",
+        },
+        _gateway_routing_config(),
+        [],
+        over_limit=False,
+    )
+    unknown_route = _gateway_route_metadata(
+        {"task_type": "unknown", "candidate_models": _route_candidates("small")},
+        GatewayRoutingConfig(
+            tiers=_gateway_routing_config().tiers,
+            task_tiers={"analysis": "premium"},
+        ),
+        [],
+        over_limit=False,
+    )
+
+    assert legacy_route is not None and legacy_route["model"] == "large"
+    assert unknown_route is not None
+    assert unknown_route["allowed"] is False
+    assert unknown_route["tier"] is None
+    assert "No model tier" in unknown_route["reason"]
+
+
+def test_gateway_route_skips_invalid_candidates_and_denies_incompatible_tier() -> None:
+    route = _gateway_route_metadata(
+        {
+            "task_type": "analysis",
+            "candidate_models": [
+                "not-an-object",
+                {"provider": "openai", "model": "small", "protocol": "unknown"},
+            ],
+        },
+        _gateway_routing_config(),
+        [],
+        over_limit=False,
+    )
+
+    assert route is not None
+    assert route["allowed"] is False
+    assert route["model"] is None
+    assert "No compatible model candidate" in route["reason"]
+
+
+def test_gateway_over_limit_denies_candidate_and_non_mapping_input_defaults_task() -> None:
+    over_limit = _gateway_route_metadata(
+        {"candidate_models": _route_candidates("small")},
+        _gateway_routing_config(),
+        [],
+        over_limit=True,
+    )
+    non_mapping = _gateway_route_metadata(
+        None, _gateway_routing_config(), [], over_limit=False
+    )
+    non_string_task = _gateway_route_metadata(
+        {"task_type": 42}, _gateway_routing_config(), [], over_limit=False
+    )
+
+    assert over_limit is not None
+    assert over_limit["allowed"] is False
+    assert over_limit["provider"] is None
+    assert "exhausted" in over_limit["reason"]
+    assert non_mapping is not None
+    assert non_mapping["task_type"] == "default"
+    assert non_mapping["allowed"] is False
+    assert non_string_task is not None
+    assert non_string_task["task_type"] == "default"

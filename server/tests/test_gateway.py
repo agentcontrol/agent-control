@@ -8,7 +8,10 @@ import pytest
 from agent_control_evaluator_budget.budget.evaluator import clear_budget_stores
 from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult
 from agent_control_server.auth_framework import Operation, Principal, set_authorizer
-from agent_control_server.endpoints.gateway import _find_gateway_route
+from agent_control_server.endpoints.gateway import (
+    _budget_state_from_metadata,
+    _find_gateway_route,
+)
 from fastapi.testclient import TestClient
 
 
@@ -240,6 +243,93 @@ def test_bound_deny_control_blocks_gateway_route(client: TestClient) -> None:
     assert result["provider"] is None
     assert result["model"] is None
     assert "denied" in result["reason"].lower()
+
+
+def test_preflight_returns_policy_decision_and_accepts_legacy_model(client: TestClient) -> None:
+    agent_name = "customer-success-agent"
+    _register_agent(client, agent_name)
+    set_authorizer(_AgentRuntimeAuthorizer(agent_name), operation=Operation.RUNTIME_USE)
+
+    response = client.post(
+        f"/api/v1/gateway/agents/{agent_name}/preflight",
+        json={"task_type": "analysis", "model": "gpt-4.1", "prompt": "summarize"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["allowed"] is True
+    assert response.json()["policy"] == f"{agent_name}-gateway-routing"
+
+
+def test_preflight_without_bound_routing_control_denies(client: TestClient) -> None:
+    agent_name = "customer-success-agent"
+    response = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert response.status_code == 200, response.text
+    set_authorizer(_AgentRuntimeAuthorizer(agent_name), operation=Operation.RUNTIME_USE)
+
+    preflight = client.post(
+        f"/api/v1/gateway/agents/{agent_name}/preflight",
+        json={"task_type": "classification", "candidate_models": _candidates(agent_name)},
+    )
+
+    assert preflight.status_code == 200, preflight.text
+    assert preflight.json()["allowed"] is False
+    assert preflight.json()["policy"] == "agent-controls"
+    assert preflight.json()["budget"] is None
+
+
+def test_claude_code_denies_misconfigured_openai_route(client: TestClient) -> None:
+    agent_name = "claude-code"
+    response = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert response.status_code == 200, response.text
+    # Bind the first-party policy deliberately to this agent to exercise the
+    # server-side Anthropic protocol guard independently of candidate filtering.
+    _bind_control(client, agent_name, _create_route_control(client, "customer-success-agent"))
+    set_authorizer(_AgentRuntimeAuthorizer(agent_name), operation=Operation.RUNTIME_USE)
+
+    route = client.post(
+        f"/api/v1/gateway/agents/{agent_name}/route-decision",
+        json={
+            "task_type": "analysis",
+            "candidate_models": [
+                {"provider": "openai", "model": "gpt-4.1", "protocol": "openai"}
+            ],
+        },
+    )
+
+    assert route.status_code == 200, route.text
+    assert route.json()["decision"] == "deny"
+    assert route.json()["provider"] is None
+    assert "Anthropic-compatible" in route.json()["reason"]
+
+
+def test_usage_settlement_without_bound_routing_policy_returns_not_found(
+    client: TestClient,
+) -> None:
+    agent_name = "customer-success-agent"
+    response = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert response.status_code == 200, response.text
+    set_authorizer(_AgentRuntimeAuthorizer(agent_name), operation=Operation.RUNTIME_USE)
+
+    settlement = client.post(
+        f"/api/v1/gateway/agents/{agent_name}/usage-settlement",
+        json={"model": "gpt-4.1", "input_tokens": 10, "output_tokens": 5},
+    )
+
+    assert settlement.status_code == 404
+
+
+@pytest.mark.parametrize("metadata", [None, {"gateway_route": None}, {"budget": None}])
+def test_budget_state_parser_ignores_unusable_metadata(metadata: object) -> None:
+    assert _budget_state_from_metadata(metadata) is None
 
 
 def test_gateway_rejects_identity_mismatch(client: TestClient) -> None:
