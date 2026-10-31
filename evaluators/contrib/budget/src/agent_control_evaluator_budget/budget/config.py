@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from agent_control_evaluators._base import EvaluatorConfig
+from agent_control_models import GatewayModelTier
 from pydantic import Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
@@ -68,6 +69,25 @@ class BudgetLimitRule(EvaluatorConfig):
         return v
 
 
+class GatewayRoutingConfig(EvaluatorConfig):
+    """Optional model-tier routing behavior stored on a budget control."""
+
+    tiers: dict[str, GatewayModelTier] = Field(min_length=1)
+    task_tiers: dict[str, str] = Field(min_length=1)
+    threshold: float = Field(default=0.8, gt=0.0, le=1.0)
+    threshold_tier: str | None = None
+
+    @model_validator(mode="after")
+    def validate_tier_references(self) -> GatewayRoutingConfig:
+        configured = set(self.tiers)
+        unknown = set(self.task_tiers.values()) - configured
+        if unknown:
+            raise ValueError(f"task_tiers references unknown tiers: {sorted(unknown)}")
+        if self.threshold_tier is not None and self.threshold_tier not in configured:
+            raise ValueError(f"threshold_tier references unknown tier: {self.threshold_tier}")
+        return self
+
+
 class BudgetEvaluatorConfig(EvaluatorConfig):
     """Configuration for the budget evaluator.
 
@@ -109,6 +129,7 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
     token_path: str | None = None
     model_path: str | None = None
     metadata_paths: dict[str, str] = Field(default_factory=dict)
+    gateway_routing: GatewayRoutingConfig | None = None
 
     @model_validator(mode="after")
     def require_pricing_for_cost_rules(self) -> BudgetEvaluatorConfig:
@@ -117,4 +138,8 @@ class BudgetEvaluatorConfig(EvaluatorConfig):
             raise ValueError('pricing is required when any rule uses limit_unit="usd_cents"')
         if has_cost_rule and not (self.model_path or "").strip():
             raise ValueError('model_path is required when any rule uses limit_unit="usd_cents"')
+        if self.gateway_routing is not None and not any(
+            rule.limit_unit == "tokens" for rule in self.limits
+        ):
+            raise ValueError("gateway_routing requires at least one token budget limit")
         return self

@@ -542,6 +542,20 @@ def _validate_common_control_constraints(
     ):
         raise ValueError("Composite steer controls require action.steering_context")
 
+    leaf_parts = condition.leaf_parts() if condition.is_leaf() else None
+    has_gateway_budget_evaluator = bool(
+        leaf_parts is not None
+        and leaf_parts[1].name == "budget"
+        and "gateway_routing" in leaf_parts[1].config
+    )
+    if action.decision == "route" and not has_gateway_budget_evaluator:
+        raise ValueError(
+            "The route action requires a single budget evaluator with "
+            "gateway_routing configured"
+        )
+    if has_gateway_budget_evaluator and action.decision != "route":
+        raise ValueError("A budget evaluator with gateway_routing requires the route action")
+
 
 class ConditionNode(BaseModel):
     """Recursive boolean condition tree for control evaluation."""

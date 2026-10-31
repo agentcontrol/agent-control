@@ -1,0 +1,88 @@
+{
+  "customer-success-agent": {
+    "name": "customer-success-agent-gateway-routing",
+    "binding": {"target_type": "agent", "target_id": "customer-success-agent"},
+    "data": {
+      "description": "Route customer-success tasks by tier and accumulated token budget",
+      "enabled": true,
+      "execution": "server",
+      "scope": {"step_types": ["llm"], "stages": ["pre"]},
+      "condition": {
+        "selector": {"path": "input"},
+        "evaluator": {
+          "name": "budget",
+          "config": {
+            "limits": [{"limit": 100000, "limit_unit": "tokens"}],
+            "budget_id": "gateway-demo:customer-success-agent",
+            "gateway_routing": {
+              "tiers": {
+                "economy": {
+                  "models": [
+                    {"provider": "openai", "model": "gpt-4.1-mini", "protocol": "openai"}
+                  ]
+                },
+                "premium": {
+                  "models": [
+                    {"provider": "openai", "model": "gpt-4.1", "protocol": "openai"}
+                  ]
+                }
+              },
+              "task_tiers": {
+                "default": "economy",
+                "classification": "economy",
+                "analysis": "premium"
+              },
+              "threshold": 0.8,
+              "threshold_tier": "economy"
+            }
+          }
+        }
+      },
+      "action": {"decision": "route"},
+      "tags": ["gateway"]
+    }
+  },
+  "claude-code": {
+    "name": "claude-code-gateway-routing",
+    "binding": {"target_type": "agent", "target_id": "claude-code"},
+    "data": {
+      "description": "Route Claude Code only to Anthropic-compatible models",
+      "enabled": true,
+      "execution": "server",
+      "scope": {"step_types": ["llm"], "stages": ["pre"]},
+      "condition": {
+        "selector": {"path": "input"},
+        "evaluator": {
+          "name": "budget",
+          "config": {
+            "limits": [{"limit": 250000, "limit_unit": "tokens"}],
+            "budget_id": "gateway-demo:claude-code",
+            "gateway_routing": {
+              "tiers": {
+                "economy": {
+                  "models": [
+                    {"provider": "anthropic", "model": "claude-haiku-4-5", "protocol": "anthropic"}
+                  ]
+                },
+                "premium": {
+                  "models": [
+                    {"provider": "anthropic", "model": "claude-sonnet-4-5", "protocol": "anthropic"}
+                  ]
+                }
+              },
+              "task_tiers": {
+                "default": "premium",
+                "code-review": "premium",
+                "simple-edit": "economy"
+              },
+              "threshold": 0.9,
+              "threshold_tier": "economy"
+            }
+          }
+        }
+      },
+      "action": {"decision": "route"},
+      "tags": ["gateway"]
+    }
+  }
+}

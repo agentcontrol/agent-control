@@ -65,6 +65,16 @@ from .evaluation import (
     EvaluationResponse,
     EvaluationResult,
 )
+from .gateway import (
+    GatewayBudgetState,
+    GatewayModelCandidate,
+    GatewayModelTier,
+    GatewayPreflightRequest,
+    GatewayPreflightResponse,
+    GatewayRouteDecisionResponse,
+    GatewayUsageSettlementRequest,
+    GatewayUsageSettlementResponse,
+)
 from .health import HealthResponse
 from .observability import (
     BatchEventsRequest,
@@ -141,6 +151,15 @@ __all__ = [
     "EvaluationRequest",
     "EvaluationResponse",
     "EvaluationResult",
+    # Inference gateway
+    "GatewayModelCandidate",
+    "GatewayModelTier",
+    "GatewayPreflightRequest",
+    "GatewayPreflightResponse",
+    "GatewayRouteDecisionResponse",
+    "GatewayUsageSettlementRequest",
+    "GatewayUsageSettlementResponse",
+    "GatewayBudgetState",
     # Controls
     "ControlDefinition",
     "ConditionNode",

@@ -1,11 +1,57 @@
 """Tests for server configuration helpers."""
 
+import pytest
+from agent_control_evaluator_budget.budget import BudgetEvaluatorConfig
 from agent_control_server.config import (
     AgentControlServerDatabaseConfig,
     LoggingSettings,
     ObservabilitySettings,
     Settings,
 )
+from pydantic import ValidationError
+
+
+def _gateway_budget_config() -> dict[str, object]:
+    return {
+        "limits": [{"limit": 1000, "limit_unit": "tokens"}],
+        "budget_id": "gateway-config-test",
+        "gateway_routing": {
+            "tiers": {
+                "economy": {
+                    "models": [
+                        {"provider": "openai", "model": "small", "protocol": "openai"}
+                    ]
+                }
+            },
+            "task_tiers": {"default": "economy"},
+            "threshold": 0.8,
+            "threshold_tier": "economy",
+        },
+    }
+
+
+def test_budget_evaluator_parses_gateway_routing_configuration() -> None:
+    config = BudgetEvaluatorConfig.model_validate(_gateway_budget_config())
+    assert config.gateway_routing is not None
+    assert config.gateway_routing.tiers["economy"].models[0].model == "small"
+
+
+def test_budget_evaluator_rejects_unknown_gateway_tier() -> None:
+    raw = _gateway_budget_config()
+    routing = raw["gateway_routing"]
+    assert isinstance(routing, dict)
+    routing["task_tiers"] = {"default": "missing"}
+    with pytest.raises(ValidationError, match="unknown tiers"):
+        BudgetEvaluatorConfig.model_validate(raw)
+
+
+def test_gateway_routing_requires_token_budget_limit() -> None:
+    raw = _gateway_budget_config()
+    raw["limits"] = [{"limit": 50, "limit_unit": "usd_cents"}]
+    raw["pricing"] = {"small": {"input_per_1k": 0.1, "output_per_1k": 0.2}}
+    raw["model_path"] = "model"
+    with pytest.raises(ValidationError, match="requires at least one token budget limit"):
+        BudgetEvaluatorConfig.model_validate(raw)
 
 
 def test_db_config_prefers_explicit_url() -> None:
