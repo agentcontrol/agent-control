@@ -8,13 +8,10 @@ from typing import Any
 from agent_control_models import Step
 from galileo_core.schemas.logging.session import Session
 from galileo_core.schemas.logging.span import (
-    AgentSpan,
-    ControlSpan,
     LlmSpan,
     RetrieverSpan,
     Span,
     ToolSpan,
-    WorkflowSpan,
 )
 from galileo_core.schemas.logging.trace import Trace
 
