@@ -220,6 +220,21 @@ actions:
       x-speakeasy-group: evaluators
       x-speakeasy-name-override: list
 
+  - target: $["paths"]["/api/v1/gateway/agents/{agent_name}/preflight"]["post"]
+    update:
+      x-speakeasy-group: inferenceGateway
+      x-speakeasy-name-override: preflight
+
+  - target: $["paths"]["/api/v1/gateway/agents/{agent_name}/route-decision"]["post"]
+    update:
+      x-speakeasy-group: inferenceGateway
+      x-speakeasy-name-override: routeDecision
+
+  - target: $["paths"]["/api/v1/gateway/agents/{agent_name}/usage-settlement"]["post"]
+    update:
+      x-speakeasy-group: inferenceGateway
+      x-speakeasy-name-override: usageSettlement
+
   - target: $["paths"]["/api/v1/observability/events"]["post"]
     update:
       x-speakeasy-group: observability

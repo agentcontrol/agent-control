@@ -12,6 +12,7 @@ from galileo_core.schemas.logging.span import (
     ControlSpan,
     LlmSpan,
     RetrieverSpan,
+    Span,
     ToolSpan,
     WorkflowSpan,
 )
@@ -21,7 +22,7 @@ from .normalization import GalileoRecordNormalizer
 
 type GalileoRecord = LlmSpan | ToolSpan | RetrieverSpan | Trace | Session
 type GalileoSpan = LlmSpan | ToolSpan | RetrieverSpan
-type GalileoCoreSpan = AgentSpan | WorkflowSpan | LlmSpan | RetrieverSpan | ToolSpan | ControlSpan
+type GalileoCoreSpan = Span
 _MISSING = object()
 _SPAN_TYPES = {"llm", "tool", "retriever"}
 _RECORD_TYPES = _SPAN_TYPES | {"trace", "session"}
