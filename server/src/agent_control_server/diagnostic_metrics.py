@@ -16,6 +16,7 @@ Stage = Literal[
     "effective_query",
     "parse",
     "redis_get",
+    "miss_wait",
     "redis_set",
     "cache_encode",
     "cache_decode",
@@ -29,6 +30,12 @@ _DURATION = Histogram(
     "Diagnostic stage elapsed seconds",
     ["mode", "stage"],
     buckets=(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60),
+)
+_SNAPSHOT_AGE = Histogram(
+    "agent_control_lookup_diagnostic_snapshot_age_seconds",
+    "Age since cached definitions were loaded, not configuration creation age",
+    ["mode"],
+    buckets=(0, 1, 5, 10, 30, 60, 120, 180, 240, 300, 600),
 )
 _EVENTS = Counter(
     "agent_control_lookup_diagnostic_events", "Diagnostic cache outcomes", ["mode", "outcome"]

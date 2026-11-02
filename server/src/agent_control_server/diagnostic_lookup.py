@@ -7,6 +7,7 @@ restoration. Authorization always precedes this module. No ORM object is retaine
 import asyncio
 import hashlib
 import json
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -16,7 +17,7 @@ from agent_control_models import ControlDefinitionRuntime
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .diagnostic_metrics import _EVENTS, measured
+from .diagnostic_metrics import _EVENTS, _SNAPSHOT_AGE, measured
 from .services.controls import RuntimeControl
 
 
@@ -106,6 +107,7 @@ class CachedControl(BaseModel):
 class CachedDefinitions(BaseModel):
     format_version: Literal[1] = 1
     controls: list[CachedControl]
+    loaded_at_unix: float = Field(gt=0, allow_inf_nan=False)
 
 
 def redis_key(key: CacheKey) -> str:
@@ -156,6 +158,10 @@ class LookupCache:
             controls = [RuntimeControl(c.id, c.name, c.control) for c in parsed.controls]
             if definition_digest(controls) != key.digest:
                 raise ValueError("Redis diagnostic digest mismatch")
+        age = time.time() - parsed.loaded_at_unix
+        if age < -1 or age > 600:
+            raise ValueError("Redis diagnostic snapshot timestamp outside bound")
+        _SNAPSHOT_AGE.labels("on").observe(max(0, age))
         return controls
 
     async def load(
@@ -174,7 +180,10 @@ class LookupCache:
         if controls is not None:
             _EVENTS.labels("on", "hit").inc()
             return controls
-        async with self._locks[hash(key) % len(self._locks)]:
+        lock = self._locks[hash(key) % len(self._locks)]
+        with measured("miss_wait"):
+            await lock.acquire()
+        try:
             try:
                 controls = await self._read(key)
             except Exception:
@@ -190,9 +199,10 @@ class LookupCache:
                 raise ValueError("Frozen diagnostic fixture digest mismatch")
             with measured("cache_encode"):
                 value = CachedDefinitions(
+                    loaded_at_unix=time.time(),
                     controls=[
                         CachedControl(id=c.id, name=c.name, control=c.control) for c in controls
-                    ]
+                    ],
                 ).model_dump_json()
             if len(value.encode()) > settings.max_value_bytes:
                 _EVENTS.labels("on", "oversize_fallback").inc()
@@ -204,6 +214,8 @@ class LookupCache:
             except Exception:
                 _EVENTS.labels("on", "redis_write_fallback").inc()
             return controls
+        finally:
+            lock.release()
 
 
 cache = LookupCache()

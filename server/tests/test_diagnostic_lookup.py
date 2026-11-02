@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -387,3 +388,42 @@ async def test_cache_hits_do_not_serialize_behind_fixture_lock() -> None:
     assert entered == 2
     assert len(results) == 2
     assert loader.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_snapshot_age_records_hits_and_invalid_timestamp_falls_back(monkeypatch) -> None:
+    redis = FakeRedis()
+    cache = diagnostic.LookupCache(lambda: redis)
+    loader = AsyncMock(side_effect=lambda: sample())
+    monkeypatch.setattr(diagnostic, "time", SimpleNamespace(time=lambda: 1000.0))
+    await cache.load(key(), loader, ttl=30)
+    age_metric = diagnostic._SNAPSHOT_AGE.labels("on")
+    before = age_metric._sum.get()
+    monkeypatch.setattr(diagnostic, "time", SimpleNamespace(time=lambda: 1007.0))
+    await cache.load(key(), loader, ttl=30)
+    assert age_metric._sum.get() - before == 7
+    assert loader.await_count == 1
+    # A future snapshot is not silently treated as a valid old definition.
+    monkeypatch.setattr(diagnostic, "time", SimpleNamespace(time=lambda: 990.0))
+    await cache.load(key(), loader, ttl=30)
+    assert loader.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelled_miss_releases_lock() -> None:
+    redis = FakeRedis()
+    cache = diagnostic.LookupCache(lambda: redis)
+    started = asyncio.Event()
+
+    async def slow_loader():
+        started.set()
+        await asyncio.Event().wait()
+        return sample()
+
+    pending = asyncio.create_task(cache.load(key(), slow_loader, ttl=30))
+    await started.wait()
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    loader = AsyncMock(side_effect=lambda: sample())
+    assert await asyncio.wait_for(cache.load(key(), loader, ttl=30), timeout=1) == sample()
