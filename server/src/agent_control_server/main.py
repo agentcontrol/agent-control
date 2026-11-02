@@ -25,6 +25,7 @@ from .bootstrap.out_of_box_controls import (
 )
 from .config import observability_settings, settings
 from .db import AsyncSessionLocal, async_engine
+from .diagnostic_freeze import DiagnosticFixtureFreeze
 from .endpoints.agents import router as agent_router
 from .endpoints.auth import router as auth_router
 from .endpoints.control_bindings import router as control_binding_router
@@ -268,6 +269,11 @@ Agent → Policy → Control(s)
 )
 
 add_prometheus_metrics(app, settings.prometheus_metrics_prefix)
+
+# The diagnostic image is allowed only on the dedicated owned LT stack.
+app.add_middleware(
+    DiagnosticFixtureFreeze, api_base=f"{settings.api_prefix}/{settings.api_version}"
+)
 app.add_middleware(RequestCorrelationMiddleware)
 
 # Configure CORS
