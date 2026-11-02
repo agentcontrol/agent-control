@@ -1,7 +1,10 @@
 """Evaluation analysis endpoints."""
 
 import json
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import cast
 
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
@@ -12,9 +15,11 @@ from agent_control_models import (
     JSONObject,
 )
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 
+from .. import diagnostic_lookup as diagnostic
+from .. import diagnostic_metrics as timings
 from ..auth_framework import Operation, Principal, require_operation
 from ..db import AsyncSessionLocal
 from ..errors import APIValidationError, NotFoundError
@@ -58,10 +63,7 @@ def _sanitize_condition_trace(trace: object) -> object:
     if not isinstance(trace, dict):
         return trace
 
-    sanitized = {
-        key: _sanitize_condition_trace(value)
-        for key, value in trace.items()
-    }
+    sanitized = {key: _sanitize_condition_trace(value) for key, value in trace.items()}
 
     raw_error = sanitized.get("error")
     if isinstance(raw_error, str) and raw_error:
@@ -160,12 +162,17 @@ async def _load_engine_controls(
     namespace_key = principal.namespace_key
 
     async with AsyncSessionLocal() as db:
-        agent_result = await db.execute(
-            select(Agent).where(
-                Agent.name == request.agent_name,
-                Agent.namespace_key == namespace_key,
+        if timings._active_mode.get() is not None:
+            with timings.measured("pool_acquire"):
+                await db.connection()
+        timings.count_query("agent")
+        with timings.measured("agent_query"):
+            agent_result = await db.execute(
+                select(Agent).where(
+                    Agent.name == request.agent_name,
+                    Agent.namespace_key == namespace_key,
+                )
             )
-        )
         agent = agent_result.scalar_one_or_none()
         if agent is None:
             raise NotFoundError(
@@ -187,6 +194,66 @@ async def _load_engine_controls(
     return [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
 
 
+_authorize_runtime = require_operation(Operation.RUNTIME_USE, context_builder=_evaluation_context)
+
+
+async def _diagnostic_authorize(request: Request) -> Principal:
+    """Keep the original runtime authorization on every request, including hits."""
+    # Authorization duration is captured without labeling caller or target identity.
+    started = time.perf_counter()
+    principal = await _authorize_runtime(request)
+    request.state.lookup_authorization_seconds = time.perf_counter() - started
+    return principal
+
+
+async def _load_with_diagnostic(
+    request: EvaluationRequest,
+    principal: Principal,
+    mode: timings.Mode,
+    generation: str | None = None,
+) -> list[ControlAdapter]:
+    fixture = diagnostic.settings.fixture(
+        principal.namespace_key,
+        request.agent_name,
+        request.target_type,
+        request.target_id,
+        generation,
+    )
+    if fixture is None:
+        raise HTTPException(status_code=400, detail="Diagnostic fixture unavailable or expired")
+
+    async def loader() -> list[diagnostic.RuntimeControl]:
+        controls = await _load_engine_controls(request, principal)
+        return [diagnostic.RuntimeControl(c.id, c.name, c.control) for c in controls]
+
+    if mode == "off":
+        timings._EVENTS.labels("off", "bypass").inc()
+        controls = await loader()
+        if diagnostic.definition_digest(controls) != fixture.controls_sha256:
+            raise HTTPException(status_code=409, detail="Frozen diagnostic fixture changed")
+    else:
+        key = diagnostic.CacheKey(
+            fixture.namespace,
+            fixture.agent,
+            fixture.target_type,
+            fixture.target_id,
+            fixture.generation,
+            fixture.controls_sha256,
+        )
+        expiry = diagnostic.settings.expires_at
+        assert expiry is not None
+        ttl = min(diagnostic.settings.ttl_seconds, (expiry - datetime.now(UTC)).total_seconds())
+        try:
+            controls = await diagnostic.cache.load(key, loader, ttl=ttl)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409, detail="Frozen diagnostic fixture changed"
+            ) from exc
+    if diagnostic.definition_digest(controls) != fixture.controls_sha256:
+        raise HTTPException(status_code=409, detail="Frozen diagnostic fixture changed")
+    return [ControlAdapter(c.id, c.name, c.control) for c in controls]
+
+
 @router.post(
     "",
     response_model=EvaluationResponse,
@@ -195,9 +262,8 @@ async def _load_engine_controls(
 )
 async def evaluate(
     request: EvaluationRequest,
-    principal: Principal = Depends(
-        require_operation(Operation.RUNTIME_USE, context_builder=_evaluation_context)
-    ),
+    http_request: Request,
+    principal: Principal = Depends(_diagnostic_authorize),
 ) -> EvaluationResponse:
     """Analyze content for safety and control violations.
 
@@ -213,10 +279,45 @@ async def evaluate(
     on the server; SDKs reconstruct and emit those events separately through
     the observability ingestion endpoint.
     """
-    engine_controls = await _load_engine_controls(request, principal)
+    raw_mode = http_request.headers.get("X-LT-Control-Lookup-Cache")
+    if raw_mode not in (None, "off", "on"):
+        raise HTTPException(status_code=400, detail="Invalid diagnostic cache mode")
+    generation = http_request.headers.get("X-LT-Control-Lookup-Generation")
+    if (raw_mode is None) != (generation is None):
+        raise HTTPException(
+            status_code=400, detail="Diagnostic mode and generation required together"
+        )
+    mode = cast(timings.Mode | None, raw_mode)
+    token = timings._active_mode.set(mode)
+    try:
+        if mode is not None:
+            timings._DURATION.labels(mode, "authorization").observe(
+                http_request.state.lookup_authorization_seconds
+            )
+        with timings.measured("handler"):
+            return await _execute_evaluation(request, principal, mode, generation)
+    finally:
+        timings._active_mode.reset(token)
+
+
+async def _execute_evaluation(
+    request: EvaluationRequest,
+    principal: Principal,
+    mode: timings.Mode | None,
+    generation: str | None = None,
+) -> EvaluationResponse:
+    with timings.measured("control_load"):
+        engine_controls = (
+            await _load_engine_controls(request, principal)
+            if mode is None
+            else await _load_with_diagnostic(request, principal, mode, generation)
+        )
     engine = ControlEngine(engine_controls)
     try:
-        raw_response = await engine.process(request, extensions=_principal_extensions(principal))
+        with timings.measured("engine"):
+            raw_response = await engine.process(
+                request, extensions=_principal_extensions(principal)
+            )
     except ValueError:
         _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(

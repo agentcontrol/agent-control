@@ -10,6 +10,7 @@ from galileo_core.schemas.logging.session import Session
 from galileo_core.schemas.logging.span import (
     AgentSpan,
     ControlSpan,
+    HttpSpan,
     LlmSpan,
     RetrieverSpan,
     ToolSpan,
@@ -21,7 +22,9 @@ from .normalization import GalileoRecordNormalizer
 
 type GalileoRecord = LlmSpan | ToolSpan | RetrieverSpan | Trace | Session
 type GalileoSpan = LlmSpan | ToolSpan | RetrieverSpan
-type GalileoCoreSpan = AgentSpan | WorkflowSpan | LlmSpan | RetrieverSpan | ToolSpan | ControlSpan
+type GalileoCoreSpan = (
+    AgentSpan | WorkflowSpan | LlmSpan | RetrieverSpan | ToolSpan | ControlSpan | HttpSpan
+)
 _MISSING = object()
 _SPAN_TYPES = {"llm", "tool", "retriever"}
 _RECORD_TYPES = _SPAN_TYPES | {"trace", "session"}
@@ -129,8 +132,10 @@ def record_from_step(
         selected_value = selected_data
         if selected_data is _MISSING:
             selected_value = selected_input if selected_input is not _MISSING else _MISSING
-        if selected_value is not _MISSING and selected_value is not None and not isinstance(
-            selected_value, Mapping
+        if (
+            selected_value is not _MISSING
+            and selected_value is not None
+            and not isinstance(selected_value, Mapping)
         ):
             raise RecordFactoryError(
                 f"Galileo {record_type} records require structured selector values; "

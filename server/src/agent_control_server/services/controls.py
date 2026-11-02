@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
+from ..diagnostic_metrics import count_query, measured
 from ..errors import APIValidationError, NotFoundError
 from ..models import (
     Control,
@@ -454,16 +455,19 @@ class ControlService:
         method applies the same selection logic and parses each row into the
         runtime form used by the evaluation engine.
         """
-        db_controls = await self._list_db_controls_for_agent(
-            agent_name,
-            namespace_key=namespace_key,
-            target_type=target_type,
-            target_id=target_id,
-        )
-        return parse_runtime_controls(
-            db_controls,
-            allow_invalid_step_name_regex=allow_invalid_step_name_regex,
-        )
+        with measured("effective_query"):
+            count_query("effective")
+            db_controls = await self._list_db_controls_for_agent(
+                agent_name,
+                namespace_key=namespace_key,
+                target_type=target_type,
+                target_id=target_id,
+            )
+        with measured("parse"):
+            return parse_runtime_controls(
+                db_controls,
+                allow_invalid_step_name_regex=allow_invalid_step_name_regex,
+            )
 
     async def list_controls_page(
         self,
