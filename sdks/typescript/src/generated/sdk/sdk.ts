@@ -9,6 +9,7 @@ import { ControlBindings } from "./control-bindings.js";
 import { Controls } from "./controls.js";
 import { Evaluation } from "./evaluation.js";
 import { Evaluators } from "./evaluators.js";
+import { InferenceGateway } from "./inference-gateway.js";
 import { Observability } from "./observability.js";
 import { Policies } from "./policies.js";
 import { System } from "./system.js";
@@ -47,6 +48,11 @@ export class AgentControlSDK extends ClientSDK {
   private _evaluators?: Evaluators;
   get evaluators(): Evaluators {
     return (this._evaluators ??= new Evaluators(this._options));
+  }
+
+  private _inferenceGateway?: InferenceGateway;
+  get inferenceGateway(): InferenceGateway {
+    return (this._inferenceGateway ??= new InferenceGateway(this._options));
   }
 
   private _observability?: Observability;

@@ -67,12 +67,16 @@ mkdir -p "${GENERATED_DIR}"
 rsync -a --delete "${TMP_OUTPUT_DIR}/src/" "${GENERATED_DIR}/"
 rm -rf "${TMP_OUTPUT_DIR}"
 
-# Speakeasy seeds hooks/registration.ts with @ts-expect-error, which fails
-# strict typecheck when no hook is registered. Normalize to @ts-ignore so
-# committed and regenerated output stay deterministic.
+# Speakeasy's empty hook-registration scaffold varies by generator account.
+# It is not part of the client API, so drop it when it contains only the
+# generated placeholder to keep checked-in output deterministic.
 REGISTRATION_FILE="${GENERATED_DIR}/hooks/registration.ts"
-if [[ -f "${REGISTRATION_FILE}" ]]; then
-  perl -0pi -e 's/@ts-expect-error/@ts-ignore/g' "${REGISTRATION_FILE}"
+HOOKS_FILE="${GENERATED_DIR}/hooks/hooks.ts"
+if [[ -f "${REGISTRATION_FILE}" ]] && \
+  grep -Fq 'Add hooks by calling hooks.register' "${REGISTRATION_FILE}" && \
+  ! grep -Eq '^[[:space:]]+hooks\.register[A-Za-z]+Hook\(' "${REGISTRATION_FILE}"; then
+  rm "${REGISTRATION_FILE}"
+  perl -0pi -e 's/\nimport \{ initHooks \} from "\.\/registration\.js";\n//; s/\n[[:space:]]*initHooks\(this\);\n/\n/' "${HOOKS_FILE}"
 fi
 
 # Default initAgent conflict mode to overwrite for SDK ergonomics while

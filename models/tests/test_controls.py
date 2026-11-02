@@ -107,6 +107,46 @@ def test_runtime_legacy_leaf_payload_is_canonicalized() -> None:
     assert dumped["condition"]["evaluator"]["name"] == "regex"
 
 
+def _gateway_control_payload(*, decision: str, with_routing: bool) -> dict[str, object]:
+    evaluator_config: dict[str, object] = {
+        "limits": [{"limit": 1000, "limit_unit": "tokens"}],
+    }
+    if with_routing:
+        evaluator_config["gateway_routing"] = {
+            "tiers": {
+                "economy": {
+                    "models": [
+                        {"provider": "openai", "model": "gpt-small", "protocol": "openai"}
+                    ]
+                }
+            },
+            "task_tiers": {"default": "economy"},
+        }
+    return {
+        "execution": "server",
+        "scope": {"step_types": ["llm"], "stages": ["pre"]},
+        "condition": {
+            "selector": {"path": "input"},
+            "evaluator": {"name": "budget", "config": evaluator_config},
+        },
+        "action": {"decision": decision},
+    }
+
+
+def test_route_action_requires_gateway_routing_budget_evaluator() -> None:
+    with pytest.raises(ValidationError, match="route action requires a single budget evaluator"):
+        ControlDefinition.model_validate(
+            _gateway_control_payload(decision="route", with_routing=False)
+        )
+
+
+def test_gateway_routing_budget_requires_route_action() -> None:
+    with pytest.raises(ValidationError, match="requires the route action"):
+        ControlDefinition.model_validate(
+            _gateway_control_payload(decision="deny", with_routing=True)
+        )
+
+
 def test_mixed_legacy_and_condition_fields_are_rejected() -> None:
     # Given: a payload that mixes canonical condition and legacy flat fields
     payload = {

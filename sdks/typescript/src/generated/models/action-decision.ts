@@ -10,6 +10,7 @@ export const ActionDecision = {
   Deny: "deny",
   Steer: "steer",
   Observe: "observe",
+  Route: "route",
 } as const;
 export type ActionDecision = OpenEnum<typeof ActionDecision>;
 

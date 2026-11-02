@@ -5,14 +5,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal, cast
 
-type ActionDecision = Literal["deny", "steer", "observe"]
+type ActionDecision = Literal["deny", "steer", "observe", "route"]
 
-_CANONICAL_ACTIONS = frozenset({"deny", "steer", "observe"})
+_CANONICAL_ACTIONS = frozenset({"deny", "steer", "observe", "route"})
 _OBSERVE_ACTION_ALIASES = frozenset({"allow", "observe", "warn", "log"})
 _ACTION_QUERY_EXPANSION: dict[ActionDecision, tuple[str, ...]] = {
     "deny": ("deny",),
     "steer": ("steer",),
     "observe": ("observe", "allow", "warn", "log"),
+    "route": ("route",),
 }
 
 
@@ -25,7 +26,7 @@ def validate_action(action: str) -> ActionDecision:
     if action in _CANONICAL_ACTIONS:
         return cast(ActionDecision, action)
     raise ValueError(
-        f"Invalid action {action!r}. Must be one of: deny, steer, observe."
+        f"Invalid action {action!r}. Must be one of: deny, steer, observe, route."
     )
 
 
@@ -50,10 +51,10 @@ def normalize_action(action: str) -> ActionDecision:
     """
     if action in _OBSERVE_ACTION_ALIASES:
         return "observe"
-    if action in ("deny", "steer"):
+    if action in ("deny", "steer", "route"):
         return cast(ActionDecision, action)
     raise ValueError(
-        f"Invalid action {action!r}. Expected one of: deny, steer, observe."
+        f"Invalid action {action!r}. Expected one of: deny, steer, observe, route."
     )
 
 

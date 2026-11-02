@@ -20,9 +20,9 @@ from typing import Any
 
 from agent_control_evaluators._base import Evaluator, EvaluatorMetadata
 from agent_control_evaluators._registry import register_evaluator
-from agent_control_models import EvaluatorResult
+from agent_control_models import EvaluatorResult, GatewayModelCandidate
 
-from .config import BudgetEvaluatorConfig, ModelPricing
+from .config import BudgetEvaluatorConfig, GatewayRoutingConfig, ModelPricing
 from .memory_store import InMemoryBudgetStore, _scope_matches
 from .store import BudgetStore
 
@@ -174,6 +174,92 @@ def _extract_metadata(data: Any, metadata_paths: dict[str, str]) -> dict[str, st
     return result
 
 
+def _gateway_route_metadata(
+    data: Any,
+    routing: GatewayRoutingConfig | None,
+    snapshots: list[dict[str, Any]],
+    *,
+    over_limit: bool,
+) -> dict[str, Any] | None:
+    """Select a configured candidate using task tier and accumulated token use."""
+    if routing is None:
+        return None
+    request_data = data if isinstance(data, dict) else {}
+    task_type = request_data.get("task_type", "default")
+    if not isinstance(task_type, str):
+        task_type = "default"
+    budget_snapshot = next(
+        (snapshot for snapshot in snapshots if snapshot.get("limit_unit") == "tokens"), {}
+    )
+    used_tokens = int(budget_snapshot.get("spent_tokens", 0))
+    limit_tokens = int(budget_snapshot.get("limit", 0))
+    utilization = float(budget_snapshot.get("utilization", 0.0))
+    threshold_reached = utilization >= routing.threshold
+    task_tier = routing.task_tiers.get(task_type, routing.task_tiers.get("default"))
+    selected_tier = (
+        routing.threshold_tier
+        if threshold_reached and routing.threshold_tier is not None
+        else task_tier
+    )
+    reason = ""
+    candidate: GatewayModelCandidate | None = None
+    if over_limit:
+        reason = "The configured token budget is exhausted."
+    elif selected_tier is None:
+        reason = f"No model tier is configured for task type '{task_type}'."
+    else:
+        raw_candidates = request_data.get("candidate_models", [])
+        candidates: set[tuple[str, str, str]] = set()
+        legacy_model = request_data.get("model")
+        if isinstance(raw_candidates, list):
+            for raw_candidate in raw_candidates:
+                if isinstance(raw_candidate, dict):
+                    try:
+                        parsed = GatewayModelCandidate.model_validate(raw_candidate)
+                    except ValueError:
+                        continue
+                    candidates.add((parsed.provider, parsed.model, parsed.protocol))
+        if not candidates and isinstance(legacy_model, str):
+            candidates = {
+                (configured.provider, configured.model, configured.protocol)
+                for configured in routing.tiers[selected_tier].models
+                if configured.model == legacy_model
+            }
+        candidate = next(
+            (
+                configured
+                for configured in routing.tiers[selected_tier].models
+                if (configured.provider, configured.model, configured.protocol) in candidates
+                and (not isinstance(legacy_model, str) or configured.model == legacy_model)
+            ),
+            None,
+        )
+        reason = (
+            f"Budget threshold reached; routed to the '{selected_tier}' tier."
+            if threshold_reached
+            else f"Task type '{task_type}' routed to the '{selected_tier}' tier."
+        ) if candidate is not None else (
+            f"No compatible model candidate is available in tier '{selected_tier}'."
+        )
+    return {
+        "allowed": candidate is not None and not over_limit,
+        "provider": candidate.provider if candidate is not None and not over_limit else None,
+        "model": candidate.model if candidate is not None and not over_limit else None,
+        "protocol": candidate.protocol if candidate is not None and not over_limit else None,
+        "task_type": task_type,
+        "tier": selected_tier,
+        "budget": {
+            "used_tokens": used_tokens,
+            "limit_tokens": limit_tokens,
+            "utilization": min(utilization, 1.0),
+            "threshold": routing.threshold,
+            "threshold_reached": threshold_reached,
+            "over_limit": over_limit,
+        },
+        "reason": reason,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Evaluator
 # ---------------------------------------------------------------------------
@@ -281,6 +367,9 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
 
         if breached:
             first = breached[0]
+            route_metadata = _gateway_route_metadata(
+                data, self.config.gateway_routing, all_snaps, over_limit=True
+            )
             return EvaluatorResult(
                 matched=True,
                 confidence=1.0,
@@ -291,19 +380,31 @@ class BudgetEvaluator(Evaluator[BudgetEvaluatorConfig]):
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "cost": round(cost, 6),
+                    **({"gateway_route": route_metadata} if route_metadata is not None else {}),
                 },
             )
 
         max_util = max((s["utilization"] for s in all_snaps), default=0.0)
+        route_metadata = _gateway_route_metadata(
+            data, self.config.gateway_routing, all_snaps, over_limit=False
+        )
         return EvaluatorResult(
-            matched=False,
+            matched=(
+                self.config.gateway_routing is not None
+                or bool(route_metadata and route_metadata.get("allowed"))
+            ),
             confidence=1.0,
-            message=f"Within budget (utilization={max_util:.0%})",
+            message=(
+                str(route_metadata.get("reason"))
+                if route_metadata
+                else f"Within budget (utilization={max_util:.0%})"
+            ),
             metadata={
                 "all_snapshots": all_snaps,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "cost": round(cost, 6),
                 "max_utilization": round(max_util, 4),
+                **({"gateway_route": route_metadata} if route_metadata is not None else {}),
             },
         )

@@ -281,6 +281,46 @@ async def test_http_upstream_returns_principal_on_200():
     assert principal == Principal(namespace_key="org-7", is_admin=True, caller_id="user-42")
     assert captured["url"] == "https://upstream.example/check"
     assert captured["headers"]["x-api-key"] == "caller-key"
+    assert "galileo-api-key" not in captured["headers"]
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_maps_caller_api_key_to_galileo_authz_header(
+    caplog: pytest.LogCaptureFixture,
+):
+    """The gateway's request-time key reaches Galileo AuthZ under its header name."""
+    captured: dict[str, Any] = {}
+    stream_id = "00000000-0000-4000-8000-000000000001"
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        captured["headers"] = dict(request.headers)
+        captured["payload"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "namespace_key": "org-7",
+                "caller_id": "user-42",
+                "target_type": "log_stream",
+                "target_id": stream_id,
+                "scopes": ["runtime.use"],
+            },
+        )
+
+    provider = _build_upstream(factory)
+    principal = await provider.authorize(
+        _build_request(headers={"X-API-Key": "request-time-key"}),
+        Operation.RUNTIME_TOKEN_EXCHANGE,
+        context={"target_type": "log_stream", "target_id": stream_id},
+    )
+
+    assert captured["headers"]["x-api-key"] == "request-time-key"
+    assert captured["headers"]["galileo-api-key"] == "request-time-key"
+    assert captured["payload"] == {
+        "operation": "runtime.token_exchange",
+        "context": {"target_type": "log_stream", "target_id": stream_id},
+    }
+    assert principal.scopes == ("runtime.use",)
+    assert "request-time-key" not in caplog.text
 
 
 @pytest.mark.asyncio

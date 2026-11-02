@@ -3,6 +3,7 @@
 from agent_control_evaluator_budget.budget.config import (
     BudgetEvaluatorConfig,
     BudgetLimitRule,
+    GatewayRoutingConfig,
     ModelPricing,
 )
 from agent_control_evaluator_budget.budget.evaluator import BudgetEvaluator
@@ -17,6 +18,7 @@ __all__ = [
     "BudgetEvaluator",
     "BudgetEvaluatorConfig",
     "BudgetLimitRule",
+    "GatewayRoutingConfig",
     "BudgetSnapshot",
     "BudgetStore",
     "InMemoryBudgetStore",

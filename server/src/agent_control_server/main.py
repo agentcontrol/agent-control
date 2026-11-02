@@ -32,6 +32,7 @@ from .endpoints.controls import router as control_router
 from .endpoints.controls import template_router as control_template_router
 from .endpoints.evaluation import router as evaluation_router
 from .endpoints.evaluators import router as evaluator_router
+from .endpoints.gateway import router as gateway_router
 from .endpoints.observability import router as observability_router
 from .endpoints.policies import router as policy_router
 from .endpoints.system import router as system_router
@@ -353,6 +354,11 @@ app.include_router(
 )
 app.include_router(
     evaluation_router,
+    prefix=api_v1_prefix,
+    dependencies=[Depends(get_api_key_from_header)],
+)
+app.include_router(
+    gateway_router,
     prefix=api_v1_prefix,
     dependencies=[Depends(get_api_key_from_header)],
 )

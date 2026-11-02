@@ -355,7 +355,10 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         operation: Operation,
         context: dict[str, Any] | None = None,
     ) -> Principal:
-        headers = self._forward_headers(request)
+        headers = self._forward_headers(
+            request,
+            map_galileo_api_key=operation is Operation.RUNTIME_TOKEN_EXCHANGE,
+        )
         payload: dict[str, Any] = {"operation": operation.value}
         if context:
             payload["context"] = context
@@ -428,17 +431,30 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
         )
         return response
 
-    def _forward_headers(self, request: Request) -> dict[str, str]:
+    def _forward_headers(
+        self,
+        request: Request,
+        *,
+        map_galileo_api_key: bool = False,
+    ) -> dict[str, str]:
         headers: dict[str, str] = {}
         seen: set[str] = set()
+        caller_api_key = request.headers.get("X-API-Key") if map_galileo_api_key else None
         for name in (*_DEFAULT_FORWARDED_HEADERS, *self._config.extra_forward_headers):
             lower = name.lower()
             if lower in seen:
                 continue
             seen.add(lower)
+            # If an extra-forward configuration mentions Galileo's native
+            # header, the explicit X-API-Key mapping below remains the source
+            # of truth rather than allowing a second caller value to override it.
+            if lower == "galileo-api-key" and caller_api_key is not None:
+                continue
             value = request.headers.get(name)
             if value is not None:
                 headers[name] = value
+        if caller_api_key is not None:
+            headers["Galileo-API-Key"] = caller_api_key
         if self._config.service_token is not None:
             headers[self._config.service_token_header] = self._config.service_token
         return headers

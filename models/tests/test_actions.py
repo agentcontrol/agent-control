@@ -7,13 +7,12 @@ from agent_control_models import (
     ControlAction,
     ControlExecutionEvent,
     ControlMatch,
-    EventQueryRequest,
     EvaluatorResult,
+    EventQueryRequest,
     expand_action_filter,
 )
 from agent_control_models.actions import normalize_action, validate_action
 from pydantic import ValidationError
-
 
 # ---------------------------------------------------------------------------
 # validate_action (strict, for API boundaries)
@@ -23,7 +22,7 @@ from pydantic import ValidationError
 class TestValidateAction:
     """Tests for the strict validate_action used on public API boundaries."""
 
-    @pytest.mark.parametrize("action", ["deny", "steer", "observe"])
+    @pytest.mark.parametrize("action", ["deny", "steer", "observe", "route"])
     def test_accepts_canonical_actions(self, action: str) -> None:
         # Given: a canonical action name
         # When: validating the action
@@ -54,7 +53,7 @@ class TestValidateAction:
 class TestNormalizeAction:
     """Tests for the lenient normalize_action used on read paths."""
 
-    @pytest.mark.parametrize("action", ["deny", "steer", "observe"])
+    @pytest.mark.parametrize("action", ["deny", "steer", "observe", "route"])
     def test_passes_canonical_actions(self, action: str) -> None:
         # Given: a canonical action name
         # When: normalizing
@@ -87,7 +86,7 @@ class TestNormalizeAction:
 class TestControlActionValidation:
     """ControlAction.decision uses strict validation (rejects legacy values)."""
 
-    @pytest.mark.parametrize("action", ["deny", "steer", "observe"])
+    @pytest.mark.parametrize("action", ["deny", "steer", "observe", "route"])
     def test_accepts_canonical_actions(self, action: str) -> None:
         # Given: a control action payload with a canonical decision
         # When: validating via Pydantic
@@ -234,17 +233,18 @@ class TestExpandActionFilter:
         # Then: it includes all legacy advisory action values stored in old rows
         assert expanded == ["observe", "allow", "warn", "log"]
 
-    def test_deny_and_steer_do_not_expand(self) -> None:
-        # Given: deny and steer filters (no legacy aliases)
+    def test_deny_steer_and_route_do_not_expand(self) -> None:
+        # Given: canonical actions without legacy aliases
         # When: expanding
-        # Then: they map only to themselves
+        # Then: each maps only to itself
         assert expand_action_filter(["deny"]) == ["deny"]
         assert expand_action_filter(["steer"]) == ["steer"]
+        assert expand_action_filter(["route"]) == ["route"]
 
     def test_full_expansion(self) -> None:
-        # Given: all three canonical actions
+        # Given: all canonical actions
         # When: expanding
-        expanded = expand_action_filter(["deny", "steer", "observe"])
+        expanded = expand_action_filter(["deny", "steer", "observe", "route"])
 
-        # Then: deny and steer are unchanged, observe expands to include legacy
-        assert expanded == ["deny", "steer", "observe", "allow", "warn", "log"]
+        # Then: only observe expands to include legacy values
+        assert expanded == ["deny", "steer", "observe", "allow", "warn", "log", "route"]

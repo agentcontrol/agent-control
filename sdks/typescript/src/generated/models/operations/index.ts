@@ -29,9 +29,12 @@ export * from "./list-policy-controls-api-v1-policies-policy-id-controls-get.js"
 export * from "./patch-agent-api-v1-agents-agent-name-patch.js";
 export * from "./patch-control-api-v1-controls-control-id-patch.js";
 export * from "./patch-control-binding-api-v1-control-bindings-binding-id-patch.js";
+export * from "./preflight-api-v1-gateway-agents-agent-name-preflight-post.js";
 export * from "./remove-agent-control-api-v1-agents-agent-name-controls-control-id-delete.js";
 export * from "./remove-agent-policy-api-v1-agents-agent-name-policies-policy-id-delete.js";
 export * from "./remove-all-agent-policies-api-v1-agents-agent-name-policies-delete.js";
 export * from "./remove-control-from-policy-api-v1-policies-policy-id-controls-control-id-delete.js";
+export * from "./route-decision-api-v1-gateway-agents-agent-name-route-decision-post.js";
 export * from "./set-agent-policy-api-v1-agents-agent-name-policy-policy-id-post.js";
 export * from "./set-control-data-api-v1-controls-control-id-data-put.js";
+export * from "./usage-settlement-api-v1-gateway-agents-agent-name-usage-settlement-post.js";
