@@ -1,6 +1,7 @@
 """Evaluation analysis endpoints."""
 
 import json
+import time
 from dataclasses import dataclass
 
 from agent_control_engine.core import ControlEngine
@@ -16,6 +17,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 
 from ..auth_framework import Operation, Principal, require_operation
+from ..control_cache import get_control_cache, observe_snapshot_load
 from ..db import AsyncSessionLocal
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
@@ -158,6 +160,13 @@ async def _load_engine_controls(
 ) -> list[ControlAdapter]:
     """Load and materialize controls before evaluator execution starts."""
     namespace_key = principal.namespace_key
+    cache = get_control_cache()
+    cached = await cache.get(
+        namespace_key, request.agent_name, request.target_type, request.target_id
+    )
+    if cached is not None:
+        return [ControlAdapter(c.id, c.name, c.control) for c in cached]
+    cache_generation = await cache.get_generation(namespace_key, request.agent_name)
 
     async with AsyncSessionLocal() as db:
         agent_result = await db.execute(
@@ -176,6 +185,7 @@ async def _load_engine_controls(
                 hint="Register the agent via initAgent before evaluating.",
             )
 
+        load_started = time.perf_counter()
         runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
             request.agent_name,
             namespace_key=namespace_key,
@@ -183,6 +193,16 @@ async def _load_engine_controls(
             target_id=request.target_id,
             allow_invalid_step_name_regex=True,
         )
+        observe_snapshot_load(load_started)
+
+    await cache.set(
+        namespace_key,
+        request.agent_name,
+        request.target_type,
+        request.target_id,
+        runtime_controls,
+        cache_generation,
+    )
 
     return [ControlAdapter(c.id, c.name, c.control) for c in runtime_controls]
 
