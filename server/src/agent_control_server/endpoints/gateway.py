@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from uuid import UUID
 
 from agent_control_engine.core import ControlEngine
 from agent_control_evaluator_budget.budget import (  # type: ignore[import-untyped]
@@ -37,20 +38,49 @@ from .evaluation import ControlAdapter
 router = APIRouter(prefix="/gateway/agents", tags=["inference-gateway"])
 
 
-def _agent_context(request: Request) -> dict[str, str]:
-    """Bind runtime authorization to the agent named by the route."""
-    return {"target_type": "agent", "target_id": request.path_params["agent_name"]}
+async def _agent_context(request: Request) -> dict[str, str]:
+    """Bind runtime authorization to the route agent or supplied stream UUID."""
+    target_id = request.path_params["agent_name"]
+    target_type = "agent"
+    try:
+        body = await request.json()
+    except (TypeError, ValueError):
+        body = None
+    if isinstance(body, dict) and body.get("log_stream_id") is not None:
+        raw_stream_id = body["log_stream_id"]
+        target_type = "log_stream"
+        try:
+            target_id = str(UUID(raw_stream_id))
+        except (ValueError, TypeError, AttributeError):
+            target_id = str(raw_stream_id)
+    return {"target_type": target_type, "target_id": target_id}
 
 
 _runtime_agent = require_operation(Operation.RUNTIME_USE, context_builder=_agent_context)
 
 
 async def _get_gateway_controls(agent_name: str, principal: Principal) -> list[ControlAdapter]:
-    """Load controls effective for this authenticated runtime identity."""
-    if principal.target_type != "agent" or principal.target_id != agent_name:
+    """Load agent controls plus bindings for the authenticated runtime target."""
+    if principal.target_type == "agent" and principal.target_id == agent_name:
+        target_type = "agent"
+        target_id = agent_name
+    elif principal.target_type == "log_stream" and principal.target_id is not None:
+        try:
+            target_id = str(UUID(principal.target_id))
+        except ValueError:
+            target_id = ""
+        if not target_id:
+            raise ForbiddenError(
+                error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
+                detail="Gateway runtime identity must be bound to a valid log stream UUID.",
+            )
+        target_type = "log_stream"
+    else:
         raise ForbiddenError(
             error_code=ErrorCode.AUTH_INSUFFICIENT_PRIVILEGES,
-            detail="Gateway requests must use a runtime identity bound to this agent.",
+            detail=(
+                "Gateway requests must use a runtime identity bound to this agent or log stream."
+            ),
         )
     async with AsyncSessionLocal() as db:
         agent_result = await db.execute(
@@ -69,8 +99,8 @@ async def _get_gateway_controls(agent_name: str, principal: Principal) -> list[C
         runtime_controls = await ControlService(db).list_runtime_controls_for_agent(
             agent_name,
             namespace_key=principal.namespace_key,
-            target_type="agent",
-            target_id=agent_name,
+            target_type=target_type,
+            target_id=target_id,
             allow_invalid_step_name_regex=True,
         )
     return [

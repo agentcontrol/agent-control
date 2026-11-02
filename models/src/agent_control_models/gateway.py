@@ -1,6 +1,7 @@
 """Typed contracts for Agent Control's inference gateway POC."""
 
 from typing import Literal, Self
+from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 
@@ -35,6 +36,9 @@ class GatewayPreflightRequest(BaseModel):
         min_length=AGENT_NAME_MIN_LENGTH,
         pattern=AGENT_NAME_PATTERN,
     )
+    # When present, runtime authorization is bound to this Galileo stream UUID.
+    # Agent name remains the policy and attribution identity in the route.
+    log_stream_id: UUID | None = None
     task_type: str = Field(default="default", min_length=1)
     task_context: JSONObject | None = None
     candidate_models: list[GatewayModelCandidate] = Field(default_factory=list)
@@ -57,6 +61,7 @@ class GatewayPreflightRequest(BaseModel):
 class GatewayUsageSettlementRequest(BaseModel):
     """Actual token usage reported by the gateway after inference."""
 
+    log_stream_id: UUID | None = None
     model: str = Field(min_length=1)
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)

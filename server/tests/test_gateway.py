@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from agent_control_evaluator_budget.budget.evaluator import clear_budget_stores
 from agent_control_models import ControlMatch, EvaluationResponse, EvaluatorResult
-from agent_control_server.auth_framework import Operation, Principal, set_authorizer
+from agent_control_server.auth_framework import (
+    Operation,
+    Principal,
+    set_authorizer,
+)
+from agent_control_server.auth_framework.providers import LocalJwtVerifyProvider
+from agent_control_server.auth_framework.runtime_token import mint_runtime_token
 from agent_control_server.endpoints.gateway import (
     _budget_state_from_metadata,
     _find_gateway_route,
@@ -123,10 +130,24 @@ def _candidates(agent_name: str) -> list[dict[str, str]]:
     ]
 
 
-def _route(client: TestClient, agent_name: str, task_type: str) -> dict[str, Any]:
+def _route(
+    client: TestClient,
+    agent_name: str,
+    task_type: str,
+    *,
+    log_stream_id: UUID | None = None,
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "task_type": task_type,
+        "candidate_models": _candidates(agent_name),
+    }
+    if log_stream_id is not None:
+        payload["log_stream_id"] = str(log_stream_id)
     response = client.post(
         f"/api/v1/gateway/agents/{agent_name}/route-decision",
-        json={"task_type": task_type, "candidate_models": _candidates(agent_name)},
+        json=payload,
+        headers=headers,
     )
     assert response.status_code == 200, response.text
     return response.json()
@@ -218,6 +239,82 @@ def test_controls_keep_separate_agent_budgets_and_claude_stays_anthropic(
     assert claude_openai_only.status_code == 200
     assert claude_openai_only.json()["decision"] == "deny"
     assert claude_openai_only.json()["model"] is None
+
+
+def test_log_stream_runtime_token_loads_controls_bound_to_stream(client: TestClient) -> None:
+    # Given: an agent with a route control bound only to its Galileo log stream
+    agent_name = "customer-success-agent"
+    stream_id = uuid4()
+    registered = client.post(
+        "/api/v1/agents/initAgent",
+        json={"agent": {"agent_name": agent_name}, "steps": []},
+    )
+    assert registered.status_code == 200, registered.text
+    control_id = _create_route_control(client, agent_name)
+    binding = client.put(
+        "/api/v1/control-bindings",
+        json={
+            "target_type": "log_stream",
+            "target_id": str(stream_id),
+            "control_id": control_id,
+        },
+    )
+    assert binding.status_code == 200, binding.text
+
+    secret = "gateway-log-stream-runtime-secret-32-bytes"
+    token, _ = mint_runtime_token(
+        namespace_key="default",
+        actor_id="gateway-caller",
+        target_type="log_stream",
+        target_id=str(stream_id),
+        scopes=(Operation.RUNTIME_USE.value,),
+        secret=secret,
+        ttl_seconds=300,
+    )
+    set_authorizer(
+        LocalJwtVerifyProvider(secret=secret),
+        operation=Operation.RUNTIME_USE,
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # When: the gateway identifies the agent by route and the stream by request body
+    route = _route(
+        client,
+        agent_name,
+        "analysis",
+        log_stream_id=stream_id,
+        headers=headers,
+    )
+    settlement = client.post(
+        f"/api/v1/gateway/agents/{agent_name}/usage-settlement",
+        headers=headers,
+        json={
+            "log_stream_id": str(stream_id),
+            "model": "gpt-4.1",
+            "input_tokens": 10,
+            "output_tokens": 5,
+        },
+    )
+
+    # Then: the stream-bound grant authorizes both calls and stream controls apply
+    assert route["decision"] == "route"
+    assert route["model"] == "gpt-4.1"
+    assert route["policy"] == f"{agent_name}-gateway-routing"
+    assert settlement.status_code == 200, settlement.text
+    assert settlement.json()["budget"]["used_tokens"] == 15
+
+    # And: a different stream cannot reuse the stream-bound token
+    mismatch = client.post(
+        f"/api/v1/gateway/agents/{agent_name}/route-decision",
+        headers=headers,
+        json={
+            "task_type": "analysis",
+            "log_stream_id": str(uuid4()),
+            "candidate_models": _candidates(agent_name),
+        },
+    )
+    assert mismatch.status_code == 403
+    assert mismatch.json()["detail"] == "Runtime token target_id does not match the request."
 
 
 def test_bound_deny_control_blocks_gateway_route(client: TestClient) -> None:

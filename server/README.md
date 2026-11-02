@@ -70,8 +70,18 @@ The route action is accepted only with a single budget evaluator configured
 with gateway_routing. It is non-blocking in ordinary ControlEngine safety
 results; the gateway maps its matched evaluator metadata to a route or deny.
 The Claude Code route is restricted at runtime to the Anthropic provider and
-protocol. The request path must match the authenticated runtime identity; the
-caller cannot choose another agent's bound controls in the body.
+protocol. The route path selects the agent policy and attribution identity; the
+runtime token binds either that agent or a log stream. A body-supplied agent
+name cannot select another agent's controls.
+
+Gateway runtime tokens may be bound to a Galileo log stream rather than the
+gateway agent name. In that mode the adapter includes the stream's UUID as
+`log_stream_id` on preflight, route-decision, and usage-settlement requests;
+Agent Control checks that UUID against the runtime token and includes controls
+bound to `(log_stream, log_stream_id)` when evaluating the controls effective
+for the path agent. The `{agent_name}` route remains the policy-selection and
+attribution identity. Legacy agent-bound runtime tokens remain supported when
+`log_stream_id` is omitted.
 
 `POST /api/v1/gateway/agents/{agent_name}/route-decision` combines control
 preflight and tier selection. A gateway that needs a separate eligibility check
@@ -81,6 +91,7 @@ clients and must match it. A route-decision request looks like:
 
 ```json
 {
+  "log_stream_id": "00000000-0000-4000-8000-000000000001",
   "task_type": "analysis",
   "task_context": {"classification": "multi-step reasoning"},
   "candidate_models": [
@@ -127,11 +138,20 @@ After the provider responds, post the actual usage to
 
 ```json
 {
+  "log_stream_id": "00000000-0000-4000-8000-000000000001",
   "model": "gpt-4.1",
   "input_tokens": 40000,
   "output_tokens": 20000
 }
 ```
+
+Exchange the caller's request-time Galileo API key with
+`POST /api/v1/auth/runtime-token-exchange` using
+`{"target_type":"log_stream","target_id":"<log_stream_id>"}`. When
+Agent Control uses the HTTP-upstream authorization provider, it forwards the
+incoming `X-API-Key` as both `X-API-Key` and `Galileo-API-Key` so Galileo AuthZ
+can authorize the stream target. The key is forwarded per request and is not
+stored by Agent Control.
 
 The settlement response uses the same budget fields and identifies the bound
 control:
