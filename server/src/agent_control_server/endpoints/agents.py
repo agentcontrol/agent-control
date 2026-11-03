@@ -940,6 +940,7 @@ async def init_agent(
                 resource="Agent",
                 operation="update",
             )
+        await invalidate_agent_scope(namespace_key, existing.name)
 
     controls = await ControlService(db).list_controls_for_agent(
         existing.name,
@@ -2008,6 +2009,7 @@ async def patch_agent(
                 resource="Agent",
                 operation="patch",
             )
+        await invalidate_agent_scope(namespace_key, agent.name)
 
     return PatchAgentResponse(
         steps_removed=steps_removed,

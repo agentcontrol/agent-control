@@ -482,6 +482,26 @@ def test_post_commit_scope_lookup_failure_is_best_effort(monkeypatch: pytest.Mon
     asyncio.run(run())
 
 
+def test_control_scope_capture_failure_falls_back_to_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        cache = RedisControlCache(FakeRedis(), ttl_seconds=30)
+        failure_metric = MetricSpy()
+        monkeypatch.setattr(cache_module, "get_control_cache", lambda: cache)
+        monkeypatch.setattr(cache_module, "_CACHE_INVALIDATION_FAILURE", failure_metric)
+
+        agents, has_target_bindings = await get_control_cache_scopes(
+            FailingDatabase(), "ns", 7  # type: ignore[arg-type]
+        )
+
+        assert agents == []
+        assert has_target_bindings is False
+        assert failure_metric.calls == 1
+
+    asyncio.run(run())
+
+
 def test_control_and_policy_scope_lookup_failures_are_best_effort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -349,7 +349,14 @@ async def invalidate_namespace_agents(db: AsyncSession, namespace: str) -> None:
 
 async def invalidate_agent_scope(namespace: str, agent: str) -> None:
     """Invalidate all target variants for one agent scope."""
-    await get_control_cache().invalidate_agent(namespace, agent)
+    try:
+        await get_control_cache().invalidate_agent(namespace, agent)
+    except Exception:
+        _CACHE_INVALIDATION_FAILURE.inc()
+        _logger.warning(
+            "Unable to invalidate agent cache scope after commit; relying on TTL",
+            exc_info=True,
+        )
 
 
 async def invalidate_control_agents(
@@ -400,43 +407,58 @@ async def get_control_cache_scopes(
     db: AsyncSession, namespace: str, control_id: int
 ) -> tuple[list[str], bool]:
     """Capture related agent scopes before a mutation removes association rows."""
-    if isinstance(get_control_cache(), NoOpControlCache):
+    try:
+        if isinstance(get_control_cache(), NoOpControlCache):
+            return [], False
+        direct_agents = select(agent_controls.c.agent_name).where(
+            agent_controls.c.namespace_key == namespace,
+            agent_controls.c.control_id == control_id,
+        )
+        policy_agents = (
+            select(agent_policies.c.agent_name)
+            .join(
+                policy_controls,
+                (policy_controls.c.namespace_key == agent_policies.c.namespace_key)
+                & (policy_controls.c.policy_id == agent_policies.c.policy_id),
+            )
+            .where(
+                agent_policies.c.namespace_key == namespace,
+                policy_controls.c.control_id == control_id,
+            )
+        )
+        agents_result = await db.execute(direct_agents.union(policy_agents))
+        target_result = await db.execute(
+            select(ControlBinding.id).where(
+                ControlBinding.namespace_key == namespace,
+                ControlBinding.control_id == control_id,
+            ).limit(1)
+        )
+        return [name for (name,) in agents_result.all()], target_result.first() is not None
+    except Exception:
+        _CACHE_INVALIDATION_FAILURE.inc()
+        _logger.warning(
+            "Unable to capture control cache scopes before mutation; relying on TTL",
+            exc_info=True,
+        )
         return [], False
-    direct_agents = select(agent_controls.c.agent_name).where(
-        agent_controls.c.namespace_key == namespace,
-        agent_controls.c.control_id == control_id,
-    )
-    policy_agents = (
-        select(agent_policies.c.agent_name)
-        .join(
-            policy_controls,
-            (policy_controls.c.namespace_key == agent_policies.c.namespace_key)
-            & (policy_controls.c.policy_id == agent_policies.c.policy_id),
-        )
-        .where(
-            agent_policies.c.namespace_key == namespace,
-            policy_controls.c.control_id == control_id,
-        )
-    )
-    agents_result = await db.execute(direct_agents.union(policy_agents))
-    target_result = await db.execute(
-        select(ControlBinding.id).where(
-            ControlBinding.namespace_key == namespace,
-            ControlBinding.control_id == control_id,
-        ).limit(1)
-    )
-    return [name for (name,) in agents_result.all()], target_result.first() is not None
 
 
 async def invalidate_control_cache_scopes(
     db: AsyncSession, namespace: str, agents: Sequence[str], has_target_bindings: bool
 ) -> None:
     """Invalidate captured control scopes after commit."""
-    cache = get_control_cache()
-    for agent_name in agents:
-        await cache.invalidate_agent(namespace, agent_name)
-    if has_target_bindings:
-        await invalidate_namespace_agents(db, namespace)
+    try:
+        cache = get_control_cache()
+        for agent_name in agents:
+            await cache.invalidate_agent(namespace, agent_name)
+        if has_target_bindings:
+            await invalidate_namespace_agents(db, namespace)
+    except Exception:
+        _CACHE_INVALIDATION_FAILURE.inc()
+        _logger.warning(
+            "Unable to invalidate control cache scopes after commit; relying on TTL",
+            exc_info=True,
+        )
 
 
 async def invalidate_policy_agents(db: AsyncSession, namespace: str, policy_id: int) -> None:
