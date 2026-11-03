@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
+import types
 
 import pytest
 from agent_control_models import ControlDefinitionRuntime
-
 from agent_control_server import control_cache as cache_module
 from agent_control_server.config import Settings
 from agent_control_server.control_cache import (
     NoOpControlCache,
     RedisControlCache,
+    _agent_generation_key,
+    _agent_index_key,
+    _stale_key,
     build_cache_key,
+    get_control_cache_scopes,
     invalidate_control_agents,
+    invalidate_control_cache_scopes,
     invalidate_namespace_agents,
     invalidate_policy_agents,
 )
@@ -98,6 +104,25 @@ class BrokenRedis(FakeRedis):
         raise ConnectionError("redis unavailable")
 
 
+class FailingRedisCommands(FakeRedis):
+    async def eval(
+        self, script: str, numkeys: int, *keys_and_args: str | int
+    ) -> str | int | None:
+        del script, numkeys, keys_and_args
+        raise ConnectionError("redis command failed")
+
+    async def aclose(self) -> None:
+        raise ConnectionError("redis close failed")
+
+
+class NonStringSnapshotRedis(FakeRedis):
+    async def eval(
+        self, script: str, numkeys: int, *keys_and_args: str | int
+    ) -> str | int | None:
+        del script, numkeys, keys_and_args
+        return 1
+
+
 class FakeResult:
     def __init__(self, rows: list[tuple[str]]) -> None:
         self.rows = rows
@@ -136,13 +161,58 @@ def test_postgres_only_defaults_to_no_op_cache() -> None:
     settings = Settings(_env_file=None)
     assert settings.control_cache_backend == "postgres"
     assert settings.redis_url is None
+    assert settings.redis_mode == "standalone"
     assert asyncio.run(NoOpControlCache().get("ns", "agent", None, None)) is None
+
+
+def test_configured_cache_uses_redis_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeRedis()
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(cache_module.settings, "control_cache_backend", "redis")
+    monkeypatch.setattr(cache_module.settings, "redis_url", "redis://cache.example:6379")
+    monkeypatch.setattr(cache_module.settings, "redis_mode", "cluster")
+    monkeypatch.setattr(cache_module.settings, "control_cache_ttl_seconds", 17)
+
+    def create_client(url: str, mode: str) -> FakeRedis:
+        calls.append((url, mode))
+        return client
+
+    monkeypatch.setattr(cache_module, "_create_redis_client", create_client)
+    cache_module._configured_control_cache.cache_clear()
+    try:
+        configured = cache_module.get_control_cache()
+    finally:
+        cache_module._configured_control_cache.cache_clear()
+
+    assert isinstance(configured, RedisControlCache)
+    assert configured._ttl_seconds == 17
+    assert calls == [("redis://cache.example:6379", "cluster")]
+
+
+def test_configured_cache_falls_back_when_redis_initialization_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cache_module.settings, "control_cache_backend", "redis")
+    monkeypatch.setattr(cache_module.settings, "redis_url", "redis://cache.example:6379")
+
+    def fail_to_create_client(url: str, mode: str) -> FakeRedis:
+        del url, mode
+        raise ImportError("redis package is unavailable")
+
+    monkeypatch.setattr(cache_module, "_create_redis_client", fail_to_create_client)
+    cache_module._configured_control_cache.cache_clear()
+    try:
+        configured = cache_module.get_control_cache()
+    finally:
+        cache_module._configured_control_cache.cache_clear()
+
+    assert isinstance(configured, NoOpControlCache)
 
 
 def test_cache_key_includes_all_scope_dimensions() -> None:
     assert (
         build_cache_key("ns", "agent", None, None)
-        == "agent-control:effective-controls:v1:=bnM:=YWdlbnQ:!:!"
+        == "agent-control:effective-controls:v1:{=bnM:=YWdlbnQ}:!:!"
     )
     base = build_cache_key("ns", "agent:other", "account", "42")
     assert base != build_cache_key("other", "agent", "account", "42")
@@ -150,6 +220,65 @@ def test_cache_key_includes_all_scope_dimensions() -> None:
     assert base != build_cache_key("ns", "agent:other", "workspace", "42")
     assert base != build_cache_key("ns", "agent:other", "account", "43")
     assert base != build_cache_key("ns:agent", "other", "account", "42")
+
+
+def test_redis_script_keys_share_hash_tag_and_target_scope() -> None:
+    key = build_cache_key("ns", "agent", "log_stream", "logstream-1")
+    keys = [
+        key,
+        _agent_index_key("ns", "agent"),
+        _agent_generation_key("ns", "agent"),
+        _stale_key(key),
+    ]
+    hash_tags = [item[item.index("{") + 1 : item.index("}")] for item in keys]
+    assert len(set(hash_tags)) == 1
+    assert key != build_cache_key("ns", "agent", "log_stream", "logstream-2")
+    assert key != build_cache_key("ns", "agent", "account", "logstream-1")
+
+
+@pytest.mark.parametrize(
+    "redis_mode,expected_client", [("standalone", "redis"), ("cluster", "cluster")]
+)
+def test_redis_client_factory_uses_selected_topology(
+    monkeypatch: pytest.MonkeyPatch, redis_mode: str, expected_client: str
+) -> None:
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    class StandaloneRedis:
+        @classmethod
+        def from_url(cls, url: str, **options: object) -> object:
+            calls.append(("redis", url, options))
+            return cls()
+
+    class ClusterRedis:
+        @classmethod
+        def from_url(cls, url: str, **options: object) -> object:
+            calls.append(("cluster", url, options))
+            return cls()
+
+    redis_package = types.ModuleType("redis")
+    redis_asyncio = types.ModuleType("redis.asyncio")
+    redis_asyncio.Redis = StandaloneRedis  # type: ignore[attr-defined]
+    cluster_module = types.ModuleType("redis.asyncio.cluster")
+    cluster_module.RedisCluster = ClusterRedis  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "redis", redis_package)
+    monkeypatch.setitem(sys.modules, "redis.asyncio", redis_asyncio)
+    monkeypatch.setitem(sys.modules, "redis.asyncio.cluster", cluster_module)
+
+    client = cache_module._create_redis_client("rediss://cache.example:6380", redis_mode)
+
+    assert isinstance(client, StandaloneRedis if expected_client == "redis" else ClusterRedis)
+    assert calls == [
+        (
+            expected_client,
+            "rediss://cache.example:6380",
+            {
+                "decode_responses": True,
+                "socket_connect_timeout": 0.5,
+                "socket_timeout": 0.5,
+            },
+        )
+    ]
 
 
 def test_redis_miss_hit_and_ttl_expiry() -> None:
@@ -170,8 +299,39 @@ def test_redis_failure_falls_back_to_database() -> None:
     async def run() -> None:
         cache = RedisControlCache(BrokenRedis(), ttl_seconds=10)
         assert await cache.get("ns", "agent", None, None) is None
+        assert await cache.get_generation("ns", "agent") is None
         await cache.set("ns", "agent", None, None, [])
         await cache.invalidate_agent("ns", "agent")
+        await cache.close()
+
+    asyncio.run(run())
+
+
+def test_redis_corrupt_snapshot_is_treated_as_a_miss() -> None:
+    async def run() -> None:
+        client = FakeRedis()
+        cache = RedisControlCache(client, ttl_seconds=10)
+        key = build_cache_key("ns", "agent", None, None)
+        client.values[key] = ('{"schema_version":2,"controls":[]}', None)
+        assert await cache.get("ns", "agent", None, None) is None
+
+    asyncio.run(run())
+
+
+def test_redis_non_string_snapshot_is_treated_as_a_miss() -> None:
+    async def run() -> None:
+        cache = RedisControlCache(NonStringSnapshotRedis(), ttl_seconds=10)
+        assert await cache.get("ns", "agent", None, None) is None
+
+    asyncio.run(run())
+
+
+def test_redis_write_and_invalidation_failures_are_best_effort() -> None:
+    async def run() -> None:
+        cache = RedisControlCache(FailingRedisCommands(), ttl_seconds=10)
+        await cache.set("ns", "agent", None, None, [], "0")
+        await cache.invalidate_agent("ns", "agent")
+        await cache.close()
 
     asyncio.run(run())
 
@@ -217,6 +377,56 @@ def test_control_mutation_invalidates_relationship_bound_agents(
         await invalidate_control_agents(db, "ns", 7)  # type: ignore[arg-type]
         assert await cache.get("ns", "related-agent", None, None) is None
         assert await cache.get("ns", "unrelated-agent", None, None) == []
+
+    asyncio.run(run())
+
+
+def test_control_target_binding_invalidates_namespace_after_relationship_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        client = FakeRedis()
+        cache = RedisControlCache(client, ttl_seconds=30)
+        generation = await cache.get_generation("ns", "agent")
+        await cache.set("ns", "agent", "log_stream", "stream-1", [], generation)
+        monkeypatch.setattr(cache_module, "get_control_cache", lambda: cache)
+        db = FakeDatabase(
+            [FakeResult([]), FakeResult([("binding-id",)]), FakeResult([("agent",)])]
+        )
+
+        await invalidate_control_agents(db, "ns", 7)  # type: ignore[arg-type]
+
+        assert await cache.get("ns", "agent", "log_stream", "stream-1") is None
+
+    asyncio.run(run())
+
+
+def test_control_cache_scopes_capture_and_invalidate_related_agents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        client = FakeRedis()
+        cache = RedisControlCache(client, ttl_seconds=30)
+        generation = await cache.get_generation("ns", "related-agent")
+        await cache.set("ns", "related-agent", None, None, [], generation)
+        monkeypatch.setattr(cache_module, "get_control_cache", lambda: cache)
+        db = FakeDatabase(
+            [
+                FakeResult([("related-agent",)]),
+                FakeResult([("binding-id",)]),
+                FakeResult([("related-agent",)]),
+            ]
+        )
+
+        agents, has_target_bindings = await get_control_cache_scopes(
+            db, "ns", 7  # type: ignore[arg-type]
+        )
+        assert agents == ["related-agent"]
+        assert has_target_bindings
+        await invalidate_control_cache_scopes(
+            db, "ns", agents, has_target_bindings  # type: ignore[arg-type]
+        )
+        assert await cache.get("ns", "related-agent", None, None) is None
 
     asyncio.run(run())
 
@@ -268,6 +478,39 @@ def test_post_commit_scope_lookup_failure_is_best_effort(monkeypatch: pytest.Mon
         await invalidate_namespace_agents(FailingDatabase(), "ns")  # type: ignore[arg-type]
 
         assert failure_metric.calls == 1
+
+    asyncio.run(run())
+
+
+def test_control_and_policy_scope_lookup_failures_are_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        cache = RedisControlCache(FakeRedis(), ttl_seconds=30)
+        failure_metric = MetricSpy()
+        monkeypatch.setattr(cache_module, "get_control_cache", lambda: cache)
+        monkeypatch.setattr(cache_module, "_CACHE_INVALIDATION_FAILURE", failure_metric)
+
+        await invalidate_control_agents(FailingDatabase(), "ns", 7)  # type: ignore[arg-type]
+        await invalidate_policy_agents(FailingDatabase(), "ns", 7)  # type: ignore[arg-type]
+
+        assert failure_metric.calls == 2
+
+    asyncio.run(run())
+
+
+def test_close_control_cache_closes_redis_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def run() -> None:
+        cache = RedisControlCache(FakeRedis(), ttl_seconds=30)
+        closed: list[bool] = []
+
+        async def aclose() -> None:
+            closed.append(True)
+
+        monkeypatch.setattr(cache._client, "aclose", aclose)
+        monkeypatch.setattr(cache_module, "get_control_cache", lambda: cache)
+        await cache_module.close_control_cache()
+        assert closed == [True]
 
     asyncio.run(run())
 

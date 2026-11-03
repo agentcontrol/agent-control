@@ -34,7 +34,7 @@ license = {text = "Apache-2.0"}
 
 [project.optional-dependencies]
 galileo = ["agent-control-evaluator-galileo>=7.5.0"]
-redis = ["redis>=5.0.0"]
+redis = ["redis>=5.2.1"]
 binary = ["psycopg[binary]>=3.1"]
 c = ["psycopg[c]>=3.1"]
 

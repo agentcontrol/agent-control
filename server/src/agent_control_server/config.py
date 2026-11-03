@@ -197,6 +197,9 @@ class Settings(BaseSettings):
     redis_url: str | None = Field(
         default=None, validation_alias=AliasChoices("AGENT_CONTROL_REDIS_URL")
     )
+    redis_mode: Literal["standalone", "cluster"] = Field(
+        default="standalone", validation_alias=AliasChoices("AGENT_CONTROL_REDIS_MODE")
+    )
     control_cache_ttl_seconds: int = Field(
         default=60,
         ge=1,

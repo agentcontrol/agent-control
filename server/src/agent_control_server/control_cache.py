@@ -10,7 +10,7 @@ import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from functools import lru_cache
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from agent_control_models import ControlDefinitionRuntime
 from prometheus_client import Counter, Histogram
@@ -117,9 +117,10 @@ def build_cache_key(
     namespace: str, agent: str, target_type: str | None, target_id: str | None
 ) -> str:
     """Build the versioned snapshot key, preserving all effective-control scope dimensions."""
-    parts = (namespace, agent, target_type, target_id)
-    encoded = [_encode_key_component(part) for part in parts]
-    return f"agent-control:effective-controls:v1:{':'.join(encoded)}"
+    return (
+        f"agent-control:effective-controls:v1:{{{_agent_hash_tag(namespace, agent)}}}:"
+        f"{_encode_key_component(target_type)}:{_encode_key_component(target_id)}"
+    )
 
 
 def _encode_key_component(value: str | None) -> str:
@@ -129,15 +130,15 @@ def _encode_key_component(value: str | None) -> str:
 
 
 def _agent_index_key(namespace: str, agent: str) -> str:
-    namespace_part = _encode_key_component(namespace)
-    agent_part = _encode_key_component(agent)
-    return f"agent-control:effective-controls:index:v1:{namespace_part}:{agent_part}"
+    return f"agent-control:effective-controls:index:v1:{{{_agent_hash_tag(namespace, agent)}}}"
 
 
 def _agent_generation_key(namespace: str, agent: str) -> str:
-    namespace_part = _encode_key_component(namespace)
-    agent_part = _encode_key_component(agent)
-    return f"agent-control:effective-controls:generation:v1:{namespace_part}:{agent_part}"
+    return f"agent-control:effective-controls:generation:v1:{{{_agent_hash_tag(namespace, agent)}}}"
+
+
+def _agent_hash_tag(namespace: str, agent: str) -> str:
+    return f"{_encode_key_component(namespace)}:{_encode_key_component(agent)}"
 
 
 def _stale_key(snapshot_key: str) -> str:
@@ -291,21 +292,30 @@ def _configured_control_cache() -> ControlCache:
     if settings.control_cache_backend.lower() != "redis" or not settings.redis_url:
         return NoOpControlCache()
     try:
-        from redis.asyncio import Redis  # type: ignore[import-not-found]
-
-        return RedisControlCache(
-            Redis.from_url(
-                settings.redis_url,
-                decode_responses=True,
-                socket_connect_timeout=0.5,
-                socket_timeout=0.5,
-            ),
-            settings.control_cache_ttl_seconds,
-        )
+        client = _create_redis_client(settings.redis_url, settings.redis_mode)
+        return RedisControlCache(client, settings.control_cache_ttl_seconds)
     except Exception:
         _CACHE_FAILURE.inc()
         _logger.warning("Redis cache initialization failed; using PostgreSQL", exc_info=True)
         return NoOpControlCache()
+
+
+def _create_redis_client(redis_url: str, redis_mode: str) -> RedisCommands:
+    """Build a redis-py client using a standard redis/rediss URL."""
+    from redis.asyncio import Redis  # type: ignore[import-not-found]
+
+    options = {
+        "decode_responses": True,
+        "socket_connect_timeout": 0.5,
+        "socket_timeout": 0.5,
+    }
+    if redis_mode == "cluster":
+        from redis.asyncio.cluster import RedisCluster  # type: ignore[import-not-found]
+
+        client_factory = cast(Any, RedisCluster)
+    else:
+        client_factory = cast(Any, Redis)
+    return cast(RedisCommands, client_factory.from_url(redis_url, **options))
 
 
 def observe_snapshot_load(started_at: float) -> None:
