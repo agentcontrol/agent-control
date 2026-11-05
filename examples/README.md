@@ -7,6 +7,7 @@ This directory contains runnable examples for Agent Control. Each example has it
 | Example | Summary | Docs |
 |:--------|:--------|:-----|
 | Agent Control Demo | End-to-end workflow: create controls, run a controlled agent, update controls dynamically. | https://docs.agentcontrol.dev/examples/agent-control-demo |
+| Country-Specific Controls | Per-country rules via `context` or decorator arguments, authored as one control per country or one composite control. | https://docs.agentcontrol.dev/examples/country-controls |
 | CrewAI | Combine Agent Control security controls with CrewAI guardrails for customer support. | https://docs.agentcontrol.dev/examples/crewai |
 | Google ADK Plugin | Recommended packaged ADK integration using `AgentControlPlugin` for model and tool guardrails. | https://docs.agentcontrol.dev/examples/google-adk-plugin |
 | Google ADK Callbacks | Lower-level ADK lifecycle hook integration for manual model and tool guardrails. | https://docs.agentcontrol.dev/examples/google-adk-callbacks |
