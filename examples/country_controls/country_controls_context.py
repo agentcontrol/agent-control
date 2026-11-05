@@ -15,6 +15,10 @@ The same policy is authored in two ways:
 
 Each style is scoped to its own step name, so both run side by side on one agent.
 
+A baseline control applies to every country. It has no jurisdiction condition,
+so it also applies when the jurisdiction is missing. Here it is scoped to both
+steps and blocks email addresses.
+
 Note: a request with no jurisdiction matches no country rule, so country rules
 are skipped. Add a catch-all control if you need a strict default.
 
@@ -52,6 +56,7 @@ COMPOSITE_STEP = "answer-composite"
 
 DE_IBAN = r"\bDE\d{2}(?: ?\d{4}){4} ?\d{2}\b"
 US_SSN = r"\b\d{3}-\d{2}-\d{4}\b"
+EMAIL = r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"
 
 
 # =============================================================================
@@ -73,12 +78,12 @@ def output_matches(pattern: str) -> dict:
     }
 
 
-def control_definition(description: str, step_name: str, condition: dict) -> dict:
+def control_definition(description: str, step_names: list[str], condition: dict) -> dict:
     return {
         "description": description,
         "enabled": True,
         "execution": "server",
-        "scope": {"step_types": [STEP_TYPE], "step_names": [step_name], "stages": ["post"]},
+        "scope": {"step_types": [STEP_TYPE], "step_names": step_names, "stages": ["post"]},
         "condition": condition,
         "action": {"decision": "deny"},
         "tags": ["country-controls"],
@@ -86,21 +91,27 @@ def control_definition(description: str, step_name: str, condition: dict) -> dic
 
 
 CONTROLS = {
+    # Baseline: applies to every country, so it has no jurisdiction condition.
+    "country-context-baseline-email": control_definition(
+        "All countries: block email addresses.",
+        [PER_COUNTRY_STEP, COMPOSITE_STEP],
+        output_matches(EMAIL),
+    ),
     # Style 1: one control per country.
     "country-context-de-iban": control_definition(
         "DE only: block German IBANs.",
-        PER_COUNTRY_STEP,
+        [PER_COUNTRY_STEP],
         {"and": [jurisdiction_in(["DE"]), output_matches(DE_IBAN)]},
     ),
     "country-context-us-ssn": control_definition(
         "US only: block US Social Security numbers.",
-        PER_COUNTRY_STEP,
+        [PER_COUNTRY_STEP],
         {"and": [jurisdiction_in(["US"]), output_matches(US_SSN)]},
     ),
     # Style 2: one composite control for all countries.
     "country-context-countries": control_definition(
         "One control, per-country branches: DE -> IBAN, US -> SSN.",
-        COMPOSITE_STEP,
+        [COMPOSITE_STEP],
         {
             "or": [
                 {"and": [jurisdiction_in(["DE"]), output_matches(DE_IBAN)]},
@@ -172,6 +183,7 @@ async def setup_controls() -> None:
 
 IBAN_TEXT = "Your refund goes to DE89 3704 0044 0532 0130 00."
 SSN_TEXT = "Your SSN on file is 123-45-6789."
+EMAIL_TEXT = "Contact your agent at jane.doe@example.com."
 CLEAN_TEXT = "Your order ships on Tuesday."
 
 # (label, answer text, jurisdiction, expected)
@@ -181,15 +193,17 @@ SCENARIOS = [
     ("US + SSN", SSN_TEXT, "US", "BLOCK"),
     ("DE + SSN (no DE rule)", SSN_TEXT, "DE", "allow"),
     ("US + clean text", CLEAN_TEXT, "US", "allow"),
+    ("DE + email (baseline)", EMAIL_TEXT, "DE", "BLOCK"),
+    ("No jurisdiction + email (baseline)", EMAIL_TEXT, None, "BLOCK"),
 ]
 
 
-async def outcome(step_name: str, text: str, jurisdiction: str) -> str:
+async def outcome(step_name: str, text: str, jurisdiction: str | None) -> str:
     result = await agent_control.evaluate_controls(
         step_name,
         input="What is on file for me?",
         output=text,
-        context={"jurisdiction": jurisdiction},
+        context={"jurisdiction": jurisdiction} if jurisdiction else None,
         step_type=STEP_TYPE,
         stage="post",
         agent_name=AGENT_NAME,

@@ -8,6 +8,7 @@ Apply different rules per country (jurisdiction), authored either as one control
 - Two ways to author the same policy, side by side:
   - one control per country: `and(jurisdiction in [CC], rule)`
   - one composite control: `or(and(DE, IBAN rule), and(US, SSN rule))`
+- Baseline controls next to country controls: a baseline control has no jurisdiction condition, so it applies to every country. Here it blocks email addresses on both steps.
 - Two ways to send the jurisdiction with each check:
   - `country_controls_context.py`: `evaluate_controls(..., context={"jurisdiction": "DE"})`, selected with `context.jurisdiction`
   - `country_controls_decorator.py`: `@control(step_type="tool")` with a `jurisdiction` function argument, selected with `input.jurisdiction`
@@ -31,9 +32,9 @@ Full walkthrough: https://docs.agentcontrol.dev/examples/country-controls
 
 ## Choosing where the jurisdiction goes
 
-- Use `context.jurisdiction` when the jurisdiction is request metadata, separate from the data being checked. Gateways and non-Python clients send the same `step.context` in the body of `POST /api/v1/evaluation`.
+- Use `context.jurisdiction` when the jurisdiction is request metadata, separate from the data being checked. Gateways and non-Python clients send the same `step.context` in the body of `POST /api/v1/evaluation`. If the country code arrives in a request header, such as `x-ai-jurisdiction`, copy it into `context.jurisdiction`.
 - `@control()` builds the step from the function's arguments and cannot set `step.context`. To use the decorator, pass the jurisdiction as an argument of a tool step and select `input.jurisdiction`. For an LLM step, `input` is a single string, so this path does not resolve.
 
 ## Note
 
-A request with no jurisdiction matches no country rule, so all country rules are skipped. If you need a strict default, add a control that matches when the jurisdiction is missing or not covered, for example `and(not(jurisdiction in [DE, US]), or(IBAN rule, SSN rule))`.
+A request with no jurisdiction matches no country rule, so all country rules are skipped. Baseline controls still apply. If you need a strict default, add a control that matches when the jurisdiction is missing or not covered, for example `and(not(jurisdiction in [DE, US]), or(IBAN rule, SSN rule))`.
