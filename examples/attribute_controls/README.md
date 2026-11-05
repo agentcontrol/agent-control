@@ -1,6 +1,8 @@
-# Country-Specific Controls
+# Attribute-Based Controls
 
-Apply different rules per country (jurisdiction), authored either as one control per country or as one composite control.
+Apply a rule only when a request attribute has a given value. Author the rules either as one control per value or as one composite control.
+
+This example uses the country (jurisdiction) as the attribute. The same pattern works for any attribute, such as tenant, user tier or channel.
 
 ## What this example shows
 
@@ -10,8 +12,8 @@ Apply different rules per country (jurisdiction), authored either as one control
   - one composite control: `or(and(DE, IBAN rule), and(US, SSN rule))`
 - Baseline controls next to country controls: a baseline control has no jurisdiction condition, so it applies to every country. Here it blocks email addresses on both steps.
 - Two ways to send the jurisdiction with each check:
-  - `country_controls_context.py`: `evaluate_controls(..., context={"jurisdiction": "DE"})`, selected with `context.jurisdiction`
-  - `country_controls_decorator.py`: `@control(step_type="tool")` with a `jurisdiction` function argument, selected with `input.jurisdiction`
+  - `attribute_controls_context.py`: `evaluate_controls(..., context={"jurisdiction": "DE"})`, selected with `context.jurisdiction`
+  - `attribute_controls_decorator.py`: `@control(step_type="tool")` with a `jurisdiction` function argument, selected with `input.jurisdiction`
 
 No LLM or API key is needed. The scripts stand in for the model answer with fixed text.
 
@@ -22,13 +24,13 @@ No LLM or API key is needed. The scripts stand in for the model answer with fixe
 make server-run
 
 # In separate shell, from repo root
-uv run python examples/country_controls/country_controls_context.py
-uv run python examples/country_controls/country_controls_decorator.py
+uv run python examples/attribute_controls/attribute_controls_context.py
+uv run python examples/attribute_controls/attribute_controls_decorator.py
 ```
 
 Each script creates its agent and controls, then checks the per-country and composite results for each scenario. It prints PASS or FAIL for each check, and exits non-zero if any check fails. The scripts are safe to re-run.
 
-Full walkthrough: https://docs.agentcontrol.dev/examples/country-controls
+Full walkthrough: https://docs.agentcontrol.dev/examples/attribute-based-controls
 
 ## Choosing where the jurisdiction goes
 

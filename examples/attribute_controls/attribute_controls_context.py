@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Country-specific controls, using the @control() decorator.
+Attribute-based controls, using evaluate_controls() and `step.context`.
 
-The decorator builds the step from the function's arguments and cannot set
-`step.context`. So here the jurisdiction is an ordinary function argument.
-The controls select it with the path `input.jurisdiction`.
+A rule applies only when a request attribute has a given value. This example
+uses the country (jurisdiction) as the attribute. The same pattern works for
+any attribute, such as tenant, user tier or channel.
 
-This works only for tool steps (and custom step types), where `input` is the
-dict of all arguments. For an LLM step, `input` is a single string.
+The caller passes the jurisdiction as request metadata in `context`, separate
+from the text being checked. The controls select it with `context.jurisdiction`.
+
+This is the form that gateways and non-Python clients use too. They send the
+same `step.context` in the body of POST /api/v1/evaluation.
 
 The same policy is authored in two ways:
 
@@ -28,7 +31,7 @@ Prerequisites:
     2. SDK installed: make sync
 
 Usage:
-    uv run python examples/country_controls/country_controls_decorator.py
+    uv run python examples/attribute_controls/attribute_controls_context.py
 """
 
 import asyncio
@@ -40,17 +43,17 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../sdks/python/src"))
 
 import agent_control
-from agent_control import AgentControlClient, ControlViolationError, control
+from agent_control import AgentControlClient
 
 logging.basicConfig(level=logging.WARNING)
 
-AGENT_NAME = "country-demo-decorator"
+AGENT_NAME = "attribute-demo-context"
 SERVER_URL = os.getenv("AGENT_CONTROL_URL", "http://localhost:8000")
 
 # Where the jurisdiction lives in the step. Only this path (and the step type)
-# differs from country_controls_context.py.
-JURISDICTION_PATH = "input.jurisdiction"
-STEP_TYPE = "tool"
+# differs from attribute_controls_decorator.py.
+JURISDICTION_PATH = "context.jurisdiction"
+STEP_TYPE = "llm"
 
 PER_COUNTRY_STEP = "answer-per-country"
 COMPOSITE_STEP = "answer-composite"
@@ -87,30 +90,30 @@ def control_definition(description: str, step_names: list[str], condition: dict)
         "scope": {"step_types": [STEP_TYPE], "step_names": step_names, "stages": ["post"]},
         "condition": condition,
         "action": {"decision": "deny"},
-        "tags": ["country-controls"],
+        "tags": ["attribute-controls"],
     }
 
 
 CONTROLS = {
     # Baseline: applies to every country, so it has no jurisdiction condition.
-    "country-decorator-baseline-email": control_definition(
+    "attribute-context-baseline-email": control_definition(
         "All countries: block email addresses.",
         [PER_COUNTRY_STEP, COMPOSITE_STEP],
         output_matches(EMAIL),
     ),
     # Style 1: one control per country.
-    "country-decorator-de-iban": control_definition(
+    "attribute-context-de-iban": control_definition(
         "DE only: block German IBANs.",
         [PER_COUNTRY_STEP],
         {"and": [jurisdiction_in(["DE"]), output_matches(DE_IBAN)]},
     ),
-    "country-decorator-us-ssn": control_definition(
+    "attribute-context-us-ssn": control_definition(
         "US only: block US Social Security numbers.",
         [PER_COUNTRY_STEP],
         {"and": [jurisdiction_in(["US"]), output_matches(US_SSN)]},
     ),
     # Style 2: one composite control for all countries.
-    "country-decorator-countries": control_definition(
+    "attribute-context-countries": control_definition(
         "One control, per-country branches: DE -> IBAN, US -> SSN.",
         [COMPOSITE_STEP],
         {
@@ -142,7 +145,7 @@ async def setup_controls() -> None:
             json={
                 "agent": {
                     "agent_name": AGENT_NAME,
-                    "agent_description": "Country-specific controls demo (decorator)",
+                    "agent_description": "Attribute-based controls demo (context)",
                 },
                 "steps": [],
             },
@@ -182,20 +185,6 @@ async def setup_controls() -> None:
 # THE AGENT STEPS
 # =============================================================================
 
-
-# step_type="tool" makes `input` the dict of all arguments, so the controls can
-# select `input.jurisdiction`. Without it, a plain function is an "llm" step.
-# Both functions only return the text: the controls check it at the post stage.
-@control(step_name=PER_COUNTRY_STEP, step_type=STEP_TYPE)
-async def answer_per_country(*, text: str, jurisdiction: str | None) -> str:
-    return text
-
-
-@control(step_name=COMPOSITE_STEP, step_type=STEP_TYPE)
-async def answer_composite(*, text: str, jurisdiction: str | None) -> str:
-    return text
-
-
 IBAN_TEXT = "Your refund goes to DE89 3704 0044 0532 0130 00."
 SSN_TEXT = "Your SSN on file is 123-45-6789."
 EMAIL_TEXT = "Contact your agent at jane.doe@example.com."
@@ -214,14 +203,22 @@ SCENARIOS = [
 ]
 
 
-async def outcome(step_fn, text: str, jurisdiction: str | None) -> str:
-    try:
-        await step_fn(text=text, jurisdiction=jurisdiction)
-    except ControlViolationError as e:
-        return f"BLOCK ({e.control_name})"
-    except RuntimeError as e:  # The SDK raises this when a control errors on the server.
-        return f"ERROR ({e})"
-    return "allow"
+async def outcome(step_name: str, text: str, jurisdiction: str | None) -> str:
+    result = await agent_control.evaluate_controls(
+        step_name,
+        input="What is on file for me?",
+        output=text,
+        context={"jurisdiction": jurisdiction} if jurisdiction else None,
+        step_type=STEP_TYPE,
+        stage="post",
+        agent_name=AGENT_NAME,
+    )
+    # An evaluator error also sets is_safe=False, so report it as its own outcome.
+    if result.errors:
+        return f"ERROR ({', '.join(e.control_name for e in result.errors)})"
+    if result.is_safe:
+        return "allow"
+    return f"BLOCK ({', '.join(m.control_name for m in result.matches or [])})"
 
 
 async def run_scenarios() -> int:
@@ -232,7 +229,7 @@ async def run_scenarios() -> int:
     failures = 0
     for label, text, jurisdiction, expected in SCENARIOS:
         print(f"\n{label}   (expected: {expected})")
-        for style, step in [("per-country", answer_per_country), ("composite", answer_composite)]:
+        for style, step in [("per-country", PER_COUNTRY_STEP), ("composite", COMPOSITE_STEP)]:
             result = await outcome(step, text, jurisdiction)
             ok = result.split()[0] == expected
             failures += not ok
@@ -253,7 +250,7 @@ if __name__ == "__main__":
     asyncio.run(setup_controls())
     agent_control.init(
         agent_name=AGENT_NAME,
-        agent_description="Country-specific controls demo (decorator)",
+        agent_description="Attribute-based controls demo (context)",
         server_url=SERVER_URL,
         observability_enabled=False,
     )
