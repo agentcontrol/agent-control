@@ -284,6 +284,49 @@ async def test_http_upstream_returns_principal_on_200():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation", [Operation.AGENTS_CREATE, Operation.RUNTIME_TOKEN_EXCHANGE, Operation.RUNTIME_USE]
+)
+async def test_binding_target_requirement_preserves_other_operations(operation: Operation) -> None:
+    # Given: only binding lists require a target in this upstream deployment.
+    payloads: list[dict[str, Any]] = []
+
+    def factory(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(200, json={"namespace_key": "org-7"})
+
+    provider = _build_upstream(factory, config_overrides={"binding_list_requires_target": True})
+
+    # When: another operation reaches the provider without binding-list context.
+    principal = await provider.authorize(_build_request(), operation)
+
+    # Then: the existing upstream flow decides that operation's authorization.
+    assert principal.namespace_key == "org-7"
+    assert payloads == [{"operation": operation.value}]
+
+
+@pytest.mark.asyncio
+async def test_complete_binding_target_preserves_unexpected_upstream_rejection() -> None:
+    # Given: a complete target still receives an unexpected upstream 400.
+    provider = _build_upstream(
+        lambda request: httpx.Response(400, json={"detail": "Unexpected contract mismatch"}),
+        config_overrides={"binding_list_requires_target": True},
+    )
+
+    # When: the provider delegates a complete binding-read request.
+    with pytest.raises(APIError) as exc_info:
+        await provider.authorize(
+            _build_request(),
+            Operation.CONTROL_BINDINGS_READ,
+            {"target_type": "log_stream", "target_id": "stream-42"},
+        )
+
+    # Then: the upstream contract failure keeps its existing 502 signal.
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.error_code == "AUTH_UPSTREAM_REJECTED"
+
+
+@pytest.mark.asyncio
 async def test_http_upstream_resolves_identity_at_configured_url():
     captured: dict[str, Any] = {}
 
@@ -2207,6 +2250,7 @@ async def test_configure_http_upstream_selects_identity_url(
         assert isinstance(provider, HttpUpstreamAuthProvider)
         assert provider._config.identity_url == expected_identity_url
         assert provider.binding_target_authorization is (expected_identity_url is not None)
+        assert provider._config.binding_list_requires_target is (expected_identity_url is not None)
     finally:
         await auth_config.teardown_auth()
 
@@ -2236,6 +2280,9 @@ async def test_configure_http_upstream_identity_url_env(monkeypatch, upstream_ur
         assert isinstance(provider, HttpUpstreamAuthProvider)
         assert provider._config.identity_url == "https://identity.example.test/resolve"
         assert provider.binding_target_authorization is True
+        assert provider._config.binding_list_requires_target is upstream_url.endswith(
+            "/internal/auth/agent_control/check_management_access"
+        )
     finally:
         await auth_config.teardown_auth()
 

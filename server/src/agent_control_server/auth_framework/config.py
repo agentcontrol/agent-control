@@ -252,11 +252,13 @@ def _build_default_provider() -> RequestAuthorizer:
         # Only the known Orbit management route has a predictable identity route.
         # Other upstreams keep their existing namespace-wide authorization flow.
         explicit_identity_url = (os.environ.get(_UPSTREAM_IDENTITY_URL_ENV) or "").strip()
-        identity_url = explicit_identity_url or _derive_orbit_identity_url(url)
+        orbit_identity_url = _derive_orbit_identity_url(url)
+        identity_url = explicit_identity_url or orbit_identity_url
         try:
             upstream_config = HttpUpstreamConfig(
                 url=url,
                 identity_url=identity_url,
+                binding_list_requires_target=orbit_identity_url is not None,
                 timeout_seconds=timeout,
                 service_token=token,
                 service_token_header=token_header,
