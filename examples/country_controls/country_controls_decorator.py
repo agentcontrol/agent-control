@@ -209,6 +209,7 @@ SCENARIOS = [
     ("DE + SSN (no DE rule)", SSN_TEXT, "DE", "allow"),
     ("US + clean text", CLEAN_TEXT, "US", "allow"),
     ("DE + email (baseline)", EMAIL_TEXT, "DE", "BLOCK"),
+    ("No jurisdiction + IBAN", IBAN_TEXT, None, "allow"),
     ("No jurisdiction + email (baseline)", EMAIL_TEXT, None, "BLOCK"),
 ]
 
@@ -218,6 +219,8 @@ async def outcome(step_fn, text: str, jurisdiction: str | None) -> str:
         await step_fn(text=text, jurisdiction=jurisdiction)
     except ControlViolationError as e:
         return f"BLOCK ({e.control_name})"
+    except RuntimeError as e:  # The SDK raises this when a control errors on the server.
+        return f"ERROR ({e})"
     return "allow"
 
 

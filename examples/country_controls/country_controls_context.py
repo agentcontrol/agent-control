@@ -194,6 +194,7 @@ SCENARIOS = [
     ("DE + SSN (no DE rule)", SSN_TEXT, "DE", "allow"),
     ("US + clean text", CLEAN_TEXT, "US", "allow"),
     ("DE + email (baseline)", EMAIL_TEXT, "DE", "BLOCK"),
+    ("No jurisdiction + IBAN", IBAN_TEXT, None, "allow"),
     ("No jurisdiction + email (baseline)", EMAIL_TEXT, None, "BLOCK"),
 ]
 
@@ -208,6 +209,9 @@ async def outcome(step_name: str, text: str, jurisdiction: str | None) -> str:
         stage="post",
         agent_name=AGENT_NAME,
     )
+    # An evaluator error also sets is_safe=False, so report it as its own outcome.
+    if result.errors:
+        return f"ERROR ({', '.join(e.control_name for e in result.errors)})"
     if result.is_safe:
         return "allow"
     return f"BLOCK ({', '.join(m.control_name for m in result.matches or [])})"
