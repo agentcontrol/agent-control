@@ -27,6 +27,7 @@ DEFAULT_TIMEOUT_SECS = 10.0
 SERVER_TIMEOUT_RATIO = 0.8
 DEFAULT_INTERNAL_TOKEN_TTL_SECS = 3600
 DEFAULT_LUNA_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke"
+DEFAULT_LUNA_RUNTIME_SCORER_INVOKE_PATH = "/api/v1/scorers/invoke/runtime"
 LUNA_INVOKE_URL_ENV = "GALILEO_LUNA_INVOKE_URL"
 LUNA_INVOKE_CA_FILE_ENV = "GALILEO_LUNA_INVOKE_CA_FILE"
 AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
@@ -88,13 +89,18 @@ def _internal_auth_token(
     return f"{signing_input}.{_b64url(signature)}"
 
 
-def _normalize_luna_invoke_url(raw_url: str) -> str:
-    """Use full invoke URLs as-is and append the default path to bare service roots."""
+def _normalize_luna_invoke_url(raw_url: str, *, runtime_enabled: bool) -> str:
+    """Use full invoke URLs as-is and append the active path to bare service roots."""
     url = raw_url.strip().rstrip("/")
     parsed = urlsplit(url)
     if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
         return url
-    return f"{url}{DEFAULT_LUNA_SCORER_INVOKE_PATH}"
+    invoke_path = (
+        DEFAULT_LUNA_RUNTIME_SCORER_INVOKE_PATH
+        if runtime_enabled
+        else DEFAULT_LUNA_SCORER_INVOKE_PATH
+    )
+    return f"{url}{invoke_path}"
 
 
 def _load_float_env(env_name: str, default: float) -> float:
@@ -417,7 +423,10 @@ class GalileoLunaClient:
 
         self.api_secret = resolved_api_secret
         self.runtime_enabled = scorer_invoke_runtime_enabled()
-        self.luna_invoke_url = _normalize_luna_invoke_url(resolved_luna_invoke_url)
+        self.luna_invoke_url = _normalize_luna_invoke_url(
+            resolved_luna_invoke_url,
+            runtime_enabled=self.runtime_enabled,
+        )
         self.luna_invoke_ca_file = (
             luna_invoke_ca_file
             or os.getenv(LUNA_INVOKE_CA_FILE_ENV)

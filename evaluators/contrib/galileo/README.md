@@ -16,6 +16,13 @@ set `threshold` and `operator` as needed. If you still need the legacy Luna2
 evaluator, pin
 `agent-control-evaluator-galileo <8`.
 
+Luna requests are sent to the Luna runtime service. Decision Models (Jev) and
+LLM-as-judge requests are sent to the external runtime service configured by
+`GALILEO_EXTERNAL_INVOKE_URL`. Runtime service-root URLs are expanded to
+`/api/v1/scorers/invoke/runtime`; legacy Luna requests continue to use
+`/api/v1/scorers/invoke` when the runtime feature flag is disabled. The external
+URL is required for Jev and LLM-as-judge and never falls back to the Luna service.
+
 The optional evaluator `config` mirrors Orbit's allowlisted scorer-invoke
 configuration. Supported keys are `threshold`, `score_threshold`, and
 `request_timeout_seconds`; unsupported keys are rejected locally before an HTTP

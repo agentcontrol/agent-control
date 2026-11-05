@@ -53,7 +53,7 @@ def _decode_jwt_segment(segment: str) -> dict[str, Any]:
 
 def _evaluator(monkeypatch: pytest.MonkeyPatch, **config: Any) -> DecisionModelsEvaluator:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
-    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://runners:8090")
+    monkeypatch.setenv("GALILEO_EXTERNAL_INVOKE_URL", "http://runners-external:8090")
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_DECISION_MODELS_EVALUATOR", "enabled")
     evaluator = DecisionModelsEvaluator(
@@ -156,29 +156,31 @@ def test_config_allows_missing_threshold_for_any_operator() -> None:
 
 
 @pytest.mark.asyncio
-async def test_client_url_resolution_prefers_explicit_url_then_luna_environment(
+async def test_client_url_resolution_prefers_explicit_url_then_external_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna:8090")
+    monkeypatch.setenv("GALILEO_EXTERNAL_INVOKE_URL", "http://external:8090")
 
     explicit_client = GalileoDecisionModelsClient(invoke_url="http://explicit:8090")
     environment_client = GalileoDecisionModelsClient()
 
-    expected_path = "/api/v1/scorers/invoke"
+    expected_path = "/api/v1/scorers/invoke/runtime"
     assert explicit_client.invoke_url == f"http://explicit:8090{expected_path}"
-    assert environment_client.invoke_url == f"http://luna:8090{expected_path}"
+    assert environment_client.invoke_url == f"http://external:8090{expected_path}"
     await explicit_client.close()
     await environment_client.close()
 
 
-def test_client_requires_luna_invoke_url_when_no_explicit_url_is_given(
+def test_client_requires_external_invoke_url_when_no_explicit_url_is_given(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
-    monkeypatch.delenv("GALILEO_LUNA_INVOKE_URL", raising=False)
+    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna:8090")
+    monkeypatch.delenv("GALILEO_EXTERNAL_INVOKE_URL", raising=False)
 
-    with pytest.raises(ValueError, match="GALILEO_LUNA_INVOKE_URL"):
+    with pytest.raises(ValueError, match="GALILEO_EXTERNAL_INVOKE_URL"):
         GalileoDecisionModelsClient()
 
 
@@ -439,7 +441,7 @@ async def test_client_serializes_full_record_context_and_uses_timeout(
     monkeypatch: pytest.MonkeyPatch, record_type: str
 ) -> None:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
-    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://runners:8090")
+    monkeypatch.setenv("GALILEO_EXTERNAL_INVOKE_URL", "http://runners-external:8090")
     monkeypatch.setenv("GALILEO_FEATURE_FLAG_SCORER_INVOKE_RUNTIME", "enabled")
     client = GalileoDecisionModelsClient()
     seen: dict[str, Any] = {}
@@ -518,7 +520,7 @@ async def test_client_serializes_full_record_context_and_uses_timeout(
         timeout=5.0,
     )
     assert response.score == 0.9
-    assert seen["url"] == "http://runners:8090/api/v1/scorers/invoke"
+    assert seen["url"] == "http://runners-external:8090/api/v1/scorers/invoke/runtime"
     payload = json.loads(seen["payload"])
     assert payload["scorer_version_id"] == "version-a"
     assert payload["execution_context"]["user_id"] == "user-7"
@@ -810,7 +812,7 @@ def test_numeric_comparison_rejects_non_numeric_threshold_from_unvalidated_confi
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
-    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://runners:8090")
+    monkeypatch.setenv("GALILEO_EXTERNAL_INVOKE_URL", "http://runners-external:8090")
     config = DecisionModelsEvaluatorConfig.model_construct(
         scorer_id="scorer-a",
         scorer_version_id="version-a",

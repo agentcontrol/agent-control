@@ -16,7 +16,7 @@ import pytest
 
 LLM_ENV = {
     "GALILEO_API_SECRET_KEY": "test-secret",
-    "GALILEO_LUNA_INVOKE_URL": "http://luna-invoke:8090",
+    "GALILEO_EXTERNAL_INVOKE_URL": "http://external-invoke:8090",
     "GALILEO_FEATURE_FLAG_LLM_EVALUATOR": "enabled",
 }
 
@@ -661,7 +661,7 @@ def test_client_raises_when_no_api_secret(monkeypatch):
     """The client requires GALILEO_API_SECRET_KEY or GALILEO_API_SECRET."""
     for name in ("GALILEO_API_SECRET_KEY", "GALILEO_API_SECRET"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna-invoke:8090")
+    monkeypatch.setenv("GALILEO_EXTERNAL_INVOKE_URL", "http://external-invoke:8090")
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
     with pytest.raises(ValueError, match="GALILEO_API_SECRET_KEY or GALILEO_API_SECRET"):
@@ -669,12 +669,13 @@ def test_client_raises_when_no_api_secret(monkeypatch):
 
 
 def test_client_raises_when_no_llm_invoke_url(monkeypatch):
-    """The client requires GALILEO_LUNA_INVOKE_URL."""
+    """The client requires GALILEO_EXTERNAL_INVOKE_URL."""
     monkeypatch.setenv("GALILEO_API_SECRET_KEY", "test-secret")
-    monkeypatch.delenv("GALILEO_LUNA_INVOKE_URL", raising=False)
+    monkeypatch.setenv("GALILEO_LUNA_INVOKE_URL", "http://luna-invoke:8090")
+    monkeypatch.delenv("GALILEO_EXTERNAL_INVOKE_URL", raising=False)
     from agent_control_evaluator_galileo.llm.client import GalileoLLMClient
 
-    with pytest.raises(ValueError, match="GALILEO_LUNA_INVOKE_URL"):
+    with pytest.raises(ValueError, match="GALILEO_EXTERNAL_INVOKE_URL"):
         GalileoLLMClient()
 
 
@@ -702,7 +703,7 @@ def test_client_posts_to_correct_llm_invoke_endpoint(monkeypatch):
     client = GalileoLLMClient()
     endpoint, _ = client._endpoint_and_auth_header()
 
-    assert endpoint == "http://luna-invoke:8090/api/v1/scorers/invoke"
+    assert endpoint == "http://external-invoke:8090/api/v1/scorers/invoke/runtime"
 
 
 def test_client_does_not_use_old_api_paths(monkeypatch):
@@ -715,7 +716,7 @@ def test_client_does_not_use_old_api_paths(monkeypatch):
     endpoint, _ = client._endpoint_and_auth_header()
 
     assert "/scorers/invoke" in endpoint
-    assert endpoint.startswith("http://luna-invoke:8090/api/v1/")
+    assert endpoint.startswith("http://external-invoke:8090/api/v1/")
     assert "/internal/scorers/invoke" not in endpoint
 
 
