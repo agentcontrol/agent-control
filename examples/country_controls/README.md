@@ -25,7 +25,7 @@ uv run python examples/country_controls/country_controls_context.py
 uv run python examples/country_controls/country_controls_decorator.py
 ```
 
-Each script creates its agent and controls, then prints the per-country and composite results for each scenario. The scripts are safe to re-run.
+Each script creates its agent and controls, then checks the per-country and composite results for each scenario. It prints PASS or FAIL for each check, and exits non-zero if any check fails. The scripts are safe to re-run.
 
 Full walkthrough: https://docs.agentcontrol.dev/examples/country-controls
 

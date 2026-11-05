@@ -159,11 +159,11 @@ async def setup_controls() -> None:
                 control_id = response.json()["control_id"]
                 print(f"✓ Created control '{name}' (ID: {control_id})")
 
+            # Attaching is idempotent, so a re-run succeeds.
             attach = await client.http_client.post(
                 f"/api/v1/agents/{AGENT_NAME}/controls/{control_id}"
             )
-            if attach.status_code != 409:  # 409 = already attached
-                attach.raise_for_status()
+            attach.raise_for_status()
 
 
 # =============================================================================
@@ -199,22 +199,28 @@ async def outcome(step_name: str, text: str, jurisdiction: str) -> str:
     return f"BLOCK ({', '.join(m.control_name for m in result.matches or [])})"
 
 
-async def run_scenarios() -> None:
+async def run_scenarios() -> int:
     print("\n" + "=" * 60)
     print("STEP 2: Running scenarios")
     print("=" * 60)
 
+    failures = 0
     for label, text, jurisdiction, expected in SCENARIOS:
-        per_country = await outcome(PER_COUNTRY_STEP, text, jurisdiction)
-        composite = await outcome(COMPOSITE_STEP, text, jurisdiction)
         print(f"\n{label}   (expected: {expected})")
-        print(f"  per-country: {per_country}")
-        print(f"  composite:   {composite}")
+        for style, step in [("per-country", PER_COUNTRY_STEP), ("composite", COMPOSITE_STEP)]:
+            result = await outcome(step, text, jurisdiction)
+            ok = result.split()[0] == expected
+            failures += not ok
+            print(f"  {'PASS' if ok else 'FAIL'}  {style + ':':<12} {result}")
+
+    print(f"\n{len(SCENARIOS) * 2 - failures}/{len(SCENARIOS) * 2} checks passed")
+    return failures
 
 
-async def main() -> None:
-    await run_scenarios()
+async def main() -> int:
+    failures = await run_scenarios()
     await agent_control.ashutdown()
+    return failures
 
 
 if __name__ == "__main__":
@@ -226,4 +232,4 @@ if __name__ == "__main__":
         server_url=SERVER_URL,
         observability_enabled=False,
     )
-    asyncio.run(main())
+    sys.exit(1 if asyncio.run(main()) else 0)
