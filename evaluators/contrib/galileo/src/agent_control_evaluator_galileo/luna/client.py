@@ -15,6 +15,7 @@ from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
 import httpx
+from agent_control_evaluators.preparation import prepare_once
 from agent_control_models import JSONObject, JSONValue, Step
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
@@ -277,6 +278,37 @@ class ScorerInvokeRequest(BaseModel):
 
 
 def _scorer_invoke_record_from_step(
+    step: Step | None,
+    *,
+    selected_input: JSONValue,
+    selected_output: JSONValue,
+    selected_data: Any = _MISSING_SELECTED_DATA,
+    payload_field: str = "input",
+) -> ScorerInvokeRecord | None:
+    """Reuse a read-only record for the same selection within one evaluation.
+
+    Scorer IDs, configuration, authenticated execution context and HTTP request
+    bodies are still built separately for every scorer invocation.
+    """
+    inputs = (
+        (step, selected_input, selected_output)
+        if selected_data is _MISSING_SELECTED_DATA
+        else (step, selected_data)
+    )
+    return prepare_once(
+        f"{__name__}.record:{payload_field}",
+        inputs,
+        lambda: _build_scorer_invoke_record(
+            step,
+            selected_input=selected_input,
+            selected_output=selected_output,
+            selected_data=selected_data,
+            payload_field=payload_field,
+        ),
+    )
+
+
+def _build_scorer_invoke_record(
     step: Step | None,
     *,
     selected_input: JSONValue,

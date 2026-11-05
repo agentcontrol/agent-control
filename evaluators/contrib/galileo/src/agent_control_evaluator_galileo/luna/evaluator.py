@@ -106,6 +106,9 @@ def _http_status_error_metadata(error: httpx.HTTPStatusError) -> dict[str, Any]:
 class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
     """Galileo Luna evaluator using the direct scorer invocation API."""
 
+    # Payload preparation and clients never mutate the shared selection.
+    reuse_prepared_input = True
+
     metadata = EvaluatorMetadata(
         name="galileo.luna",
         version=_PACKAGE_VERSION,

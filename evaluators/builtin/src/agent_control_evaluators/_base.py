@@ -123,6 +123,10 @@ class Evaluator(ABC, Generic[ConfigT]):  # noqa: UP046 - need Python 3.10 compat
 
     """
 
+    # Opt in only when the evaluator treats selected data as read-only.
+    # Other evaluators retain independently materialized wildcard selections.
+    reuse_prepared_input: ClassVar[bool] = False
+
     metadata: ClassVar[EvaluatorMetadata]
     config_model: ClassVar[type[EvaluatorConfig]]
 

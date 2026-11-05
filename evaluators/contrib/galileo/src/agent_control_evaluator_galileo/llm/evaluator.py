@@ -125,6 +125,9 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
         )
     """
 
+    # Payload preparation and clients never mutate the shared selection.
+    reuse_prepared_input = True
+
     metadata = EvaluatorMetadata(
         name="galileo.llm",
         version=_PACKAGE_VERSION,

@@ -14,6 +14,7 @@ from typing import Any, Literal, Protocol
 
 import re2
 from agent_control_evaluators import get_evaluator_instance
+from agent_control_evaluators.preparation import evaluation_preparation_scope, prepare_once
 from agent_control_models import (
     ConditionNode,
     ControlAction,
@@ -314,11 +315,21 @@ class ControlEngine:
         selector, evaluator_spec = leaf_parts
 
         selector_path = selector.path or "*"
-        data = select_data(request.step, selector_path)
-
+        data: Any = None
+        selected = False
         try:
             async with semaphore:
                 evaluator = get_evaluator_instance(evaluator_spec)
+                data = (
+                    prepare_once(
+                        f"engine.selector:{selector_path}",
+                        (request.step,),
+                        lambda: select_data(request.step, selector_path),
+                    )
+                    if getattr(evaluator, "reuse_prepared_input", False)
+                    else select_data(request.step, selector_path)
+                )
+                selected = True
                 timeout = evaluator.get_timeout_seconds()
                 if timeout <= 0:
                     timeout = DEFAULT_EVALUATOR_TIMEOUT
@@ -347,6 +358,10 @@ class ControlEngine:
                 exc_info=True,
             )
             result = self._build_error_result(error_msg)
+
+        if not selected:
+            # Preserve selected-data diagnostics when evaluator construction fails.
+            data = select_data(request.step, selector_path)
 
         trace = {
             "type": "leaf",
@@ -634,6 +649,19 @@ class ControlEngine:
         return applicable
 
     async def process(
+        self,
+        request: EvaluationRequest,
+        extensions: JSONObject | None = None,
+    ) -> EvaluationResponse:
+        """Evaluate controls with input preparation isolated to this request.
+
+        Scorer executions, authorization extensions and per-control decisions
+        are never cached. The scope is released on success, failure or cancellation.
+        """
+        with evaluation_preparation_scope():
+            return await self._process(request, extensions)
+
+    async def _process(
         self,
         request: EvaluationRequest,
         extensions: JSONObject | None = None,
