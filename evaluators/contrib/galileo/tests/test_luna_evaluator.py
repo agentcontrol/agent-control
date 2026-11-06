@@ -1326,9 +1326,7 @@ class TestGalileoLunaClient:
         assert result.error is None
         body = captured["body"]
         assert isinstance(body, dict)
-        assert body["inputs"]["query"] == json.dumps(
-            step.input, ensure_ascii=False, sort_keys=True
-        )
+        assert body["inputs"]["query"] == json.dumps(step.input, ensure_ascii=False, sort_keys=True)
         assert body["inputs"]["response"] == json.dumps(
             step.output, ensure_ascii=False, sort_keys=True
         )
@@ -1913,3 +1911,50 @@ class TestLunaEvaluator:
         assert result.metadata["http_response_body"] == '{"detail":"busy"}'
         assert result.metadata["http_response_body_truncated"] is False
         assert "token=secret" not in str(result.metadata)
+
+
+@pytest.mark.asyncio
+async def test_luna_runtime_transport_timing_preserves_request(monkeypatch):
+    # Given: the real HTTPX request boundary with a synthetic transport.
+    from agent_control_evaluator_galileo.luna.client import GalileoLunaClient
+    from agent_control_models.runtime_timing import configure_runtime_timing
+
+    for key, value in LUNA_ENV.items():
+        monkeypatch.setenv(key, value)
+    observed = []
+    configure_runtime_timing(
+        lambda stage, seconds, outcome: observed.append((stage, seconds, outcome))
+    )
+
+    async def handler(request):
+        assert json.loads(request.content)["scorer_id"] == SCORER_ID
+        trace = request.extensions["trace"]
+        for event in (
+            "connection.connect_tcp",
+            "connection.start_tls",
+            "http11.receive_response_headers",
+        ):
+            await trace(event + ".started", {})
+            await trace(event + ".complete", {})
+        return httpx.Response(200, json={"score": 0.5, "status": "success"})
+
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            client = GalileoLunaClient()
+            monkeypatch.setattr(client, "_get_client", AsyncMock(return_value=http))
+            # When: invoking the public Luna client.
+            result = await client.invoke(scorer_id=SCORER_ID, input="synthetic")
+        # Then: results and payload stay intact, with separate bounded timings.
+        assert result.score == 0.5
+        assert {stage for stage, _, _ in observed} >= {
+            "luna_payload",
+            "luna_client_acquire",
+            "luna_http",
+            "luna_decode",
+            "luna_connect",
+            "luna_tls",
+            "luna_response_headers",
+        }
+        assert all(seconds >= 0 and outcome == "completed" for _, seconds, outcome in observed)
+    finally:
+        configure_runtime_timing(None)

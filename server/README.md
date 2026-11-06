@@ -57,3 +57,25 @@ psycopg's bundled binary package.
 Server configuration is driven by environment variables (database, auth, observability, evaluators). For the full list and examples, see the docs.
 
 Full guide: https://docs.agentcontrol.dev/components/server
+
+## Runtime latency diagnostics
+
+The request histogram uses 25 ms boundaries between 100 ms and 500 ms.
+The server exports `agent_control_server_evaluation_stage_duration_seconds`
+with bounded `stage` and `outcome` labels. Stages cover authorization, effective
+control loading, Redis I/O and snapshot decoding, engine execution, selector
+work, semaphore waiting, evaluator execution, and response preparation.
+Request milestones also measure the interval from authorization to handler entry,
+response preparation to response headers, and the complete ASGI request.
+The Luna client additionally times payload preparation, client acquisition,
+the complete HTTP call, response decoding, TCP connection, TLS, sending headers,
+waiting for response headers, and reading the response body.
+
+These durations are inclusive. Cache stages nest inside control loading.
+Luna stages nest inside each evaluator, and parallel evaluators overlap.
+Request stages have one sample per request. Evaluator and Luna stages have
+one sample per control, while TCP and TLS only occur for new connections.
+Do not sum their percentiles or subtract independent service p95s.
+The observer is installed by the server's metrics setup. Library callers do
+not need Prometheus and perform no timing without an installed observer.
+Payloads, credentials and user identifiers are never metric labels.

@@ -13,6 +13,7 @@ from functools import lru_cache
 from typing import Any, Protocol, cast
 
 from agent_control_models import ControlDefinitionRuntime
+from agent_control_models.runtime_timing import runtime_stage
 from prometheus_client import Counter, Histogram
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -172,24 +173,28 @@ class RedisControlCache:
             if redis.call('EXISTS', KEYS[1]) == 1 then return nil end
             return redis.call('GET', KEYS[2])
             """
-            raw = await self._client.eval(script, 2, _stale_key(key), key)
+            with runtime_stage("cache_redis"):
+                raw = await self._client.eval(script, 2, _stale_key(key), key)
             if raw is None:
                 _CACHE_MISS.inc()
                 return None
             if not isinstance(raw, (str, bytes)):
                 raise TypeError("Redis returned a non-string effective-control snapshot")
-            payload = json.loads(raw)
-            if payload.get("schema_version") != 1 or not isinstance(payload.get("controls"), list):
-                _CACHE_MISS.inc()
-                return None
-            controls = [
-                RuntimeControl(
-                    id=item["id"],
-                    name=item["name"],
-                    control=ControlDefinitionRuntime.model_validate(item["control"]),
-                )
-                for item in payload["controls"]
-            ]
+            with runtime_stage("cache_decode"):
+                payload = json.loads(raw)
+                if payload.get("schema_version") != 1 or not isinstance(
+                    payload.get("controls"), list
+                ):
+                    _CACHE_MISS.inc()
+                    return None
+                controls = [
+                    RuntimeControl(
+                        id=item["id"],
+                        name=item["name"],
+                        control=ControlDefinitionRuntime.model_validate(item["control"]),
+                    )
+                    for item in payload["controls"]
+                ]
             _CACHE_HIT.inc()
             return controls
         except Exception:  # Redis and corrupt cache data must not block evaluation.
@@ -265,9 +270,7 @@ class RedisControlCache:
             end
             return #keys
             """
-            await self._client.eval(
-                script, 2, generation_key, index_key, self._ttl_seconds * 2
-            )
+            await self._client.eval(script, 2, generation_key, index_key, self._ttl_seconds * 2)
             _CACHE_INVALIDATION.inc()
         except Exception:
             _CACHE_FAILURE.inc()
@@ -359,9 +362,7 @@ async def invalidate_agent_scope(namespace: str, agent: str) -> None:
         )
 
 
-async def invalidate_control_agents(
-    db: AsyncSession, namespace: str, control_id: int
-) -> None:
+async def invalidate_control_agents(db: AsyncSession, namespace: str, control_id: int) -> None:
     """Invalidate agents related to a changed control through direct or policy bindings."""
     cache = get_control_cache()
     if isinstance(cache, NoOpControlCache):
@@ -388,10 +389,12 @@ async def invalidate_control_agents(
             await cache.invalidate_agent(namespace, agent_name)
 
         target_binding = await db.execute(
-            select(ControlBinding.id).where(
+            select(ControlBinding.id)
+            .where(
                 ControlBinding.namespace_key == namespace,
                 ControlBinding.control_id == control_id,
-            ).limit(1)
+            )
+            .limit(1)
         )
         if target_binding.first() is not None:
             await invalidate_namespace_agents(db, namespace)
@@ -428,10 +431,12 @@ async def get_control_cache_scopes(
         )
         agents_result = await db.execute(direct_agents.union(policy_agents))
         target_result = await db.execute(
-            select(ControlBinding.id).where(
+            select(ControlBinding.id)
+            .where(
                 ControlBinding.namespace_key == namespace,
                 ControlBinding.control_id == control_id,
-            ).limit(1)
+            )
+            .limit(1)
         )
         return [name for (name,) in agents_result.all()], target_result.first() is not None
     except Exception:

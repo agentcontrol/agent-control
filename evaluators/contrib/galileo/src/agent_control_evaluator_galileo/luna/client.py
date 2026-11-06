@@ -10,12 +10,13 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import time
+from time import perf_counter, time
 from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue, Step
+from agent_control_models.runtime_timing import Stage, observe_runtime_stage, runtime_stage
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ..records import UnsupportedStepTypeError, record_from_step
@@ -545,64 +546,93 @@ class GalileoLunaClient:
 
         # Accept dictionaries for source compatibility with the original client,
         # but validate them against Orbit's authoritative allowlist locally.
-        invoke_config = (
-            ScorerInvokeConfig.model_validate(config)
-            if config is not None
-            else ScorerInvokeConfig()
-        )
-        invoke_config = _effective_scorer_timeout(
-            invoke_config,
-            http_timeout_seconds=timeout,
-        )
-        record = (
-            _scorer_invoke_record_from_step(
-                step,
-                selected_input=input,
-                selected_output=output,
-                selected_data=selected_data,
-                payload_field=selected_data_payload_field,
+        with runtime_stage("luna_payload"):
+            invoke_config = (
+                ScorerInvokeConfig.model_validate(config)
+                if config is not None
+                else ScorerInvokeConfig()
             )
-            if self.runtime_enabled and step is not None and scorer_version_id is not None
-            else None
-        )
-        request_body = ScorerInvokeRequest(
-            scorer_id=scorer_id,
-            scorer_version_id=scorer_version_id,
-            scorer_label=scorer_label,
-            inputs=ScorerInvokeInputs(
-                query="" if input is None else input,
-                response="" if output is None else output,
-                ground_truth=step.ground_truth if step is not None else None,
-                tools=step.tools if step is not None else None,
-            ),
-            record=record,
-            execution_context=execution_context if self.runtime_enabled else None,
-            config=invoke_config,
-        ).to_dict()
+            invoke_config = _effective_scorer_timeout(
+                invoke_config,
+                http_timeout_seconds=timeout,
+            )
+            record = (
+                _scorer_invoke_record_from_step(
+                    step,
+                    selected_input=input,
+                    selected_output=output,
+                    selected_data=selected_data,
+                    payload_field=selected_data_payload_field,
+                )
+                if self.runtime_enabled and step is not None and scorer_version_id is not None
+                else None
+            )
+            request_body = ScorerInvokeRequest(
+                scorer_id=scorer_id,
+                scorer_version_id=scorer_version_id,
+                scorer_label=scorer_label,
+                inputs=ScorerInvokeInputs(
+                    query="" if input is None else input,
+                    response="" if output is None else output,
+                    ground_truth=step.ground_truth if step is not None else None,
+                    tools=step.tools if step is not None else None,
+                ),
+                record=record,
+                execution_context=execution_context if self.runtime_enabled else None,
+                config=invoke_config,
+            ).to_dict()
 
-        endpoint, auth_header = self._endpoint_and_auth_header()
-        request_headers = {
-            k: v for k, v in (headers or {}).items() if k.lower() not in _BLOCKED_REQUEST_HEADERS
-        }
-        request_headers["Authorization"] = auth_header
+            endpoint, auth_header = self._endpoint_and_auth_header()
+            request_headers = {
+                k: v
+                for k, v in (headers or {}).items()
+                if k.lower() not in _BLOCKED_REQUEST_HEADERS
+            }
+            request_headers["Authorization"] = auth_header
 
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
         logger.debug("[GalileoLunaClient] Request body: %s", request_body)
 
         try:
-            client = await self._get_client()
-            response = await client.post(
-                endpoint,
-                json=request_body,
-                headers=request_headers,
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            response_data = response.json()
-            if not isinstance(response_data, dict):
-                raise RuntimeError("Invalid response payload: not a JSON object")
+            with runtime_stage("luna_client_acquire"):
+                client = await self._get_client()
+            transport_started: dict[str, float] = {}
+            transport_stages: dict[str, Stage] = {
+                "connection.connect_tcp": "luna_connect",
+                "connection.start_tls": "luna_tls",
+                "http11.send_request_headers": "luna_send",
+                "http11.receive_response_headers": "luna_response_headers",
+                "http11.receive_response_body": "luna_read",
+            }
 
-            parsed = ScorerInvokeResponse.from_dict(response_data)
+            async def trace_transport(event: str, info: dict[str, Any]) -> None:
+                name, _, phase = event.rpartition(".")
+                stage = transport_stages.get(name)
+                if stage is None:
+                    return
+                if phase == "started":
+                    transport_started[name] = perf_counter()
+                elif phase in ("complete", "failed") and name in transport_started:
+                    observe_runtime_stage(
+                        stage,
+                        perf_counter() - transport_started.pop(name),
+                        "error" if phase == "failed" else "completed",
+                    )
+
+            with runtime_stage("luna_http"):
+                response = await client.post(
+                    endpoint,
+                    json=request_body,
+                    headers=request_headers,
+                    timeout=timeout,
+                    extensions={"trace": trace_transport},
+                )
+                response.raise_for_status()
+            with runtime_stage("luna_decode"):
+                response_data = response.json()
+                if not isinstance(response_data, dict):
+                    raise RuntimeError("Invalid response payload: not a JSON object")
+                parsed = ScorerInvokeResponse.from_dict(response_data)
             logger.debug("[GalileoLunaClient] Response: %s", parsed.raw_response)
             return parsed
         except httpx.HTTPStatusError as exc:

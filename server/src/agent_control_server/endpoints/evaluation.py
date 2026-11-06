@@ -13,6 +13,11 @@ from agent_control_models import (
     JSONObject,
 )
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
+from agent_control_models.runtime_timing import (
+    mark_response_ready,
+    observe_request_validation,
+    runtime_stage,
+)
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 
@@ -60,10 +65,7 @@ def _sanitize_condition_trace(trace: object) -> object:
     if not isinstance(trace, dict):
         return trace
 
-    sanitized = {
-        key: _sanitize_condition_trace(value)
-        for key, value in trace.items()
-    }
+    sanitized = {key: _sanitize_condition_trace(value) for key, value in trace.items()}
 
     raw_error = sanitized.get("error")
     if isinstance(raw_error, str) and raw_error:
@@ -233,10 +235,15 @@ async def evaluate(
     on the server; SDKs reconstruct and emit those events separately through
     the observability ingestion endpoint.
     """
-    engine_controls = await _load_engine_controls(request, principal)
+    observe_request_validation()
+    with runtime_stage("controls_load"):
+        engine_controls = await _load_engine_controls(request, principal)
     engine = ControlEngine(engine_controls)
     try:
-        raw_response = await engine.process(request, extensions=_principal_extensions(principal))
+        with runtime_stage("engine"):
+            raw_response = await engine.process(
+                request, extensions=_principal_extensions(principal)
+            )
     except ValueError:
         _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(
@@ -254,4 +261,7 @@ async def evaluate(
             ],
         )
 
-    return _sanitize_evaluation_response(raw_response)
+    with runtime_stage("response_prepare"):
+        response = _sanitize_evaluation_response(raw_response)
+    mark_response_ready()
+    return response

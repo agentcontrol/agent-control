@@ -56,23 +56,14 @@ from .observability.sinks import (
     resolve_control_event_backend,
 )
 from .observability.store import PostgresEventStore
+from .runtime_metrics import RUNTIME_BUCKETS, RuntimeTimingMiddleware, configure_runtime_metrics
 from .ui_assets import configure_ui_routes
 
 logger = logging.getLogger(__name__)
 _logging_configured = False
 
 METRICS_PATH = "/metrics"
-PROMETHEUS_BUCKETS = [
-    0.1,
-    0.5,
-    1.0,
-    2.0,
-    5.0,
-    10.0,
-    30.0,
-    60.0,
-    float("inf"),
-]
+PROMETHEUS_BUCKETS = [*RUNTIME_BUCKETS, float("inf")]
 PROMETHEUS_SKIP_PATHS = [
     METRICS_PATH,
     "/health",
@@ -98,6 +89,8 @@ def _configure_logging_once() -> None:
 
 def add_prometheus_metrics(app: FastAPI, metrics_prefix: str) -> None:
     """Configure Prometheus metrics for the FastAPI app."""
+    configure_runtime_metrics()
+    app.add_middleware(RuntimeTimingMiddleware)
     app.add_middleware(
         PrometheusMiddleware,
         app_name="agent-control-server",
@@ -280,6 +273,7 @@ app.add_middleware(
     allow_headers=settings.get_allow_headers(),
 )
 
+
 @app.middleware("http")
 async def attach_version_header(request, call_next):  # type: ignore[no-untyped-def]
     """Attach server version metadata to every response."""
@@ -410,9 +404,7 @@ def custom_openapi() -> dict[str, Any]:
     # API-key security for it, so patch only this operation in the generated spec.
     controls_schema_path = f"{api_v1_prefix}/controls/schema"
     controls_schema_operation = (
-        openapi_schema.get("paths", {})
-        .get(controls_schema_path, {})
-        .get("get")
+        openapi_schema.get("paths", {}).get(controls_schema_path, {}).get("get")
     )
     if isinstance(controls_schema_operation, dict):
         controls_schema_operation["security"] = []

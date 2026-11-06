@@ -42,3 +42,14 @@ def test_metrics_output_contains_custom_prefix() -> None:
     # Then: metrics include the custom prefix
     assert response.status_code == 200
     assert f"{custom_prefix}_" in response.text
+
+
+def test_runtime_latency_buckets_resolve_the_500ms_slo() -> None:
+    # Given: the public request histogram uses the server's configured boundaries.
+    from agent_control_server.main import PROMETHEUS_BUCKETS
+
+    # When: inspecting boundaries around the latency target.
+    around_target = [x for x in PROMETHEUS_BUCKETS if 0.1 <= x <= 0.5]
+    # Then: interpolation cannot span the previous 400 ms gap.
+    assert around_target[0] == 0.1 and around_target[-1] == 0.5
+    assert all(b - a <= 0.0250001 for a, b in zip(around_target, around_target[1:]))

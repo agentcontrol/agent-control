@@ -24,6 +24,7 @@ from agent_control_models import (
     EvaluatorResult,
     JSONObject,
 )
+from agent_control_models.runtime_timing import runtime_stage
 
 from .selectors import select_data
 
@@ -314,19 +315,25 @@ class ControlEngine:
         selector, evaluator_spec = leaf_parts
 
         selector_path = selector.path or "*"
-        data = select_data(request.step, selector_path)
+        with runtime_stage("selector"):
+            data = select_data(request.step, selector_path)
 
         try:
-            async with semaphore:
-                evaluator = get_evaluator_instance(evaluator_spec)
-                timeout = evaluator.get_timeout_seconds()
-                if timeout <= 0:
-                    timeout = DEFAULT_EVALUATOR_TIMEOUT
+            with runtime_stage("evaluator_queue"):
+                await semaphore.acquire()
+            try:
+                with runtime_stage("evaluator"):
+                    evaluator = get_evaluator_instance(evaluator_spec)
+                    timeout = evaluator.get_timeout_seconds()
+                    if timeout <= 0:
+                        timeout = DEFAULT_EVALUATOR_TIMEOUT
 
-                result = await asyncio.wait_for(
-                    evaluator.evaluate_with_extensions(data, request.step, extensions),
-                    timeout=timeout,
-                )
+                    result = await asyncio.wait_for(
+                        evaluator.evaluate_with_extensions(data, request.step, extensions),
+                        timeout=timeout,
+                    )
+            finally:
+                semaphore.release()
         except TimeoutError:
             error_msg = f"TimeoutError: Evaluator exceeded {timeout}s timeout"
             logger.warning(
@@ -385,10 +392,7 @@ class ControlEngine:
             return EvaluatorResult(
                 matched=False,
                 confidence=0.0,
-                message=(
-                    "Condition evaluation aborted due to a child evaluator error: "
-                    f"{error}"
-                ),
+                message=(f"Condition evaluation aborted due to a child evaluator error: {error}"),
                 metadata=result_metadata,
                 error=error,
             )
@@ -485,9 +489,7 @@ class ControlEngine:
             return _ConditionEvaluation(result=result, trace=trace)
 
         for index, child in enumerate(children):
-            child_eval = await self._evaluate_condition(
-                item, child, request, semaphore, extensions
-            )
+            child_eval = await self._evaluate_condition(item, child, request, semaphore, extensions)
             child_evaluations.append(child_eval)
 
             if child_eval.result.error:
@@ -496,9 +498,7 @@ class ControlEngine:
                     "type": kind,
                     "evaluated": True,
                     "matched": None,
-                    "children": [
-                        evaluation.trace for evaluation in child_evaluations
-                    ]
+                    "children": [evaluation.trace for evaluation in child_evaluations]
                     + [self._skipped_trace(rest, "error") for rest in remaining],
                     "short_circuit_reason": "error",
                 }
@@ -513,9 +513,9 @@ class ControlEngine:
                     trace=trace,
                 )
 
-            should_short_circuit = (
-                kind == "and" and not child_eval.result.matched
-            ) or (kind == "or" and child_eval.result.matched)
+            should_short_circuit = (kind == "and" and not child_eval.result.matched) or (
+                kind == "or" and child_eval.result.matched
+            )
             if should_short_circuit:
                 remaining = children[index + 1 :]
                 matched = child_eval.result.matched if kind == "or" else False
@@ -523,9 +523,7 @@ class ControlEngine:
                     "type": kind,
                     "evaluated": True,
                     "matched": matched,
-                    "children": [
-                        evaluation.trace for evaluation in child_evaluations
-                    ]
+                    "children": [evaluation.trace for evaluation in child_evaluations]
                     + [
                         self._skipped_trace(
                             rest,
@@ -533,13 +531,9 @@ class ControlEngine:
                         )
                         for rest in remaining
                     ],
-                    "short_circuit_reason": (
-                        "or_matched" if kind == "or" else "and_failed"
-                    ),
+                    "short_circuit_reason": ("or_matched" if kind == "or" else "and_failed"),
                 }
-                confidence = min(
-                    evaluation.result.confidence for evaluation in child_evaluations
-                )
+                confidence = min(evaluation.result.confidence for evaluation in child_evaluations)
                 result = self._build_composite_result(
                     matched=matched,
                     confidence=confidence,
@@ -549,10 +543,10 @@ class ControlEngine:
                 return _ConditionEvaluation(result=result, trace=trace)
 
         confidence = min(evaluation.result.confidence for evaluation in child_evaluations)
-        matched = all(
-            evaluation.result.matched for evaluation in child_evaluations
-        ) if kind == "and" else any(
-            evaluation.result.matched for evaluation in child_evaluations
+        matched = (
+            all(evaluation.result.matched for evaluation in child_evaluations)
+            if kind == "and"
+            else any(evaluation.result.matched for evaluation in child_evaluations)
         )
         trace = {
             "type": kind,
@@ -686,10 +680,7 @@ class ControlEngine:
                 )
                 eval_task.result = evaluation.result
 
-                if (
-                    eval_task.result.matched
-                    and eval_task.item.control.action.decision == "deny"
-                ):
+                if eval_task.result.matched and eval_task.item.control.action.decision == "deny":
                     deny_found.set()
             except asyncio.CancelledError:
                 raise
@@ -812,8 +803,7 @@ class ControlEngine:
         # Log steer errors for observability (non-blocking)
         if steer_errored:
             steer_error_names = [
-                e.control_name for e in errors
-                if e.action == "steer" and e.result.error
+                e.control_name for e in errors if e.action == "steer" and e.result.error
             ]
             logger.warning(
                 f"Steer control evaluation failed (non-blocking): {', '.join(steer_error_names)}"

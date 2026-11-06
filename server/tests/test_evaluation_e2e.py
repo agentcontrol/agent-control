@@ -38,6 +38,9 @@ def test_evaluation_flow_deny(client: TestClient):
     assert data["is_safe"] is False
     assert len(data["matches"]) > 0
     assert data["matches"][0]["control_name"] == control_name
+    metrics = client.get("/metrics").text
+    for stage in ("auth_context", "authorization", "controls_load", "engine", "selector", "evaluator_queue", "evaluator", "response_prepare", "request_validation", "response_serialization", "request_total"):
+        assert f'agent_control_server_evaluation_stage_duration_seconds_count{{outcome="completed",stage="{stage}"}}' in metrics
 
 
 def test_evaluation_no_policy(client: TestClient):

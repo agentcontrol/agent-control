@@ -23,12 +23,14 @@ Concepts:
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 
 from agent_control_models import JSONObject
+from agent_control_models.runtime_timing import mark_authorized, runtime_stage
 from fastapi import Request
 
 
@@ -211,11 +213,22 @@ def require_operation(
     async def dependency(request: Request) -> Principal:
         context: dict[str, Any] | None = None
         if context_builder is not None:
-            built = context_builder(request)
-            if inspect.isawaitable(built):
-                built = await built
-            context = built
+            with (
+                runtime_stage("auth_context")
+                if operation == Operation.RUNTIME_USE
+                else nullcontext()
+            ):
+                built = context_builder(request)
+                if inspect.isawaitable(built):
+                    built = await built
+                context = built
         authorizer = get_authorizer(operation)
-        return await authorizer.authorize(request, operation, context)
+        with (
+            runtime_stage("authorization") if operation == Operation.RUNTIME_USE else nullcontext()
+        ):
+            principal = await authorizer.authorize(request, operation, context)
+        if operation == Operation.RUNTIME_USE:
+            mark_authorized()
+        return principal
 
     return dependency
