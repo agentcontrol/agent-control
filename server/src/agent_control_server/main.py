@@ -24,6 +24,7 @@ from .bootstrap.out_of_box_controls import (
     seed_out_of_box_controls,
 )
 from .config import observability_settings, settings
+from .control_cache import close_control_cache
 from .db import AsyncSessionLocal, async_engine
 from .endpoints.agents import router as agent_router
 from .endpoints.auth import router as auth_router
@@ -231,6 +232,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if sink is None or sink is not app.state.event_store:
             await app.state.event_store.close()
         logger.info("EventStore closed")
+
+    await close_control_cache()
 
     await async_engine.dispose()
     logger.info("Database engine disposed")

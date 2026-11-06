@@ -3,7 +3,7 @@
 import logging
 import secrets
 from functools import cached_property
-from typing import Any
+from typing import Any, Literal
 
 from agent_control_models import JSONObject
 from agent_control_telemetry import DEFAULT_CONTROL_EVENT_SINK_NAME
@@ -189,6 +189,21 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "AGENT_CONTROL_OUT_OF_BOX_BOOTSTRAP_TIMEOUT_SECONDS",
         ),
+    )
+
+    control_cache_backend: Literal["postgres", "redis"] = Field(
+        default="postgres", validation_alias=AliasChoices("AGENT_CONTROL_CONTROL_CACHE_BACKEND")
+    )
+    redis_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("AGENT_CONTROL_REDIS_URL")
+    )
+    redis_mode: Literal["standalone", "cluster"] = Field(
+        default="standalone", validation_alias=AliasChoices("AGENT_CONTROL_REDIS_MODE")
+    )
+    control_cache_ttl_seconds: int = Field(
+        default=60,
+        ge=1,
+        validation_alias=AliasChoices("AGENT_CONTROL_CONTROL_CACHE_TTL_SECONDS"),
     )
 
     # Prometheus metrics settings

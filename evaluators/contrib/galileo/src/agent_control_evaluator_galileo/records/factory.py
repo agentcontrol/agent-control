@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 
 from agent_control_models import Step
 from galileo_core.schemas.logging.session import Session
@@ -153,21 +153,21 @@ def record_from_step(
             **common,
             input=GalileoRecordNormalizer.tool_input(input_value),
             output=GalileoRecordNormalizer.tool_output(output_value),
-            spans=_span_children(child_records, parent_type=record_type),
+            spans=cast(Any, _span_children(child_records, parent_type=record_type)),
         )
     if record_type == "retriever":
         return RetrieverSpan(
             **common,
             input=GalileoRecordNormalizer.retriever_input(input_value),
             output=GalileoRecordNormalizer.retriever_output(output_value),
-            spans=_span_children(child_records, parent_type=record_type),
+            spans=cast(Any, _span_children(child_records, parent_type=record_type)),
         )
     if record_type == "trace":
         return Trace(
             **common,
             input=GalileoRecordNormalizer.trace_input(input_value),
             output=GalileoRecordNormalizer.trace_output(output_value),
-            spans=_span_children(child_records, parent_type=record_type),
+            spans=cast(Any, _span_children(child_records, parent_type=record_type)),
         )
     traces = [child for child in child_records if isinstance(child, Trace)]
     if len(traces) != len(child_records):

@@ -43,6 +43,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
+from ..control_cache import (
+    get_control_cache_scopes,
+    invalidate_control_agents,
+    invalidate_control_cache_scopes,
+    invalidate_namespace_agents,
+)
 from ..db import get_async_db
 from ..errors import (
     APIError,
@@ -838,6 +844,7 @@ async def clone_and_bind_control(
             enabled=request.target_binding.enabled,
         )
         await db.commit()
+        await invalidate_namespace_agents(db, namespace_key)
     except APIError:
         await db.rollback()
         raise
@@ -1098,6 +1105,7 @@ async def set_control_data(
             note="Edited",
         )
         await db.commit()
+        await invalidate_control_agents(db, principal.namespace_key, control_id)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -1407,6 +1415,9 @@ async def delete_control(
     target_binding_ids = await bindings_service.list_binding_ids_for_control(
         namespace_key=namespace_key, control_id=control_id
     )
+    cache_agents, has_target_bindings = await get_control_cache_scopes(
+        db, namespace_key, control_id
+    )
 
     if (
         associated_policy_ids
@@ -1493,6 +1504,9 @@ async def delete_control(
             note="Deleted",
         )
         await db.commit()
+        await invalidate_control_cache_scopes(
+            db, namespace_key, cache_agents, has_target_bindings
+        )
         _logger.info("Soft-deleted control '%s' (%s)", control.name, control_id)
     except Exception:
         await db.rollback()
@@ -1629,6 +1643,7 @@ async def patch_control(
                 note="Edited",
             )
             await db.commit()
+            await invalidate_control_agents(db, namespace_key, control_id)
             _logger.info(f"Updated control '{control.name}' ({control_id})")
         except IntegrityError as exc:
             await db.rollback()

@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
 from ..auth_framework.core import IdentityResolver
+from ..control_cache import invalidate_namespace_agents
 from ..db import AsyncSessionLocal, get_async_db
 from ..errors import BadRequestError, ForbiddenError, NotFoundError
 from ..models import ControlBinding
@@ -158,6 +159,7 @@ async def create_control_binding(
         enabled=request.enabled,
     )
     await db.commit()
+    await invalidate_namespace_agents(db, principal.namespace_key)
     await db.refresh(binding)
     return CreateControlBindingResponse(binding_id=binding.id)
 
@@ -286,6 +288,7 @@ async def patch_control_binding_by_key(
         enabled=request.enabled,
     )
     await db.commit()
+    await invalidate_namespace_agents(db, principal.namespace_key)
     return PatchControlBindingResponse(success=True, enabled=binding.enabled)
 
 
@@ -314,6 +317,7 @@ async def patch_control_binding(
         enabled=request.enabled,
     )
     await db.commit()
+    await invalidate_namespace_agents(db, principal.namespace_key)
     return PatchControlBindingResponse(success=True, enabled=binding.enabled)
 
 
@@ -337,6 +341,7 @@ async def delete_control_binding(
     service = ControlBindingsService(db)
     await service.delete_binding(namespace_key=principal.namespace_key, binding_id=binding_id)
     await db.commit()
+    await invalidate_namespace_agents(db, principal.namespace_key)
     return DeleteControlBindingResponse(success=True)
 
 
@@ -369,6 +374,7 @@ async def upsert_control_binding_by_key(
         enabled=request.enabled,
     )
     await db.commit()
+    await invalidate_namespace_agents(db, principal.namespace_key)
     await db.refresh(binding)
     return UpsertControlBindingResponse(
         binding_id=binding.id,
@@ -404,4 +410,5 @@ async def delete_control_binding_by_key(
         control_id=request.control_id,
     )
     await db.commit()
+    await invalidate_namespace_agents(db, principal.namespace_key)
     return DeleteControlBindingByKeyResponse(deleted=deleted)

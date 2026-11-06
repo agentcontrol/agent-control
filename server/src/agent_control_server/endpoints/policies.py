@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, require_operation
+from ..control_cache import invalidate_policy_agents
 from ..db import get_async_db
 from ..errors import ConflictError, DatabaseError, NotFoundError
 from ..logging_utils import get_logger
@@ -146,6 +147,7 @@ async def add_control_to_policy(
             namespace_key=namespace_key,
         )
         await db.commit()
+        await invalidate_policy_agents(db, namespace_key, policy_id)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -228,6 +230,7 @@ async def remove_control_from_policy(
             namespace_key=namespace_key,
         )
         await db.commit()
+        await invalidate_policy_agents(db, namespace_key, policy_id)
     except Exception:
         await db.rollback()
         _logger.error(

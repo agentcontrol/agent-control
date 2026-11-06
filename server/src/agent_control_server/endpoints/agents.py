@@ -37,6 +37,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
+from ..control_cache import invalidate_agent_scope
 from ..db import get_async_db
 from ..errors import (
     APIValidationError,
@@ -939,6 +940,7 @@ async def init_agent(
                 resource="Agent",
                 operation="update",
             )
+        await invalidate_agent_scope(namespace_key, existing.name)
 
     controls = await ControlService(db).list_controls_for_agent(
         existing.name,
@@ -1127,6 +1129,7 @@ async def add_agent_policy(
         )
         await db.execute(stmt)
         await db.commit()
+        await invalidate_agent_scope(namespace_key, agent.name)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -1220,6 +1223,7 @@ async def set_agent_policy(
             .on_conflict_do_nothing()
         )
         await db.commit()
+        await invalidate_agent_scope(namespace_key, agent.name)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -1342,6 +1346,7 @@ async def remove_agent_policy(
             )
         )
         await db.commit()
+        await invalidate_agent_scope(namespace_key, agent.name)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -1382,6 +1387,7 @@ async def remove_all_agent_policies(
             )
         )
         await db.commit()
+        await invalidate_agent_scope(namespace_key, agent.name)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -1439,6 +1445,7 @@ async def delete_agent_policy(
             )
         )
         await db.commit()
+        await invalidate_agent_scope(namespace_key, agent.name)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -1501,6 +1508,7 @@ async def add_agent_control(
             namespace_key=namespace_key,
         )
         await db.commit()
+        await invalidate_agent_scope(namespace_key, agent.name)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -1544,6 +1552,7 @@ async def remove_agent_control(
         )
 
         await db.commit()
+        await invalidate_agent_scope(namespace_key, agent.name)
     except Exception:
         await db.rollback()
         _logger.error(
@@ -2000,6 +2009,7 @@ async def patch_agent(
                 resource="Agent",
                 operation="patch",
             )
+        await invalidate_agent_scope(namespace_key, agent.name)
 
     return PatchAgentResponse(
         steps_removed=steps_removed,
