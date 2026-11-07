@@ -79,3 +79,24 @@ Do not sum their percentiles or subtract independent service p95s.
 The observer is installed by the server's metrics setup. Library callers do
 not need Prometheus and perform no timing without an installed observer.
 Payloads, credentials and user identifiers are never metric labels.
+
+## Runtime latency traces
+
+Install the optional `otel` server extra and configure a full OTLP/HTTP traces
+endpoint in `OTEL_EXPORTER_OTLP_ENDPOINT`. With no endpoint, Runtime tracing is
+disabled. Export runs through a bounded batch processor outside the request path.
+An existing process tracer provider is reused. The server owns shutdown only
+for a provider it created.
+
+Evaluation requests return `X-Galileo-Trace-ID` and `X-Galileo-Trace-Sampled`.
+Each control has a separate span with `galileo.control.id` and the zero-based
+`galileo.control.index`. W3C context follows the Luna request to Runners.
+Runtime stage spans include Redis, control loading, evaluator admission and
+execution, request building, and transport phases. Inclusive spans overlap.
+The dispatch interval includes HTTP pool wait and scheduling before transport
+starts. It does not identify either component independently.
+
+Set `OTEL_TRACES_SAMPLER_ARG` to the desired root sampling ratio. The standalone
+server preserves parent sampling. An Orbit deployment uses its shared provider
+and should set `OTEL_TRACES_SAMPLER=parentbased_traceidratio` across services.
+No payloads, prompts, credentials, or arbitrary baggage are added to these spans.

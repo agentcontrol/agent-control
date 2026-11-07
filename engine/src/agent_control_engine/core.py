@@ -25,6 +25,7 @@ from agent_control_models import (
     JSONObject,
 )
 from agent_control_models.runtime_timing import runtime_stage
+from agent_control_models.runtime_tracing import control_span, runtime_span
 
 from .selectors import select_data
 
@@ -667,17 +668,18 @@ class ControlEngine:
         # whole top-level controls. Composite trees are still walked serially.
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_EVALUATIONS)
 
-        async def evaluate_control(eval_task: _EvalTask) -> None:
+        async def evaluate_control(eval_task: _EvalTask, index: int) -> None:
             """Evaluate a single control, respecting cancellation and timeout."""
             started_at = time.perf_counter()
             try:
-                evaluation = await self._evaluate_condition(
-                    eval_task.item,
-                    eval_task.item.control.condition,
-                    request,
-                    semaphore,
-                    extensions,
-                )
+                with control_span(eval_task.item.id, index):
+                    evaluation = await self._evaluate_condition(
+                        eval_task.item,
+                        eval_task.item.control.condition,
+                        request,
+                        semaphore,
+                        extensions,
+                    )
                 eval_task.result = evaluation.result
 
                 if eval_task.result.matched and eval_task.item.control.action.decision == "deny":
@@ -700,8 +702,8 @@ class ControlEngine:
                     eval_task.execution_duration_ms = (time.perf_counter() - started_at) * 1000
 
         # Create and start all tasks
-        for eval_task in eval_tasks:
-            eval_task.task = asyncio.create_task(evaluate_control(eval_task))
+        for index, eval_task in enumerate(eval_tasks):
+            eval_task.task = asyncio.create_task(evaluate_control(eval_task, index))
 
         # Wait for completion or first deny
         all_tasks = [et.task for et in eval_tasks if et.task is not None]
@@ -718,7 +720,10 @@ class ControlEngine:
 
         try:
             # Wait for all evaluation tasks (some may get cancelled)
-            await asyncio.gather(*all_tasks, return_exceptions=True)
+            with runtime_span(
+                "agentcontrol.controls_join", {"galileo.control.count": len(all_tasks)}
+            ):
+                await asyncio.gather(*all_tasks, return_exceptions=True)
         finally:
             cancel_task.cancel()
             try:

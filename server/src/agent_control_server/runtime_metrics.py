@@ -10,6 +10,7 @@ from agent_control_models.runtime_timing import (
     end_request_timing,
     observe_runtime_stage,
 )
+from agent_control_models.runtime_tracing import observe_runtime_interval
 from prometheus_client import Histogram
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -91,10 +92,17 @@ class RuntimeTimingMiddleware:
                 if message["status"] >= 400:
                     outcome = "error"
                 if timing.response_ready_at is not None:
+                    elapsed = time.perf_counter() - timing.response_ready_at
                     observe_runtime_stage(
                         "response_serialization",
-                        time.perf_counter() - timing.response_ready_at,
+                        elapsed,
                         outcome,
+                    )
+                    ended_ns = time.time_ns()
+                    observe_runtime_interval(
+                        "agentcontrol.stage.response_serialization",
+                        ended_ns - int(elapsed * 1e9),
+                        ended_ns,
                     )
             await send(message)
 

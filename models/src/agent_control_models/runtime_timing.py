@@ -11,6 +11,8 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Literal
 
+from .runtime_tracing import observe_runtime_interval, runtime_span
+
 Stage = Literal[
     "auth_context",
     "authorization",
@@ -32,6 +34,9 @@ Stage = Literal[
     "luna_connect",
     "luna_tls",
     "luna_send",
+    "luna_send_body",
+    "luna_request_build",
+    "luna_transport_dispatch",
     "luna_response_headers",
     "luna_read",
 ]
@@ -69,7 +74,12 @@ def mark_authorized() -> None:
 def observe_request_validation() -> None:
     timing = _request_timing.get()
     if timing is not None and timing.authorized_at is not None:
-        observe_runtime_stage("request_validation", time.perf_counter() - timing.authorized_at)
+        elapsed = time.perf_counter() - timing.authorized_at
+        observe_runtime_stage("request_validation", elapsed)
+        ended_ns = time.time_ns()
+        observe_runtime_interval(
+            "agentcontrol.stage.request_validation", ended_ns - int(elapsed * 1e9), ended_ns
+        )
 
 
 def mark_response_ready() -> None:
@@ -96,18 +106,19 @@ def observe_runtime_stage(stage: Stage, seconds: float, outcome: Outcome = "comp
 @contextmanager
 def runtime_stage(stage: Stage) -> Iterator[None]:
     """Measure inclusive elapsed time, including errors and cancellation."""
-    if _observer is None:
-        yield
-        return
-    started = time.perf_counter()
-    outcome: Outcome = "completed"
-    try:
-        yield
-    except asyncio.CancelledError:
-        outcome = "cancelled"
-        raise
-    except BaseException:
-        outcome = "error"
-        raise
-    finally:
-        observe_runtime_stage(stage, time.perf_counter() - started, outcome)
+    with runtime_span(f"agentcontrol.stage.{stage}"):
+        if _observer is None:
+            yield
+            return
+        started = time.perf_counter()
+        outcome: Outcome = "completed"
+        try:
+            yield
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            raise
+        except BaseException:
+            outcome = "error"
+            raise
+        finally:
+            observe_runtime_stage(stage, time.perf_counter() - started, outcome)

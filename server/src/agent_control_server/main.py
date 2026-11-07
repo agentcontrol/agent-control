@@ -57,6 +57,11 @@ from .observability.sinks import (
 )
 from .observability.store import PostgresEventStore
 from .runtime_metrics import RUNTIME_BUCKETS, RuntimeTimingMiddleware, configure_runtime_metrics
+from .runtime_tracing import (
+    RuntimeTracingMiddleware,
+    initialize_runtime_tracing,
+    shutdown_runtime_tracing,
+)
 from .ui_assets import configure_ui_routes
 
 logger = logging.getLogger(__name__)
@@ -135,6 +140,7 @@ async def _shutdown_observability_sink(sink: object) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for FastAPI app startup and shutdown."""
     _configure_logging_once()
+    initialize_runtime_tracing()
 
     # Install the request-auth provider selected by environment variables.
     from .auth_framework.config import configure_auth_from_env
@@ -229,6 +235,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await close_control_cache()
 
     await async_engine.dispose()
+    await asyncio.to_thread(shutdown_runtime_tracing)
     logger.info("Database engine disposed")
 
 
@@ -263,6 +270,7 @@ Agent → Policy → Control(s)
 )
 
 add_prometheus_metrics(app, settings.prometheus_metrics_prefix)
+app.add_middleware(RuntimeTracingMiddleware)
 
 # Configure CORS
 app.add_middleware(

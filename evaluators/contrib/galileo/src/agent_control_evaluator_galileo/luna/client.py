@@ -10,13 +10,17 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import perf_counter, time
+from time import perf_counter, time, time_ns
 from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
 import httpx
 from agent_control_models import JSONObject, JSONValue, Step
 from agent_control_models.runtime_timing import Stage, observe_runtime_stage, runtime_stage
+from agent_control_models.runtime_tracing import (
+    inject_runtime_trace_headers,
+    observe_runtime_interval,
+)
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ..records import UnsupportedStepTypeError, record_from_step
@@ -596,37 +600,68 @@ class GalileoLunaClient:
         try:
             with runtime_stage("luna_client_acquire"):
                 client = await self._get_client()
-            transport_started: dict[str, float] = {}
+            transport_started: dict[str, tuple[float, int]] = {}
+            dispatch_started: tuple[float, int] | None = None
             transport_stages: dict[str, Stage] = {
                 "connection.connect_tcp": "luna_connect",
                 "connection.start_tls": "luna_tls",
                 "http11.send_request_headers": "luna_send",
+                "http11.send_request_body": "luna_send_body",
                 "http11.receive_response_headers": "luna_response_headers",
                 "http11.receive_response_body": "luna_read",
             }
 
             async def trace_transport(event: str, info: dict[str, Any]) -> None:
+                nonlocal dispatch_started
                 name, _, phase = event.rpartition(".")
                 stage = transport_stages.get(name)
                 if stage is None:
                     return
                 if phase == "started":
-                    transport_started[name] = perf_counter()
+                    if dispatch_started is not None:
+                        started, started_ns = dispatch_started
+                        dispatch_started = None
+                        observe_runtime_stage("luna_transport_dispatch", perf_counter() - started)
+                        observe_runtime_interval(
+                            "agentcontrol.transport.dispatch", started_ns, time_ns()
+                        )
+                    transport_started[name] = (perf_counter(), time_ns())
                 elif phase in ("complete", "failed") and name in transport_started:
+                    started, started_ns = transport_started.pop(name)
                     observe_runtime_stage(
                         stage,
-                        perf_counter() - transport_started.pop(name),
+                        perf_counter() - started,
                         "error" if phase == "failed" else "completed",
+                    )
+                    observe_runtime_interval(
+                        f"agentcontrol.transport.{stage}", started_ns, time_ns()
                     )
 
             with runtime_stage("luna_http"):
-                response = await client.post(
-                    endpoint,
-                    json=request_body,
-                    headers=request_headers,
-                    timeout=timeout,
-                    extensions={"trace": trace_transport},
-                )
+                inject_runtime_trace_headers(request_headers)
+                with runtime_stage("luna_request_build"):
+                    http_request = client.build_request(
+                        "POST",
+                        endpoint,
+                        json=request_body,
+                        headers=request_headers,
+                        timeout=timeout,
+                        extensions={"trace": trace_transport},
+                    )
+                dispatch_started = (perf_counter(), time_ns())
+                try:
+                    response = await client.send(http_request)
+                except BaseException:
+                    if dispatch_started is not None:
+                        started, started_ns = dispatch_started
+                        dispatch_started = None
+                        observe_runtime_stage(
+                            "luna_transport_dispatch", perf_counter() - started, "error"
+                        )
+                        observe_runtime_interval(
+                            "agentcontrol.transport.dispatch", started_ns, time_ns()
+                        )
+                    raise
                 response.raise_for_status()
             with runtime_stage("luna_decode"):
                 response_data = response.json()
