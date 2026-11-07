@@ -554,7 +554,8 @@ async def test_invoke_raises_when_response_is_not_a_json_object(monkeypatch):
     fake_response.json = MagicMock(return_value=["not", "an", "object"])
 
     fake_http = AsyncMock()
-    fake_http.post = AsyncMock(return_value=fake_response)
+    fake_http.build_request = MagicMock(return_value=httpx.Request("POST", "https://example.test/invoke"))
+    fake_http.send = AsyncMock(return_value=fake_response)
     fake_http.is_closed = False
     client._client = fake_http
 
@@ -584,7 +585,8 @@ async def test_invoke_propagates_http_status_error(monkeypatch):
     )
 
     fake_http = AsyncMock()
-    fake_http.post = AsyncMock(return_value=fake_response)
+    fake_http.build_request = MagicMock(return_value=httpx.Request("POST", "https://example.test/invoke"))
+    fake_http.send = AsyncMock(return_value=fake_response)
     fake_http.is_closed = False
     client._client = fake_http
 
@@ -605,7 +607,8 @@ async def test_invoke_propagates_request_error(monkeypatch):
     client = GalileoLunaClient()
 
     fake_http = AsyncMock()
-    fake_http.post = AsyncMock(side_effect=httpx.RequestError("network down"))
+    fake_http.build_request = MagicMock(return_value=httpx.Request("POST", "https://example.test/invoke"))
+    fake_http.send = AsyncMock(side_effect=httpx.RequestError("network down"))
     fake_http.is_closed = False
     client._client = fake_http
 
