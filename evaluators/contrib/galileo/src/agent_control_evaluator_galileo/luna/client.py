@@ -10,7 +10,7 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import perf_counter, time, time_ns
+from time import perf_counter, perf_counter_ns, time, time_ns
 from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ..records import UnsupportedStepTypeError, record_from_step
 from .config import ScorerInvokeConfig, scorer_invoke_runtime_enabled
+from .pool_diagnostics import PoolTiming, begin_pool_diagnostics, diagnostic_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -602,6 +603,7 @@ class GalileoLunaClient:
                 client = await self._get_client()
             transport_started: dict[str, tuple[float, int]] = {}
             dispatch_started: tuple[float, int] | None = None
+            pool_timing: PoolTiming | None = None
             transport_stages: dict[str, Stage] = {
                 "connection.connect_tcp": "luna_connect",
                 "connection.start_tls": "luna_tls",
@@ -609,6 +611,7 @@ class GalileoLunaClient:
                 "http11.send_request_body": "luna_send_body",
                 "http11.receive_response_headers": "luna_response_headers",
                 "http11.receive_response_body": "luna_read",
+                "http11.response_closed": "luna_response_close",
             }
 
             async def trace_transport(event: str, info: dict[str, Any]) -> None:
@@ -627,6 +630,8 @@ class GalileoLunaClient:
                         )
                     transport_started[name] = (perf_counter(), time_ns())
                 elif phase in ("complete", "failed") and name in transport_started:
+                    if name == "http11.receive_response_body" and pool_timing is not None:
+                        pool_timing.last_body_complete = perf_counter_ns()
                     started, started_ns = transport_started.pop(name)
                     observe_runtime_stage(
                         stage,
@@ -648,10 +653,13 @@ class GalileoLunaClient:
                         timeout=timeout,
                         extensions={"trace": trace_transport},
                     )
+                pool_timing = begin_pool_diagnostics(http_request.extensions)
                 dispatch_started = (perf_counter(), time_ns())
+                transport_error: BaseException | None = None
                 try:
                     response = await client.send(http_request)
-                except BaseException:
+                except BaseException as exc:
+                    transport_error = exc
                     if dispatch_started is not None:
                         started, started_ns = dispatch_started
                         dispatch_started = None
@@ -662,6 +670,9 @@ class GalileoLunaClient:
                             "agentcontrol.transport.dispatch", started_ns, time_ns()
                         )
                     raise
+                finally:
+                    if pool_timing is not None:
+                        pool_timing.finish(diagnostic_outcome(transport_error))
                 response.raise_for_status()
             with runtime_stage("luna_decode"):
                 response_data = response.json()

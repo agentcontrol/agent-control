@@ -39,6 +39,12 @@ Stage = Literal[
     "luna_transport_dispatch",
     "luna_response_headers",
     "luna_read",
+    "luna_before_pool",
+    "luna_pool_queue",
+    "luna_pool_housekeeping",
+    "luna_pool_resume",
+    "luna_after_receive",
+    "luna_response_close",
 ]
 Outcome = Literal["completed", "error", "cancelled"]
 Observer = Callable[[Stage, float, Outcome], None]

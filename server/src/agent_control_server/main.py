@@ -57,6 +57,7 @@ from .observability.sinks import (
 )
 from .observability.store import PostgresEventStore
 from .runtime_metrics import RUNTIME_BUCKETS, RuntimeTimingMiddleware, configure_runtime_metrics
+from .runtime_profile import start_runtime_profiler
 from .runtime_tracing import (
     RuntimeTracingMiddleware,
     initialize_runtime_tracing,
@@ -215,7 +216,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         logger.info("Observability initialization complete")
 
-    yield
+    profiler = start_runtime_profiler()
+    try:
+        yield
+    finally:
+        if profiler is not None:
+            await asyncio.to_thread(profiler.stop)
 
     # Shutdown: release auth provider resources (e.g., upstream HTTP clients)
     from .auth_framework.config import teardown_auth
