@@ -3,7 +3,62 @@
 Audit date: November 9, 2026. Branch: `feature/quarry-for-controls`.
 Implementation baseline: `aff76246c9b003ab3553ea6fa32b5bbc880d0367`.
 
-## Orbit integration remains blocked
+## Supported deployment boundary
+
+Python **3.13** is the supported integration target for Orbit deployments that
+load the Quarry evaluator. Both `agent-control-evaluator-quarry==8.15.0` and its
+pinned upstream dependency `cisco-project-quarry==0.1.0` admit that interpreter.
+They can be installed with normal metadata resolution; no fork, metadata bypass,
+or upstream release is needed for this target. Python 3.12 is also admitted.
+
+Agent Control core continues supporting Python 3.14 **without Quarry**. A process
+loading Quarry must use a supported interpreter throughout its image, toolchain,
+and dependency environment. A source pin alone does not make an in-process
+Python 3.14 Quarry installation supported. Orbit's image/toolchain update belongs in
+Orbit; this repository supplies the compatible evaluator and CI coverage.
+
+CI now exercises 3.12, 3.13, and 3.14. The 3.13 job runs the complete `make check`
+including Quarry, engine, and builtin evaluator tests, then builds Quarry's
+wheel/sdist and runs the offline example. The 3.14 job continues checking core
+and other contrib packages with an explicit Quarry exclusion.
+
+## Python 3.13 normal installation validation
+
+On CPython 3.13.13, the following completed with normal metadata resolution and
+without `UV_NO_SYNC`, `--ignore-requires-python`, or dependency overrides:
+
+```sh
+UV_PYTHON=3.13 make -C evaluators/contrib/quarry sync check example build
+```
+
+All 54 Quarry tests passed, along with lint, typecheck, the real offline scan
+example, and wheel/sdist builds. The resulting 40-package development environment
+passed `uv pip check`; all installed distributions admit the interpreter.
+
+A clean source snapshot also passed the complete root `make sync check` under
+Python 3.13.13, without excluding any target: 2,928 tests passed and two SDK
+tests skipped because their optional Galileo extras were absent. This includes
+138 engine, 311 builtin evaluator, and 54 Quarry tests, plus all repository lint
+and typechecks. Each contrib package used its own normally resolved environment.
+
+A separate clean environment installed the built builtin evaluator and models
+wheels with `agent-control-evaluators[quarry]`, resolving Quarry from its built
+wheel. All 27 runtime distributions passed dependency and interpreter metadata
+checks. Entry-point discovery and an actual matching policy scan succeeded from
+installed `site-packages`, with no editable source imports.
+
+Built metadata matches the manifests: our Quarry wheel retains
+`Requires-Python: >=3.12,<3.14` and `cisco-project-quarry==0.1.0`. The builtin extra
+selects Quarry for Python 3.13 and excludes it for Python 3.14. This validates the
+supported Python 3.13 install path without changing the per-package boundary.
+
+The same normal `sync check example build` targets also passed in a native Linux
+ARM64 container on CPython 3.13.18: 54 tests, lint, typecheck, a matching scan, and
+wheel/sdist builds. All 40 installed development distributions passed dependency
+checks and an explicit check of their `Requires-Python` bounds. No metadata was
+bypassed. Orbit's actual image/Bazel integration remains a downstream check.
+
+## Python 3.14 Quarry integration remains blocked
 
 There is no supported Python 3.14 Quarry dependency to pin yet. The only published
 release, `cisco-project-quarry==0.1.0`, declares `Requires-Python: >=3.11,<3.14`.
@@ -28,7 +83,7 @@ Do not treat the baseline SHA as an Orbit-compatible Python 3.14 source pin.
 | Standalone example manifests | All declare `>=3.12`; no additional metadata exclusion. Their separate framework/application environments were not all executed. |
 | Classifiers | The SDK was the only package listing individual Python versions; 3.14 was added after its tests passed. |
 | Interpreter selection | `.python-version` remains `3.12.13`. Checks explicitly set `UV_PYTHON=3.14`; changing `setup-python` alone would not override this file. |
-| CI | Added a 3.14 matrix job alongside 3.12. It checks core and other contrib packages, with an explicit Quarry exclusion describing the upstream blocker. This is not Quarry support certification. |
+| CI | Matrix covers 3.12, 3.13, and 3.14. The 3.13 job checks and builds Quarry normally; 3.14 explicitly excludes Quarry. |
 | Release builds | Python publishing and the TypeScript release helper use 3.12. Their packaging does not itself forbid consumers on 3.14. The existing release defaults remain unchanged. |
 | Server Docker image | Uses `ghcr.io/astral-sh/uv:python3.12-bookworm-slim`; its default was not changed. Orbit's separate image and Bazel toolchain were not modified or validated here. |
 | Bazel | This repository has no Bazel configuration to update. |
@@ -130,7 +185,10 @@ The documented diagnostic Quarry checks used `UV_NO_SYNC=1` after explicitly
 installing the incompatible distributions into a disposable environment. This
 is a compatibility experiment, not an installation recommendation.
 
-## Requirements before giving Orbit a compatible SHA
+## Requirements for future Python 3.14 Quarry support
+
+These requirements concern a future 3.14 Quarry deployment. They do not block
+the supported Python 3.13 deployment described above.
 
 1. Obtain a reviewed upstream release or immutable fork that declares Python
    3.14 support and passes the compiler/scanner tests and dependency checks.
@@ -140,4 +198,4 @@ is a compatibility experiment, not an installation recommendation.
    without metadata bypasses or the explicit CI Quarry exclusion. Validate the
    actual Orbit Linux/Bazel environment; x86-64 wheel resolution is insufficient.
 4. Commit and normally push that validated change, then provide its full SHA.
-   The current implementation baseline does not satisfy these conditions.
+   The current implementation baseline does not satisfy these 3.14 conditions.

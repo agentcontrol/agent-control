@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.14"]
+        python-version: ["3.12", "3.13", "3.14"]
     services:
       postgres:
         image: postgres:16-alpine
@@ -67,6 +67,10 @@ jobs:
       - name: Run Python checks
         if: matrix.python-version != '3.14'
         run: make check
+
+      - name: Build and smoke test Quarry on Python 3.13
+        if: matrix.python-version == '3.13'
+        run: make -C evaluators/contrib/quarry build example
 
       - name: Run Python 3.14 checks (Quarry blocked by upstream metadata)
         if: matrix.python-version == '3.14'

@@ -8,7 +8,9 @@ byte uploads, rule parameters, and policy authoring are outside this integration
 
 ## Install
 
-Use Python **3.12 or 3.13**, matching Quarry's supported Python range:
+Use Python **3.12 or 3.13**, matching Quarry's supported Python range. Python
+**3.13** is the validated integration target for Orbit deployments that bundle
+Quarry; Agent Control core can continue running on Python 3.14 without Quarry.
 
 ```sh
 pip install agent-control-evaluator-quarry
