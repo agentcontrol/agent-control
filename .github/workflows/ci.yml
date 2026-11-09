@@ -8,6 +8,10 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
     services:
       postgres:
         image: postgres:16-alpine
@@ -24,6 +28,8 @@ jobs:
           --health-retries=5
 
     env:
+      # Override .python-version so uv uses the interpreter selected by this job.
+      UV_PYTHON: ${{ matrix.python-version }}
       DB_HOST: 127.0.0.1
       DB_PORT: "5432"
       DB_USER: agent_control
@@ -37,7 +43,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
@@ -59,7 +65,24 @@ jobs:
         run: make sync
 
       - name: Run Python checks
+        if: matrix.python-version != '3.14'
         run: make check
+
+      - name: Build and smoke test Quarry on Python 3.13
+        if: matrix.python-version == '3.13'
+        run: make -C evaluators/contrib/quarry build example
+
+      - name: Run Python 3.14 checks (Quarry blocked by upstream metadata)
+        if: matrix.python-version == '3.14'
+        run: |
+          make check -o contrib-test -o contrib-lint -o contrib-typecheck
+          for package in $(uv run python scripts/contrib_packages.py names); do
+            if [ "$package" = "quarry" ]; then
+              echo "Quarry excluded: cisco-project-quarry==0.1.0 requires Python <3.14."
+              continue
+            fi
+            make -C "evaluators/contrib/$package" check
+          done
 
       - name: Collect coverage files
         id: coverage_files

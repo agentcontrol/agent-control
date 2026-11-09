@@ -77,6 +77,7 @@ version_toml = [
     "evaluators/contrib/cisco/pyproject.toml:project.version",
     "evaluators/contrib/defenseclaw/pyproject.toml:project.version",
     "evaluators/contrib/galileo/pyproject.toml:project.version",
+    "evaluators/contrib/quarry/pyproject.toml:project.version",
 ]
 version_source = "tag"
 commit_message = "chore(release): v{version}"
