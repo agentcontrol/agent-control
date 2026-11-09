@@ -1019,15 +1019,6 @@ async def test_http_upstream_4xx_diagnostics_redact_dynamic_location_and_type(
         pytest.param(
             lambda req: httpx.Response(
                 422,
-                content=b'{"detail":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}",
-            ),
-            "unknown",
-            "unusable",
-            id="deeply-nested-json",
-        ),
-        pytest.param(
-            lambda req: httpx.Response(
-                422,
                 json={
                     "detail": [
                         {
@@ -1064,6 +1055,32 @@ async def test_http_upstream_4xx_diagnostics_tolerate_unexpected_bodies(
     assert f"upstream_validation_total={expected_total}" in record.getMessage()
     assert record.__dict__["upstream_validation_status"] == expected_status
     assert f"upstream_validation_status={expected_status}" in record.getMessage()
+
+
+@pytest.mark.asyncio
+async def test_http_upstream_4xx_diagnostics_tolerate_deeply_nested_json(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Given: a valid JSON rejection body beyond older interpreters' decoder recursion limit
+    provider = _build_upstream(
+        lambda req: httpx.Response(
+            422, content=b'{"detail":' + b"[" * 10_000 + b"0" + b"]" * 10_000 + b"}",
+        )
+    )
+
+    # When: authorization receives the rejection
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(APIError) as exc_info:
+            await provider.authorize(_build_request(), Operation.CONTROL_BINDINGS_WRITE)
+
+    # Then: decoder depth limits affect only the diagnostic count, never the 502 decision
+    record = _rejection_record(caplog)
+    assert exc_info.value.status_code == 502
+    assert record.__dict__["upstream_validation"] == {}
+    assert (
+        record.__dict__["upstream_validation_total"],
+        record.__dict__["upstream_validation_status"],
+    ) in ((1, "parsed"), ("unknown", "unusable"))
 
 
 @pytest.mark.asyncio

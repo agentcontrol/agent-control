@@ -22,6 +22,11 @@ do not load Quarry. The convenience extra excludes Quarry on Python 3.14 because
 Quarry does not support it. Direct installation reports the Python incompatibility.
 Quarry is alpha; this integration pins `cisco-project-quarry==0.1.0` for DSL stability.
 
+Python 3.14 remains blocked by that upstream release's `Requires-Python` metadata,
+even though diagnostic runtime tests pass when metadata enforcement is bypassed.
+See the [Python 3.14 compatibility audit](PYTHON314.md) for workspace checks,
+dependency findings, and the requirements for an Orbit-compatible source pin.
+
 ## Control configuration
 
 ```json
