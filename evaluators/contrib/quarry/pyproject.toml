@@ -1,0 +1,41 @@
+[project]
+name = "agent-control-evaluator-quarry"
+version = "8.15.0"
+description = "Local Project Quarry policy evaluator for Agent Control"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Agent Control Team" }]
+dependencies = [
+    "agent-control-evaluators>=8.15.0",
+    "agent-control-models>=8.15.0",
+    "cisco-project-quarry==0.1.0",
+]
+
+[project.entry-points."agent_control.evaluators"]
+"quarry.policy" = "agent_control_evaluator_quarry:QuarryEvaluator"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_control_evaluator_quarry"]
+
+[tool.uv.sources]
+agent-control-evaluators = { path = "../../builtin", editable = true }
+agent-control-models = { path = "../../../models", editable = true }
+agent-control-engine = { path = "../../../engine", editable = true }
+
+[dependency-groups]
+dev = [
+    "agent-control-engine>=8.15.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
