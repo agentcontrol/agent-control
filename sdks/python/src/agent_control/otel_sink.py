@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
-from agent_control_models import ControlExecutionEvent, JSONObject
+from agent_control_models import ControlCheckEvent, ControlExecutionEvent, JSONObject
 from agent_control_telemetry.sinks import BaseControlEventSink, SinkResult
 
 from .settings import get_settings
@@ -156,6 +156,37 @@ def control_event_to_otel_span(event: ControlExecutionEvent) -> OTELControlEvent
     )
 
 
+def control_check_event_to_otel_span(event: ControlCheckEvent) -> OTELControlEventSpan:
+    """Convert a measured whole check without inventing individual control identity."""
+    attributes: dict[str, AttributeValue] = {
+        "agent_control.control_check_id": event.control_check_id,
+        "agent_control.agent_name": event.agent_name,
+        "agent_control.check_stage": event.check_stage,
+        "agent_control.control_check_status": event.status,
+        "agent_control.control_check_elapsed_ms": event.elapsed_ms,
+    }
+    attributes["metadata"] = json.dumps(
+        {
+            "control_check_id": event.control_check_id,
+            "check_stage": event.check_stage,
+            "control_check_elapsed_ms": event.elapsed_ms,
+            "control_check_status": event.status,
+        },
+        sort_keys=True,
+    )
+    if event.is_safe is not None:
+        attributes["agent_control.is_safe"] = event.is_safe
+    return OTELControlEventSpan(
+        name="agent_control.control_check",
+        trace_id=event.trace_id,
+        parent_span_id=event.span_id,
+        attributes=attributes,
+        start_time_unix_nano=event.start_time_unix_nano,
+        end_time_unix_nano=event.end_time_unix_nano,
+        error_message="Control check failed" if event.status == "error" else None,
+    )
+
+
 class _NoOpControlEventSink(BaseControlEventSink):
     """Sink that accepts events but intentionally emits nothing."""
 
@@ -196,6 +227,17 @@ class OTELControlEventSink(BaseControlEventSink):
 
         return SinkResult(accepted=accepted, dropped=dropped)
 
+    def write_control_check_events(self, events: Sequence[ControlCheckEvent]) -> SinkResult:
+        """Write genuine SDK check spans using this sink's existing provider."""
+        accepted = 0
+        for event in events:
+            try:
+                self._write_span(control_check_event_to_otel_span(event))
+                accepted += 1
+            except Exception:
+                logger.warning("Failed to emit control check to OTEL", exc_info=True)
+        return SinkResult(accepted=accepted, dropped=len(events) - accepted)
+
     def flush(self) -> None:
         force_flush = getattr(self._tracer_provider, "force_flush", None)
         if callable(force_flush):
@@ -209,7 +251,9 @@ class OTELControlEventSink(BaseControlEventSink):
             shutdown()
 
     def _write_event(self, event: ControlExecutionEvent) -> None:
-        span_data = control_event_to_otel_span(event)
+        self._write_span(control_event_to_otel_span(event))
+
+    def _write_span(self, span_data: OTELControlEventSpan) -> None:
         parent_context = self._build_parent_context(span_data)
         span = self._tracer.start_span(
             span_data.name,

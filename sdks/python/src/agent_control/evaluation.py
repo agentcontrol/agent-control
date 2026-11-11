@@ -21,6 +21,7 @@ from agent_control_models import (
 
 from ._state import state
 from .client import AgentControlClient
+from .control_check import measure_control_check
 from .evaluation_events import build_control_execution_events, enqueue_observability_events
 from .observability import is_observability_enabled
 from .tracing import get_trace_and_span_ids
@@ -258,6 +259,44 @@ async def check_evaluation(
     target_type: str | None = None,
     target_id: str | None = None,
 ) -> EvaluationResult:
+    """Evaluate one stage and measure its SDK caller-visible control-check elapsed time.
+
+    Includes preparation inside this helper, SDK-local controls (when supplied),
+    and the conditional remote call, including network/token-refresh delays.
+    Excludes SDK initialization and the protected tool/LLM function. Legacy or
+    manually constructed results retain null timing. Errors/cancellation still
+    propagate; an enabled compatible sink records the check outcome separately.
+    """
+    resolved_trace_id, resolved_span_id = get_trace_and_span_ids()
+    return await measure_control_check(
+        lambda: _check_evaluation(
+            client=client,
+            agent_name=agent_name,
+            step=step,
+            stage=stage,
+            target_type=target_type,
+            target_id=target_id,
+            trace_id=resolved_trace_id,
+            span_id=resolved_span_id,
+        ),
+        agent_name=agent_name,
+        stage=stage,
+        trace_id=resolved_trace_id,
+        span_id=resolved_span_id,
+    )
+
+
+async def _check_evaluation(
+    client: AgentControlClient,
+    agent_name: str,
+    step: Step,
+    stage: Literal["pre", "post"],
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
+    trace_id: str | None = None,
+    span_id: str | None = None,
+) -> EvaluationResult:
     """Check if agent interaction is safe through the public SDK helper.
 
     The server returns only evaluation semantics. When SDK observability is
@@ -274,7 +313,7 @@ async def check_evaluation(
     _validate_target_pair(target_type, target_id)
 
     normalized_name = ensure_agent_name(agent_name)
-    resolved_trace_id, resolved_span_id = get_trace_and_span_ids()
+    resolved_trace_id, resolved_span_id = trace_id, span_id
     request = EvaluationRequest(
         agent_name=normalized_name,
         step=step,
@@ -310,6 +349,52 @@ async def check_evaluation(
 
 
 async def check_evaluation_with_local(
+    client: AgentControlClient,
+    agent_name: str,
+    step: Step,
+    stage: Literal["pre", "post"],
+    controls: list[dict[str, Any]],
+    trace_id: str | None = None,
+    span_id: str | None = None,
+    event_agent_name: str | None = None,
+    *,
+    target_type: str | None = None,
+    target_id: str | None = None,
+) -> EvaluationResult:
+    """Evaluate one stage and measure its SDK caller-visible control-check elapsed time.
+
+    Includes preparation inside this helper, SDK-local controls (when supplied),
+    and the conditional remote call, including network/token-refresh delays.
+    Excludes SDK initialization and the protected tool/LLM function. Legacy or
+    manually constructed results retain null timing. Errors/cancellation still
+    propagate; an enabled compatible sink records the check outcome separately.
+    """
+    resolved_trace_id, resolved_span_id = trace_id, span_id
+    if trace_id is None or span_id is None:
+        current_trace_id, current_span_id = get_trace_and_span_ids()
+        resolved_trace_id = trace_id or current_trace_id
+        resolved_span_id = span_id or current_span_id
+    return await measure_control_check(
+        lambda: _check_evaluation_with_local(
+            client=client,
+            agent_name=agent_name,
+            step=step,
+            stage=stage,
+            target_type=target_type,
+            target_id=target_id,
+            controls=controls,
+            trace_id=resolved_trace_id,
+            span_id=resolved_span_id,
+            event_agent_name=event_agent_name,
+        ),
+        agent_name=event_agent_name or agent_name,
+        stage=stage,
+        trace_id=resolved_trace_id,
+        span_id=resolved_span_id,
+    )
+
+
+async def _check_evaluation_with_local(
     client: AgentControlClient,
     agent_name: str,
     step: Step,

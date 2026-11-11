@@ -59,6 +59,7 @@ import httpx
 from agent_control_models import (
     Agent,
     ControlAction,
+    ControlCheckEvent,
     ControlDefinition,
     ControlMatch,
     ControlScope,
@@ -112,6 +113,7 @@ from .observability import (
     sync_shutdown_observability,
     unregister_control_event_sink,
     unregister_control_event_sink_factory,
+    write_control_check_events,
     write_events,
 )
 from .otel_sink import control_event_to_otel_span
@@ -1636,6 +1638,7 @@ __all__ = [
     # Observability
     "init_observability",
     "add_event",
+    "write_control_check_events",
     "write_events",
     "shutdown_observability",
     "is_observability_enabled",
@@ -1659,6 +1662,7 @@ __all__ = [
     "StepSchema",
     "EvaluationRequest",
     "EvaluationResult",
+    "ControlCheckEvent",
     "ControlDefinition",
     "TemplateControlInput",
     "TemplateDefinition",
