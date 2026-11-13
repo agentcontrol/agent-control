@@ -8,8 +8,8 @@ import { getAgentRoute } from '@/core/constants/agent-routes';
 import {
   expect,
   focusJsonEditorAt,
-  getJsonEditorValue,
   getJsonEditorSuggestions,
+  getJsonEditorValue,
   mockData,
   mockRoutes,
   setJsonEditorValue,
@@ -23,6 +23,7 @@ test.describe('Agent Detail Page', () => {
   ) => getAgentRoute(agentId, { tab: 'controls', query });
   const agentUrl = getAgentControlsUrl();
   const agentMonitorUrl = getAgentRoute(agentId, { tab: 'monitor' });
+  const agentEventsUrl = getAgentRoute(agentId, { tab: 'events' });
 
   // Type-safe access to mock agent data
   const agentData: GetAgentResponse = mockData.agent;
@@ -52,6 +53,9 @@ test.describe('Agent Detail Page', () => {
     ).toBeVisible();
     await expect(
       mockedPage.getByRole('tab', { name: /Monitor/i })
+    ).toBeVisible();
+    await expect(
+      mockedPage.getByRole('tab', { name: /Events/i })
     ).toBeVisible();
   });
 
@@ -94,6 +98,14 @@ test.describe('Agent Detail Page', () => {
     // Controls tab should not be selected
     const controlsTab = mockedPage.getByRole('tab', { name: /Controls/i });
     await expect(controlsTab).toHaveAttribute('aria-selected', 'false');
+  });
+
+  test('events tab can be opened directly', async ({ mockedPage }) => {
+    await mockedPage.goto(agentEventsUrl);
+
+    const eventsTab = mockedPage.getByRole('tab', { name: 'Events' });
+    await expect(eventsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(mockedPage.getByText('Recent executions')).toBeVisible();
   });
 
   test('displays controls table with data', async ({ mockedPage }) => {
