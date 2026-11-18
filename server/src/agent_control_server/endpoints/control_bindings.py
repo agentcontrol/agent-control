@@ -26,8 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
 from ..auth_framework.core import IdentityResolver
+from ..auth_framework.target_context import complete_target_context
 from ..db import AsyncSessionLocal, get_async_db
-from ..errors import BadRequestError, ForbiddenError, NotFoundError
+from ..errors import APIValidationError, BadRequestError, ForbiddenError, NotFoundError
 from ..models import ControlBinding
 from ..services.control_bindings import ControlBindingsService
 
@@ -38,7 +39,7 @@ _MAX_LIST_LIMIT = 100
 
 
 async def _binding_body_context(request: Request) -> dict[str, Any]:
-    """Surface ``(target_type, target_id)`` to the authorization context.
+    """Validate and surface the body target before binding authorization.
 
     The body-bearing binding endpoints carry the target identifiers in
     the request payload. Authorization providers can use those
@@ -49,14 +50,16 @@ async def _binding_body_context(request: Request) -> dict[str, Any]:
     """
     try:
         body = await request.json()
-    except Exception:  # noqa: BLE001  malformed JSON falls through to endpoint validation
-        return {}
-    if not isinstance(body, dict):
-        return {}
-    return {
-        "target_type": body.get("target_type"),
-        "target_id": body.get("target_id"),
-    }
+    except Exception:  # noqa: BLE001  invalid JSON is reported as a client error below
+        body = None
+    target_context = complete_target_context(body if isinstance(body, dict) else None)
+    if target_context is None:
+        raise APIValidationError(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Binding writes require target_type and target_id in the JSON body.",
+            hint="Pass both target_type and target_id in the JSON body, not as query parameters.",
+        )
+    return target_context
 
 
 async def _binding_list_context(request: Request) -> dict[str, Any]:

@@ -132,6 +132,42 @@ def test_target_required_binding_list_rejects_incomplete_queries_locally(
     storage.assert_not_awaited()
 
 
+def test_target_required_binding_list_keeps_existing_long_query_behavior(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, orbit_upstream_url: str
+) -> None:
+    # Given: GET has no field-length limit, unlike the body-bearing binding models.
+    target_id = "x" * 256
+    payloads: list[dict[str, Any]] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "namespace_key": DEFAULT_NAMESPACE_KEY,
+                "target_type": "log_stream",
+                "target_id": target_id,
+            },
+        )
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: a complete target pair exceeds the body model's length limit.
+        response = client.get(
+            _BINDINGS_URL,
+            params={"target_type": "log_stream", "target_id": target_id},
+        )
+
+    # Then: GET still delegates that complete target to Orbit.
+    assert response.status_code == 200, response.text
+    assert payloads == [
+        {
+            "operation": Operation.CONTROL_BINDINGS_READ.value,
+            "context": {"target_type": "log_stream", "target_id": target_id},
+        }
+    ]
+
+
 def test_clone_and_bind_query_only_target_does_not_reach_orbit_binding_check(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, orbit_upstream_url: str
 ) -> None:
@@ -191,6 +227,83 @@ def test_clone_and_bind_valid_target_still_requires_orbit_binding_grant(
         Operation.CONTROL_BINDINGS_WRITE.value,
     ]
     assert payloads[-1]["context"] == {"target_type": "log_stream", "target_id": target_id}
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("PUT", _BINDINGS_URL),
+        ("PATCH", f"{_BINDINGS_URL}/by-key"),
+        ("PUT", f"{_BINDINGS_URL}/by-key"),
+        ("POST", f"{_BINDINGS_URL}/by-key:delete"),
+    ],
+)
+def test_binding_write_missing_body_target_rejects_before_orbit(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    orbit_upstream_url: str,
+    method: str,
+    path: str,
+) -> None:
+    # Given: a body-bearing binding route and Orbit's missing-target rejection.
+    upstream_requests: list[httpx.Request] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        upstream_requests.append(request)
+        return httpx.Response(400, json={"detail": "Target context is required."})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: control_id is supplied without the required target pair.
+        response = client.request(method, path, json={"control_id": 1})
+
+    # Then: the request is rejected locally as invalid client input.
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "VALIDATION_ERROR"
+    assert upstream_requests == []
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("PUT", _BINDINGS_URL),
+        ("PATCH", f"{_BINDINGS_URL}/by-key"),
+        ("PUT", f"{_BINDINGS_URL}/by-key"),
+        ("POST", f"{_BINDINGS_URL}/by-key:delete"),
+    ],
+)
+def test_binding_write_valid_target_preserves_orbit_denial(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    orbit_upstream_url: str,
+    method: str,
+    path: str,
+) -> None:
+    # Given: a complete target pair and a permission denial from Orbit.
+    target_id = str(uuid.uuid4())
+    payloads: list[dict[str, Any]] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        return httpx.Response(403, json={"detail": "Binding denied."})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: the caller sends a valid body to the binding route.
+        response = client.request(
+            method,
+            path,
+            json={"target_type": "log_stream", "target_id": target_id, "control_id": 1},
+        )
+
+    # Then: the target pair reaches Orbit and its denial is not converted to 422.
+    assert response.status_code == 403, response.text
+    assert payloads == [
+        {
+            "operation": Operation.CONTROL_BINDINGS_WRITE.value,
+            "context": {"target_type": "log_stream", "target_id": target_id},
+        }
+    ]
 
 
 def test_orbit_binding_list_pagination_keeps_target_filter(

@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 from copy import deepcopy
-from typing import Any, TypeGuard
+from typing import Any
 
 from agent_control_engine import list_evaluators
 from agent_control_models import ControlDefinition, TemplateControlInput, UnrenderedTemplateControl
@@ -43,6 +43,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
+from ..auth_framework.target_context import complete_target_context
 from ..db import get_async_db
 from ..errors import (
     APIError,
@@ -95,7 +96,7 @@ _TRUE_QUERY_VALUES = {"1", "true", "t", "yes", "y", "on"}
 _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
 
 
-def _is_target_context_value(value: object) -> TypeGuard[str]:
+def _is_target_context_value(value: object) -> bool:
     return (
         isinstance(value, str)
         and bool(value)
@@ -126,14 +127,10 @@ async def _clone_and_bind_context(request: Request) -> dict[str, Any]:
     except Exception:  # noqa: BLE001  invalid JSON is reported as a client error below
         body = None
     target_binding = body.get("target_binding") if isinstance(body, dict) else None
-    target_type = target_binding.get("target_type") if isinstance(target_binding, dict) else None
-    target_id = target_binding.get("target_id") if isinstance(target_binding, dict) else None
-    if (
-        not _is_target_context_value(target_type)
-        or not target_type.strip()
-        or not _is_target_context_value(target_id)
-        or not target_id.strip()
-    ):
+    target_context = complete_target_context(
+        target_binding if isinstance(target_binding, dict) else None
+    )
+    if target_context is None:
         raise APIValidationError(
             error_code=ErrorCode.VALIDATION_ERROR,
             detail="Clone-and-bind requires a target_binding with target_type and target_id.",
@@ -142,10 +139,7 @@ async def _clone_and_bind_context(request: Request) -> dict[str, Any]:
                 "not as query parameters."
             ),
         )
-    return {
-        "target_type": target_type,
-        "target_id": target_id,
-    }
+    return target_context
 
 
 def _attachment_target_context(request: Request) -> dict[str, str] | None:
