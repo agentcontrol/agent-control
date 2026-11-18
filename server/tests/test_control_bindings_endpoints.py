@@ -305,6 +305,48 @@ def test_binding_write_invalid_json_shape_rejects_before_orbit(
         ("POST", f"{_BINDINGS_URL}/by-key:delete"),
     ],
 )
+@pytest.mark.parametrize("body_shape", ["no-body", "text-plain"])
+def test_binding_write_unparsed_body_returns_client_error_before_orbit(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    orbit_upstream_url: str,
+    method: str,
+    path: str,
+    body_shape: str,
+) -> None:
+    # FastAPI leaves these bodies unparsed before the auth context builder runs.
+    upstream_requests: list[httpx.Request] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        upstream_requests.append(request)
+        return httpx.Response(400, json={"detail": "Target context is required."})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        kwargs: dict[str, Any] = {}
+        if body_shape == "text-plain":
+            kwargs = {"content": b"{", "headers": {"Content-Type": "text/plain"}}
+        response = client.request(
+            method,
+            path,
+            params={"target_type": "log_stream", "target_id": "stream-42"},
+            **kwargs,
+        )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "VALIDATION_ERROR"
+    assert upstream_requests == []
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("PUT", _BINDINGS_URL),
+        ("PATCH", f"{_BINDINGS_URL}/by-key"),
+        ("PUT", f"{_BINDINGS_URL}/by-key"),
+        ("POST", f"{_BINDINGS_URL}/by-key:delete"),
+    ],
+)
 def test_binding_write_valid_target_preserves_orbit_denial(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

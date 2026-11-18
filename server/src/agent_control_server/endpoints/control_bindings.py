@@ -48,7 +48,11 @@ async def _binding_body_context(request: Request) -> dict[str, Any]:
     FastAPI caches the parsed body, so the endpoint's own Pydantic
     request model still binds normally.
     """
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError:
+        # FastAPI does not parse an empty or non-JSON body before this dependency.
+        body = None
     target_context = complete_target_context(body if isinstance(body, dict) else None)
     if target_context is None:
         raise APIValidationError(
