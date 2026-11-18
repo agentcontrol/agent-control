@@ -264,6 +264,39 @@ def test_binding_write_missing_body_target_rejects_before_orbit(
 
 
 @pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(b"{", id="malformed-json"),
+        pytest.param(b"[]", id="non-object-json"),
+    ],
+)
+def test_binding_write_invalid_json_shape_rejects_before_orbit(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    orbit_upstream_url: str,
+    body: bytes,
+) -> None:
+    # FastAPI rejects malformed or non-object JSON before binding authorization.
+    upstream_requests: list[httpx.Request] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        upstream_requests.append(request)
+        return httpx.Response(400, json={"detail": "Target context is required."})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        response = client.put(
+            _BINDINGS_URL,
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "VALIDATION_ERROR"
+    assert upstream_requests == []
+
+
+@pytest.mark.parametrize(
     ("method", "path"),
     [
         ("PUT", _BINDINGS_URL),

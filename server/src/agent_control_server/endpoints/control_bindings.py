@@ -48,10 +48,7 @@ async def _binding_body_context(request: Request) -> dict[str, Any]:
     FastAPI caches the parsed body, so the endpoint's own Pydantic
     request model still binds normally.
     """
-    try:
-        body = await request.json()
-    except Exception:  # noqa: BLE001  invalid JSON is reported as a client error below
-        body = None
+    body = await request.json()
     target_context = complete_target_context(body if isinstance(body, dict) else None)
     if target_context is None:
         raise APIValidationError(
