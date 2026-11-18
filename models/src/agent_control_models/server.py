@@ -686,9 +686,10 @@ class PatchControlResponse(BaseModel):
 
 # Control binding requests / responses.
 
+# Keep opaque identifiers unchanged while rejecting values made only of whitespace.
 ControlBindingTargetField = Annotated[
     str,
-    StringConstraints(min_length=1, max_length=255),
+    StringConstraints(min_length=1, max_length=255, pattern=r"\S"),
 ]
 
 

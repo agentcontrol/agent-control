@@ -1491,9 +1491,19 @@ def test_list_controls_builds_complete_attachment_auth_context(
     [
         {"include_attachments": "true", "attachment_target_type": "log_stream"},
         {"include_attachments": "true", "attachment_target_id": "ls-prod"},
+        {
+            "include_attachments": "true",
+            "attachment_target_type": " ",
+            "attachment_target_id": "ls-prod",
+        },
+        {
+            "include_attachments": "true",
+            "attachment_target_type": "log_stream",
+            "attachment_target_id": "\t",
+        },
     ],
 )
-def test_list_controls_rejects_incomplete_attachment_filters_without_auth_call(
+def test_list_controls_rejects_invalid_attachment_filters_without_auth_call(
     client: TestClient,
     params: dict[str, str],
 ) -> None:

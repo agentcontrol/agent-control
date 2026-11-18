@@ -264,6 +264,32 @@ def test_binding_write_missing_body_target_rejects_before_orbit(
 
 
 @pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("PUT", _BINDINGS_URL),
+        ("PATCH", f"{_BINDINGS_URL}/by-key"),
+        ("PUT", f"{_BINDINGS_URL}/by-key"),
+        ("POST", f"{_BINDINGS_URL}/by-key:delete"),
+    ],
+)
+def test_binding_write_invalid_target_precedes_authentication(
+    unauthenticated_client: TestClient,
+    method: str,
+    path: str,
+) -> None:
+    # Target-shape errors precede auth; a complete target still requires credentials.
+    invalid = unauthenticated_client.request(method, path, json={"control_id": 1})
+    valid = unauthenticated_client.request(
+        method,
+        path,
+        json={"control_id": 1, "target_type": "log_stream", "target_id": "stream-42"},
+    )
+
+    assert invalid.status_code == 422, invalid.text
+    assert valid.status_code == 401, valid.text
+
+
+@pytest.mark.parametrize(
     "body",
     [
         pytest.param(b"{", id="malformed-json"),
@@ -276,7 +302,7 @@ def test_binding_write_invalid_json_shape_rejects_before_orbit(
     orbit_upstream_url: str,
     body: bytes,
 ) -> None:
-    # FastAPI rejects malformed or non-object JSON before binding authorization.
+    # FastAPI rejects malformed JSON; the context builder rejects non-object JSON.
     upstream_requests: list[httpx.Request] = []
 
     def upstream_auth(request: httpx.Request) -> httpx.Response:
