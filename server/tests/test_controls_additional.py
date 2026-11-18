@@ -473,8 +473,22 @@ def test_clone_and_bind_context_tolerates_invalid_body_shapes(
     assert bad_target_resp.status_code == 422
 
 
-def test_clone_and_bind_context_drops_invalid_target_fields(
+@pytest.mark.parametrize(
+    ("body", "query"),
+    [
+        (None, "?target_type=log_stream&target_id=stream-1"),
+        ({"target_type": "log_stream", "target_id": "stream-1"}, ""),
+        ({"target_binding": {}}, ""),
+        ({"target_binding": {"target_type": "log_stream"}}, ""),
+        ({"target_binding": {"target_type": " ", "target_id": "stream-1"}}, ""),
+        ({"target_binding": {"target_type": ["log_stream"], "target_id": "stream-1"}}, ""),
+    ],
+    ids=["query-only", "flat-body", "empty-target", "partial-target", "blank-target", "wrong-type"],
+)
+def test_clone_and_bind_rejects_missing_target_before_binding_authorization(
     client: TestClient,
+    body: dict[str, Any] | None,
+    query: str,
 ) -> None:
     calls: list[tuple[Operation, dict[str, Any] | None]] = []
 
@@ -490,23 +504,17 @@ def test_clone_and_bind_context_drops_invalid_target_fields(
 
     set_authorizer(RecordingAuthorizer())
 
-    resp = client.post(
-        "/api/v1/controls/1/clone-and-bind",
-        json={
-            "target_binding": {
-                "target_type": ["log_stream"],
-                "target_id": {"id": "logstream-invalid"},
-            },
-        },
-    )
+    resp = client.post(f"/api/v1/controls/1/clone-and-bind{query}", json=body)
 
     assert resp.status_code == 422
+    assert resp.json()["error_code"] == "VALIDATION_ERROR"
+    assert "target_binding" in resp.json()["hint"]
     binding_contexts = [
         context
         for operation, context in calls
         if operation == Operation.CONTROL_BINDINGS_WRITE
     ]
-    assert binding_contexts == [{}]
+    assert binding_contexts == []
 
 
 def test_clone_and_bind_context_drops_overlong_target_fields(
@@ -542,7 +550,7 @@ def test_clone_and_bind_context_drops_overlong_target_fields(
         for operation, context in calls
         if operation == Operation.CONTROL_BINDINGS_WRITE
     ]
-    assert binding_contexts == [{}]
+    assert binding_contexts == []
 
 
 def test_clone_and_bind_rejects_unknown_target_binding_fields(
@@ -1483,9 +1491,19 @@ def test_list_controls_builds_complete_attachment_auth_context(
     [
         {"include_attachments": "true", "attachment_target_type": "log_stream"},
         {"include_attachments": "true", "attachment_target_id": "ls-prod"},
+        {
+            "include_attachments": "true",
+            "attachment_target_type": " ",
+            "attachment_target_id": "ls-prod",
+        },
+        {
+            "include_attachments": "true",
+            "attachment_target_type": "log_stream",
+            "attachment_target_id": "\t",
+        },
     ],
 )
-def test_list_controls_rejects_incomplete_attachment_filters_without_auth_call(
+def test_list_controls_rejects_invalid_attachment_filters_without_auth_call(
     client: TestClient,
     params: dict[str, str],
 ) -> None:

@@ -72,6 +72,7 @@ from ...errors import (
 )
 from ...logging_utils import get_logger
 from ..core import Operation, Principal, RequestAuthorizer
+from ..target_context import complete_target_context
 
 _logger = get_logger(__name__)
 
@@ -372,16 +373,7 @@ class HttpUpstreamAuthProvider(RequestAuthorizer):
             self._config.binding_list_requires_target
             and operation == Operation.CONTROL_BINDINGS_READ
         ):
-            target_context = context or {}
-            target_type = target_context.get("target_type")
-            target_id = target_context.get("target_id")
-            has_complete_target = (
-                isinstance(target_type, str)
-                and bool(target_type.strip())
-                and isinstance(target_id, str)
-                and bool(target_id.strip())
-            )
-            if not has_complete_target:
+            if complete_target_context(context, max_length=None) is None:
                 raise APIValidationError(
                     error_code=ErrorCode.VALIDATION_ERROR,
                     detail=(

@@ -43,6 +43,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth_framework import Operation, Principal, get_authorizer, require_operation
+from ..auth_framework.target_context import complete_target_context
 from ..db import get_async_db
 from ..errors import (
     APIError,
@@ -88,19 +89,10 @@ _CONTROL_NAME_UNIQUE_CONSTRAINTS = {
     "idx_controls_name_active",
     "idx_controls_namespace_name_active",
 }
-_MAX_TARGET_CONTEXT_VALUE_LENGTH = 255
 _CLONE_NAME_SUFFIX_HEX_LENGTH = 16
 _GENERATED_CLONE_NAME_ATTEMPTS = 5
 _TRUE_QUERY_VALUES = {"1", "true", "t", "yes", "y", "on"}
 _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
-
-
-def _is_target_context_value(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and bool(value)
-        and len(value) <= _MAX_TARGET_CONTEXT_VALUE_LENGTH
-    )
 
 
 def _ensure_same_namespace_authorization(
@@ -120,40 +112,35 @@ def _ensure_same_namespace_authorization(
 
 
 async def _clone_and_bind_context(request: Request) -> dict[str, Any]:
-    """Surface clone target identifiers to the authorization context."""
+    """Validate the clone target before requesting binding authorization."""
     try:
         body = await request.json()
-    except Exception:  # noqa: BLE001  malformed JSON falls through to endpoint validation
-        return {}
-    if not isinstance(body, dict):
-        return {}
-    target_binding = body.get("target_binding")
-    if not isinstance(target_binding, dict):
-        return {}
-    target_type = target_binding.get("target_type")
-    target_id = target_binding.get("target_id")
-    if not _is_target_context_value(target_type):
-        return {}
-    if not _is_target_context_value(target_id):
-        return {}
-    return {
-        "target_type": target_type,
-        "target_id": target_id,
-    }
+    except ValueError:  # empty or non-JSON body is validated below
+        body = None
+    target_binding = body.get("target_binding") if isinstance(body, dict) else None
+    target_context = complete_target_context(
+        target_binding if isinstance(target_binding, dict) else None
+    )
+    if target_context is None:
+        raise APIValidationError(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Clone-and-bind requires a target_binding with target_type and target_id.",
+            hint=(
+                "Pass target_binding.target_type and target_binding.target_id in the JSON body, "
+                "not as query parameters."
+            ),
+        )
+    return target_context
 
 
 def _attachment_target_context(request: Request) -> dict[str, str] | None:
     """Return target context only when both attachment identifiers are valid."""
-    target_type = request.query_params.get("attachment_target_type")
-    target_id = request.query_params.get("attachment_target_id")
-    if (
-        target_type is None
-        or target_id is None
-        or not _is_target_context_value(target_type)
-        or not _is_target_context_value(target_id)
-    ):
-        return None
-    return {"target_type": target_type, "target_id": target_id}
+    return complete_target_context(
+        {
+            "target_type": request.query_params.get("attachment_target_type"),
+            "target_id": request.query_params.get("attachment_target_id"),
+        }
+    )
 
 
 async def _optional_attachment_target_principal(request: Request) -> Principal | None:
@@ -1181,6 +1168,7 @@ async def list_controls(
         None,
         min_length=1,
         max_length=255,
+        pattern=r"\S",
         description=(
             "Optional target_type filter applied to the returned controls and "
             "expanded target bindings. "
@@ -1191,6 +1179,7 @@ async def list_controls(
         None,
         min_length=1,
         max_length=255,
+        pattern=r"\S",
         description=(
             "Optional target_id filter applied to the returned controls and "
             "expanded target bindings. "
