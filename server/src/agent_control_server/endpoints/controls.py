@@ -1,7 +1,7 @@
 import datetime as dt
 import uuid
 from copy import deepcopy
-from typing import Any
+from typing import Any, TypeGuard
 
 from agent_control_engine import list_evaluators
 from agent_control_models import ControlDefinition, TemplateControlInput, UnrenderedTemplateControl
@@ -95,7 +95,7 @@ _TRUE_QUERY_VALUES = {"1", "true", "t", "yes", "y", "on"}
 _SLUG_NAME_ADAPTER = TypeAdapter(SlugName)
 
 
-def _is_target_context_value(value: object) -> bool:
+def _is_target_context_value(value: object) -> TypeGuard[str]:
     return (
         isinstance(value, str)
         and bool(value)
@@ -120,22 +120,28 @@ def _ensure_same_namespace_authorization(
 
 
 async def _clone_and_bind_context(request: Request) -> dict[str, Any]:
-    """Surface clone target identifiers to the authorization context."""
+    """Validate the clone target before requesting binding authorization."""
     try:
         body = await request.json()
-    except Exception:  # noqa: BLE001  malformed JSON falls through to endpoint validation
-        return {}
-    if not isinstance(body, dict):
-        return {}
-    target_binding = body.get("target_binding")
-    if not isinstance(target_binding, dict):
-        return {}
-    target_type = target_binding.get("target_type")
-    target_id = target_binding.get("target_id")
-    if not _is_target_context_value(target_type):
-        return {}
-    if not _is_target_context_value(target_id):
-        return {}
+    except Exception:  # noqa: BLE001  invalid JSON is reported as a client error below
+        body = None
+    target_binding = body.get("target_binding") if isinstance(body, dict) else None
+    target_type = target_binding.get("target_type") if isinstance(target_binding, dict) else None
+    target_id = target_binding.get("target_id") if isinstance(target_binding, dict) else None
+    if (
+        not _is_target_context_value(target_type)
+        or not target_type.strip()
+        or not _is_target_context_value(target_id)
+        or not target_id.strip()
+    ):
+        raise APIValidationError(
+            error_code=ErrorCode.VALIDATION_ERROR,
+            detail="Clone-and-bind requires a target_binding with target_type and target_id.",
+            hint=(
+                "Pass target_binding.target_type and target_binding.target_id in the JSON body, "
+                "not as query parameters."
+            ),
+        )
     return {
         "target_type": target_type,
         "target_id": target_id,

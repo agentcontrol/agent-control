@@ -1,4 +1,4 @@
-"""HTTP-level coverage for the ``/control-bindings`` endpoints."""
+"""HTTP-level coverage for binding endpoints and target authorization."""
 
 from __future__ import annotations
 
@@ -130,6 +130,67 @@ def test_target_required_binding_list_rejects_incomplete_queries_locally(
     assert "control_id" in response.json()["hint"]
     assert upstream_requests == []
     storage.assert_not_awaited()
+
+
+def test_clone_and_bind_query_only_target_does_not_reach_orbit_binding_check(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, orbit_upstream_url: str
+) -> None:
+    # Given: the incident's query-only request and an Orbit-style missing-target rejection.
+    operations: list[str] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        operation = json.loads(request.content)["operation"]
+        operations.append(operation)
+        if operation == Operation.CONTROL_BINDINGS_WRITE.value:
+            return httpx.Response(400, json={"detail": "Target context is required."})
+        return httpx.Response(200, json={"namespace_key": DEFAULT_NAMESPACE_KEY})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: target identifiers appear in the URL but no JSON body is sent.
+        response = client.post(
+            "/api/v1/controls/342/clone-and-bind",
+            params={"target_type": "log_stream", "target_id": str(uuid.uuid4())},
+        )
+
+    # Then: Agent Control reports a client error before the binding authorization call.
+    assert response.status_code == 422, response.text
+    assert response.json()["error_code"] == "VALIDATION_ERROR"
+    assert "target_binding" in response.json()["hint"]
+    assert operations == [Operation.CONTROLS_CREATE.value, Operation.CONTROLS_READ.value]
+
+
+def test_clone_and_bind_valid_target_still_requires_orbit_binding_grant(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, orbit_upstream_url: str
+) -> None:
+    # Given: a valid nested target body and a binding-write denial from Orbit.
+    control_id = _create_control(client)
+    target_id = str(uuid.uuid4())
+    payloads: list[dict[str, Any]] = []
+
+    def upstream_auth(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        if payload["operation"] == Operation.CONTROL_BINDINGS_WRITE.value:
+            return httpx.Response(403, json={"detail": "Binding denied."})
+        return httpx.Response(200, json={"namespace_key": DEFAULT_NAMESPACE_KEY})
+
+    upstream_client = httpx.AsyncClient(transport=httpx.MockTransport(upstream_auth))
+    with _configured_orbit_authorizer(monkeypatch, orbit_upstream_url, upstream_client):
+        # When: a caller tries to bind a clone to that target.
+        response = client.post(
+            f"/api/v1/controls/{control_id}/clone-and-bind",
+            json={"target_binding": {"target_type": "log_stream", "target_id": target_id}},
+        )
+
+    # Then: the target reaches Orbit and the denial remains a 403.
+    assert response.status_code == 403, response.text
+    assert [payload["operation"] for payload in payloads] == [
+        Operation.CONTROLS_CREATE.value,
+        Operation.CONTROLS_READ.value,
+        Operation.CONTROL_BINDINGS_WRITE.value,
+    ]
+    assert payloads[-1]["context"] == {"target_type": "log_stream", "target_id": target_id}
 
 
 def test_orbit_binding_list_pagination_keeps_target_filter(
