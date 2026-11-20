@@ -2,6 +2,34 @@
 
 <!-- version list -->
 
+## v8.16.0 (2026-11-20)
+
+### Bug Fixes
+
+- **evaluators**: Use galileo-core Span alias for child spans
+  ([#303](https://github.com/agentcontrol/agent-control/pull/303),
+  [`a77589b`](https://github.com/agentcontrol/agent-control/commit/a77589bfcbecf31e59aa0a8ab970c4ea9c442fad))
+
+- **server**: Validate Orbit binding-list targets locally
+  ([#297](https://github.com/agentcontrol/agent-control/pull/297),
+  [`39140e0`](https://github.com/agentcontrol/agent-control/commit/39140e028b5b636fe35654dfd71ef14edec08088))
+
+- **server**: Validate targets before binding authorization [SAO-20817]
+  ([#305](https://github.com/agentcontrol/agent-control/pull/305),
+  [`ece2edb`](https://github.com/agentcontrol/agent-control/commit/ece2edb87bbb2dc84c1902c1a2ff476da150717b))
+
+### Chores
+
+- **release**: Ts sdk v3.5.0 [skip ci]
+  ([`b1cfa88`](https://github.com/agentcontrol/agent-control/commit/b1cfa88974e5939c4705bc2818d1d3ff6c2b823d))
+
+### Features
+
+- **evaluators**: Update runtime urls
+  ([#298](https://github.com/agentcontrol/agent-control/pull/298),
+  [`7027bbb`](https://github.com/agentcontrol/agent-control/commit/7027bbbb985b2e8e4d912f6d9e40c74e1bc19f1c))
+
+
 ## v8.15.0 (2026-10-23)
 
 ### Chores
