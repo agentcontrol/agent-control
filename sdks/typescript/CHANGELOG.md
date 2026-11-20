@@ -1,3 +1,16 @@
+## [3.5.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.4.0...ts-sdk-v3.5.0) (2026-11-20)
+
+### Features
+
+* **evaluators:** add Galileo Decision Models evaluator ([#293](https://github.com/agentcontrol/agent-control/issues/293)) ([c7cd862](https://github.com/agentcontrol/agent-control/commit/c7cd86217332f92abfaa80b934a650e9bc8894f5))
+* **evaluators:** update runtime urls ([#298](https://github.com/agentcontrol/agent-control/issues/298)) ([7027bbb](https://github.com/agentcontrol/agent-control/commit/7027bbbb985b2e8e4d912f6d9e40c74e1bc19f1c))
+
+### Bug Fixes
+
+* **evaluators:** use galileo-core Span alias for child spans ([#303](https://github.com/agentcontrol/agent-control/issues/303)) ([a77589b](https://github.com/agentcontrol/agent-control/commit/a77589bfcbecf31e59aa0a8ab970c4ea9c442fad)), closes [#302](https://github.com/agentcontrol/agent-control/issues/302)
+* **server:** validate Orbit binding-list targets locally ([#297](https://github.com/agentcontrol/agent-control/issues/297)) ([39140e0](https://github.com/agentcontrol/agent-control/commit/39140e028b5b636fe35654dfd71ef14edec08088))
+* **server:** Validate targets before binding authorization [SAO-20817] ([#305](https://github.com/agentcontrol/agent-control/issues/305)) ([ece2edb](https://github.com/agentcontrol/agent-control/commit/ece2edb87bbb2dc84c1902c1a2ff476da150717b))
+
 ## [3.4.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.3.0...ts-sdk-v3.4.0) (2026-10-19)
 
 ### Features
