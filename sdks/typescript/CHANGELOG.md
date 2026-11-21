@@ -1,3 +1,9 @@
+## [3.6.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.5.0...ts-sdk-v3.6.0) (2026-11-20)
+
+### Features
+
+* **evaluators:** Revert update runtime urls ([#298](https://github.com/agentcontrol/agent-control/issues/298)) ([#306](https://github.com/agentcontrol/agent-control/issues/306)) ([d82f503](https://github.com/agentcontrol/agent-control/commit/d82f503fce6d5020db47ff1c1ddafe12c26bb9f1))
+
 ## [3.5.0](https://github.com/agentcontrol/agent-control/compare/ts-sdk-v3.4.0...ts-sdk-v3.5.0) (2026-11-20)
 
 ### Features

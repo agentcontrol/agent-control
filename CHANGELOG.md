@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v8.17.0 (2026-11-20)
+
+### Chores
+
+- **release**: Ts sdk v3.6.0 [skip ci]
+  ([`d3c723c`](https://github.com/agentcontrol/agent-control/commit/d3c723c79df51bd27bb7e86e4190af6997824c20))
+
+### Features
+
+- **evaluators**: Revert update runtime urls (#298)
+  ([#306](https://github.com/agentcontrol/agent-control/pull/306),
+  [`d82f503`](https://github.com/agentcontrol/agent-control/commit/d82f503fce6d5020db47ff1c1ddafe12c26bb9f1))
+
+
 ## v8.16.0 (2026-11-20)
 
 ### Bug Fixes
