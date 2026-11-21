@@ -65,7 +65,6 @@ async def setup():
                                 "values": [
                                     "north korea",
                                     "iran",
-                                    "syria",
                                     "cuba",
                                     "crimea",
                                 ],
