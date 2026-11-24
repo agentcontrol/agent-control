@@ -20,10 +20,29 @@ _UPSTREAM_DIAGNOSTIC_FIELDS = (
     "upstream_validation_total",
     "upstream_validation_status",
 )
+_LATENCY_DIAGNOSTIC_FIELDS = (
+    "diagnostic_request_id",
+    "diagnostic_control_id",
+    "controls_load_ms",
+    "control_engine_ms",
+    "response_sanitize_ms",
+    "handler_total_ms",
+    "control_count",
+    "execution_ms",
+    "semaphore_wait_ms",
+    "evaluator_name",
+    "request_preparation_ms",
+    "auth_token_ms",
+    "http_client_acquire_ms",
+    "runners_http_round_trip_ms",
+    "response_parse_ms",
+    "client_total_ms",
+    "http_status_code",
+)
 
 
 class _JsonLogFormatter(logging.Formatter):
-    """Render log messages and approved upstream diagnostics as valid JSON."""
+    """Render log messages and approved diagnostics as valid JSON."""
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, object] = {
@@ -32,7 +51,7 @@ class _JsonLogFormatter(logging.Formatter):
             "name": record.name,
             "msg": record.getMessage(),
         }
-        for field in _UPSTREAM_DIAGNOSTIC_FIELDS:
+        for field in (*_UPSTREAM_DIAGNOSTIC_FIELDS, *_LATENCY_DIAGNOSTIC_FIELDS):
             if field in record.__dict__:
                 payload[field] = record.__dict__[field]
         if record.exc_info:

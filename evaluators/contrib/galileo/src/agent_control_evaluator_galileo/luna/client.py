@@ -10,7 +10,7 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import time
+from time import perf_counter, time
 from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
@@ -540,6 +540,7 @@ class GalileoLunaClient:
             httpx.HTTPStatusError: If the Luna invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
         """
+        invoke_started = perf_counter()
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
@@ -580,7 +581,10 @@ class GalileoLunaClient:
             config=invoke_config,
         ).to_dict()
 
+        request_preparation_ms = (perf_counter() - invoke_started) * 1000
+        auth_started = perf_counter()
         endpoint, auth_header = self._endpoint_and_auth_header()
+        auth_token_ms = (perf_counter() - auth_started) * 1000
         request_headers = {
             k: v for k, v in (headers or {}).items() if k.lower() not in _BLOCKED_REQUEST_HEADERS
         }
@@ -589,20 +593,38 @@ class GalileoLunaClient:
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
         logger.debug("[GalileoLunaClient] Request body: %s", request_body)
 
+        diagnostic_id = request_headers.get("X-Galileo-Diagnostic-ID")
+        client_acquire_ms: float | None = None
+        http_round_trip_ms: float | None = None
+        response_parse_ms: float | None = None
+        status_code: int | None = None
         try:
-            client = await self._get_client()
-            response = await client.post(
-                endpoint,
-                json=request_body,
-                headers=request_headers,
-                timeout=timeout,
-            )
+            client_acquire_started = perf_counter()
+            try:
+                client = await self._get_client()
+            finally:
+                client_acquire_ms = (perf_counter() - client_acquire_started) * 1000
+            http_started = perf_counter()
+            try:
+                response = await client.post(
+                    endpoint,
+                    json=request_body,
+                    headers=request_headers,
+                    timeout=timeout,
+                )
+            finally:
+                http_round_trip_ms = (perf_counter() - http_started) * 1000
+            status_code = response.status_code
             response.raise_for_status()
-            response_data = response.json()
-            if not isinstance(response_data, dict):
-                raise RuntimeError("Invalid response payload: not a JSON object")
+            parse_started = perf_counter()
+            try:
+                response_data = response.json()
+                if not isinstance(response_data, dict):
+                    raise RuntimeError("Invalid response payload: not a JSON object")
 
-            parsed = ScorerInvokeResponse.from_dict(response_data)
+                parsed = ScorerInvokeResponse.from_dict(response_data)
+            finally:
+                response_parse_ms = (perf_counter() - parse_started) * 1000
             logger.debug("[GalileoLunaClient] Response: %s", parsed.raw_response)
             return parsed
         except httpx.HTTPStatusError as exc:
@@ -615,6 +637,24 @@ class GalileoLunaClient:
         except httpx.RequestError as exc:
             logger.error("[GalileoLunaClient] Request failed: %s", exc)
             raise
+        finally:
+            if diagnostic_id is not None:
+                logger.info(
+                    "Agent Control scorer-invoke client timing",
+                    extra={
+                        "diagnostic_request_id": diagnostic_id,
+                        "diagnostic_control_id": request_headers.get(
+                            "X-Galileo-Diagnostic-Control-ID"
+                        ),
+                        "request_preparation_ms": request_preparation_ms,
+                        "auth_token_ms": auth_token_ms,
+                        "http_client_acquire_ms": client_acquire_ms,
+                        "runners_http_round_trip_ms": http_round_trip_ms,
+                        "response_parse_ms": response_parse_ms,
+                        "client_total_ms": (perf_counter() - invoke_started) * 1000,
+                        "http_status_code": status_code,
+                    },
+                )
 
     async def close(self) -> None:
         """Close HTTP clients and release resources."""

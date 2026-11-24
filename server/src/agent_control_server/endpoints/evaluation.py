@@ -39,7 +39,12 @@ _DIAGNOSTIC_EXTENSION = "_agent_control_diagnostics"
 
 def _latency_diagnostics_enabled() -> bool:
     """Return whether opt-in evaluation timing logs are enabled."""
-    return os.getenv(_LATENCY_DIAGNOSTICS_ENV, "").strip().lower() in {"1", "true", "yes", "enabled"}
+    return os.getenv(_LATENCY_DIAGNOSTICS_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "enabled",
+    }
 
 
 @dataclass
@@ -277,13 +282,15 @@ async def evaluate(
                 "response_sanitize_ms": (time.perf_counter() - sanitize_started) * 1000,
                 "handler_total_ms": (time.perf_counter() - handler_started) * 1000,
                 "control_count": len(engine_controls),
-                "control_timings_ms": [
-                    {
-                        "control_id": match.control_id,
-                        "execution_ms": match.execution_duration_ms,
-                    }
-                    for match in control_results
-                ],
             },
         )
+        for match in control_results:
+            _logger.info(
+                "Evaluation control timing",
+                extra={
+                    "diagnostic_request_id": diagnostic_id,
+                    "diagnostic_control_id": str(match.control_id),
+                    "execution_ms": match.execution_duration_ms,
+                },
+            )
     return sanitized_response

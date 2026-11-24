@@ -342,7 +342,9 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
             scorer_kwargs["selected_data_payload_field"] = self.config.payload_field
             scorer_kwargs["execution_context"] = execution_context
             diagnostic_headers: dict[str, str] = {}
-            diagnostic = extensions.get("_agent_control_diagnostics") if extensions is not None else None
+            diagnostic = (
+                extensions.get("_agent_control_diagnostics") if extensions is not None else None
+            )
             if isinstance(diagnostic, dict):
                 request_id = diagnostic.get("request_id")
                 control_id = diagnostic.get("control_id")
@@ -351,13 +353,14 @@ class LlmEvaluator(Evaluator[LlmEvaluatorConfig]):
                         "X-Galileo-Diagnostic-ID": request_id,
                         "X-Galileo-Diagnostic-Control-ID": control_id,
                     }
+            if diagnostic_headers:
+                scorer_kwargs["headers"] = diagnostic_headers
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,
                 output=output_text if _has_text(output_text) else None,
                 config=self.config.scorer_config,
                 timeout=self.get_timeout_seconds(),
-                headers=diagnostic_headers or None,
             )
 
             if response.status.lower() != "success":

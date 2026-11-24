@@ -620,7 +620,9 @@ class GalileoLLMClient:
                         "Agent Control slow scorer-invoke client timing",
                         extra={
                             "diagnostic_request_id": diagnostic_id,
-                            "diagnostic_control_id": request_headers.get("X-Galileo-Diagnostic-Control-ID"),
+                            "diagnostic_control_id": request_headers.get(
+                                "X-Galileo-Diagnostic-Control-ID"
+                            ),
                             "request_preparation_ms": request_preparation_ms,
                             "auth_token_ms": auth_token_ms,
                             "http_client_acquire_ms": client_acquire_ms,

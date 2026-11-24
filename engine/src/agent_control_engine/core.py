@@ -316,13 +316,14 @@ class ControlEngine:
 
         selector_path = selector.path or "*"
         data = select_data(request.step, selector_path)
-        semaphore_wait_started = time.perf_counter()
+        diagnostic = extensions.get(_DIAGNOSTIC_EXTENSION) if extensions is not None else None
+        semaphore_wait_started = time.perf_counter() if isinstance(diagnostic, dict) else None
         semaphore_wait_ms: float | None = None
 
         try:
             async with semaphore:
-                acquired_at = time.perf_counter()
-                semaphore_wait_ms = (acquired_at - semaphore_wait_started) * 1000
+                if semaphore_wait_started is not None:
+                    semaphore_wait_ms = (time.perf_counter() - semaphore_wait_started) * 1000
                 evaluator = get_evaluator_instance(evaluator_spec)
                 timeout = evaluator.get_timeout_seconds()
                 if timeout <= 0:
@@ -353,8 +354,11 @@ class ControlEngine:
             )
             result = self._build_error_result(error_msg)
         finally:
-            diagnostic = extensions.get(_DIAGNOSTIC_EXTENSION) if extensions is not None else None
-            if isinstance(diagnostic, dict) and semaphore_wait_ms is not None and semaphore_wait_ms >= 1:
+            if (
+                isinstance(diagnostic, dict)
+                and semaphore_wait_ms is not None
+                and semaphore_wait_ms >= 1
+            ):
                 request_id = diagnostic.get("request_id")
                 control_id = diagnostic.get("control_id")
                 if isinstance(request_id, str) and isinstance(control_id, str):
@@ -698,7 +702,7 @@ class ControlEngine:
             started_at = time.perf_counter()
             control_extensions = extensions
             diagnostic = extensions.get(_DIAGNOSTIC_EXTENSION) if extensions is not None else None
-            if isinstance(diagnostic, dict):
+            if isinstance(diagnostic, dict) and extensions is not None:
                 control_extensions = {
                     **extensions,
                     _DIAGNOSTIC_EXTENSION: {
