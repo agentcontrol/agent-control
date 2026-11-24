@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ..records import UnsupportedStepTypeError, record_from_step
 from .config import ScorerInvokeConfig, scorer_invoke_runtime_enabled
+from .pool_diagnostics import PoolTiming, begin_pool_diagnostics, pool_diagnostics_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -598,6 +599,44 @@ class GalileoLunaClient:
         http_round_trip_ms: float | None = None
         response_parse_ms: float | None = None
         status_code: int | None = None
+        httpcore_first_event_ms: float | None = None
+        http_diagnostics_enabled = diagnostic_id is not None and pool_diagnostics_enabled()
+        transport_event_starts: dict[str, float] | None = {} if http_diagnostics_enabled else None
+        transport_event_durations: dict[str, float] | None = {} if http_diagnostics_enabled else None
+        pool_timing: PoolTiming | None = None
+        pool_timing_fields: dict[str, float | None] = {}
+
+        async def trace_transport(event: str, _info: dict[str, Any]) -> None:
+            nonlocal httpcore_first_event_ms
+            if transport_event_starts is None or transport_event_durations is None:
+                return
+            try:
+                name, _, phase = event.rpartition(".")
+                field_name = {
+                    "connection.connect_tcp": "http_connect_tcp_ms",
+                    "connection.start_tls": "http_start_tls_ms",
+                    "http11.send_request_headers": "http_send_headers_ms",
+                    "http11.send_request_body": "http_send_body_ms",
+                    "http11.receive_response_headers": "http_receive_headers_ms",
+                    "http11.receive_response_body": "http_receive_body_ms",
+                }.get(name)
+                if field_name is None:
+                    return
+                now = perf_counter()
+                if phase == "started":
+                    if httpcore_first_event_ms is None:
+                        httpcore_first_event_ms = (now - http_started) * 1000
+                    transport_event_starts[name] = now
+                elif phase in {"complete", "failed"}:
+                    started = transport_event_starts.pop(name, None)
+                    if started is not None:
+                        transport_event_durations[field_name] = transport_event_durations.get(
+                            field_name, 0.0
+                        ) + (now - started) * 1000
+            except Exception:
+                # Diagnostics must never turn a successful scorer call into a failure.
+                logger.debug("Unable to record Luna HTTP transport timing", exc_info=True)
+
         try:
             client_acquire_started = perf_counter()
             try:
@@ -606,14 +645,28 @@ class GalileoLunaClient:
                 client_acquire_ms = (perf_counter() - client_acquire_started) * 1000
             http_started = perf_counter()
             try:
-                response = await client.post(
-                    endpoint,
-                    json=request_body,
-                    headers=request_headers,
-                    timeout=timeout,
-                )
+                if http_diagnostics_enabled:
+                    request = client.build_request(
+                        "POST",
+                        endpoint,
+                        json=request_body,
+                        headers=request_headers,
+                        timeout=timeout,
+                        extensions={"trace": trace_transport},
+                    )
+                    pool_timing = begin_pool_diagnostics(request.extensions)
+                    response = await client.send(request)
+                else:
+                    response = await client.post(
+                        endpoint,
+                        json=request_body,
+                        headers=request_headers,
+                        timeout=timeout,
+                    )
             finally:
                 http_round_trip_ms = (perf_counter() - http_started) * 1000
+                if pool_timing is not None:
+                    pool_timing_fields = pool_timing.finish()
             status_code = response.status_code
             response.raise_for_status()
             parse_started = perf_counter()
@@ -650,6 +703,9 @@ class GalileoLunaClient:
                         "auth_token_ms": auth_token_ms,
                         "http_client_acquire_ms": client_acquire_ms,
                         "runners_http_round_trip_ms": http_round_trip_ms,
+                        "httpcore_first_event_ms": httpcore_first_event_ms,
+                        **(transport_event_durations or {}),
+                        **pool_timing_fields,
                         "response_parse_ms": response_parse_ms,
                         "client_total_ms": (perf_counter() - invoke_started) * 1000,
                         "http_status_code": status_code,
