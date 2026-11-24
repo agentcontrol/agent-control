@@ -10,7 +10,7 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import time
+from time import perf_counter, time
 from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
@@ -527,6 +527,7 @@ class GalileoLLMClient:
             httpx.HTTPStatusError: If the invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
         """
+        invoke_started = perf_counter()
         if step is None:
             raise ValueError("LLM scorer invocation requires a runtime step.")
         if execution_context is None:
@@ -560,8 +561,11 @@ class GalileoLLMClient:
             execution_context=execution_context,
             config=invoke_config,
         ).to_dict()
+        request_preparation_ms = (perf_counter() - invoke_started) * 1000
 
+        auth_started = perf_counter()
         endpoint, auth_header = self._endpoint_and_auth_header()
+        auth_token_ms = (perf_counter() - auth_started) * 1000
         request_headers = {
             k: v for k, v in (headers or {}).items() if k.lower() not in _BLOCKED_REQUEST_HEADERS
         }
@@ -570,20 +574,32 @@ class GalileoLLMClient:
         logger.debug("[GalileoLLMClient] POST %s", endpoint)
         logger.debug("[GalileoLLMClient] Request body: %s", request_body)
 
+        diagnostic_id = request_headers.get("X-Galileo-Diagnostic-ID")
+        client_acquire_ms: float | None = None
+        http_round_trip_ms: float | None = None
+        response_parse_ms: float | None = None
+        status_code: int | None = None
         try:
+            client_acquire_started = perf_counter()
             client = await self._get_client()
+            client_acquire_ms = (perf_counter() - client_acquire_started) * 1000
+            http_started = perf_counter()
             response = await client.post(
                 endpoint,
                 json=request_body,
                 headers=request_headers,
                 timeout=timeout,
             )
+            http_round_trip_ms = (perf_counter() - http_started) * 1000
+            status_code = response.status_code
             response.raise_for_status()
+            parse_started = perf_counter()
             response_data = response.json()
             if not isinstance(response_data, dict):
                 raise RuntimeError("Invalid response payload: not a JSON object")
 
             parsed = ScorerInvokeResponse.from_dict(response_data)
+            response_parse_ms = (perf_counter() - parse_started) * 1000
             logger.debug("[GalileoLLMClient] Response: %s", parsed.raw_response)
             return parsed
         except httpx.HTTPStatusError as exc:
@@ -596,6 +612,24 @@ class GalileoLLMClient:
         except httpx.RequestError as exc:
             logger.error("[GalileoLLMClient] Request failed: %s", exc)
             raise
+        finally:
+            if diagnostic_id is not None:
+                client_total_ms = (perf_counter() - invoke_started) * 1000
+                if client_total_ms >= 200 or status_code is None or status_code >= 400:
+                    logger.info(
+                        "Agent Control slow scorer-invoke client timing",
+                        extra={
+                            "diagnostic_request_id": diagnostic_id,
+                            "diagnostic_control_id": request_headers.get("X-Galileo-Diagnostic-Control-ID"),
+                            "request_preparation_ms": request_preparation_ms,
+                            "auth_token_ms": auth_token_ms,
+                            "http_client_acquire_ms": client_acquire_ms,
+                            "runners_http_round_trip_ms": http_round_trip_ms,
+                            "response_parse_ms": response_parse_ms,
+                            "client_total_ms": client_total_ms,
+                            "http_status_code": status_code,
+                        },
+                    )
 
     async def close(self) -> None:
         """Close HTTP clients and release resources."""
