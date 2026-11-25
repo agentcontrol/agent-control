@@ -1,8 +1,12 @@
 import logging
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any
 
 from prometheus_client import Gauge
+from sqlalchemy import event
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.asyncio.engine import AsyncEngine
@@ -111,6 +115,39 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
     class_=AsyncSession,
 )
+
+
+@dataclass
+class ControlLoadDatabaseTiming:
+    """Record the connection acquisition and cursor execution for one control load."""
+
+    checkout_ms: float = field(init=False, default=0.0)
+    sql_ms: float = field(init=False, default=0.0)
+    statements: int = field(init=False, default=0)
+    _statement_started: float = field(init=False, default=0.0)
+
+    def _before_cursor_execute(self, *_args: object) -> None:
+        self._statement_started = perf_counter()
+
+    def _after_cursor_execute(self, *_args: object) -> None:
+        self.sql_ms += (perf_counter() - self._statement_started) * 1000
+        self.statements += 1
+
+    @asynccontextmanager
+    async def measure(self, session: AsyncSession) -> AsyncGenerator[None, None]:
+        """Check out the session's connection once and time statements on that connection."""
+        started = perf_counter()
+        connection = (await session.connection()).sync_connection
+        self.checkout_ms = (perf_counter() - started) * 1000
+        before = self._before_cursor_execute
+        after = self._after_cursor_execute
+        event.listen(connection, "before_cursor_execute", before)
+        event.listen(connection, "after_cursor_execute", after)
+        try:
+            yield
+        finally:
+            event.remove(connection, "before_cursor_execute", before)
+            event.remove(connection, "after_cursor_execute", after)
 
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:

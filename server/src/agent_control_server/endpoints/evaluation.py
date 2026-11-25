@@ -3,6 +3,7 @@
 import json
 import os
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -19,7 +20,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
 
 from ..auth_framework import Operation, Principal, require_operation
-from ..db import AsyncSessionLocal
+from ..db import AsyncSessionLocal, ControlLoadDatabaseTiming
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
@@ -170,11 +171,16 @@ async def _evaluation_context(request: Request) -> dict[str, object]:
 async def _load_engine_controls(
     request: EvaluationRequest,
     principal: Principal,
+    *,
+    db_timing: ControlLoadDatabaseTiming | None = None,
 ) -> list[ControlAdapter]:
     """Load and materialize controls before evaluator execution starts."""
     namespace_key = principal.namespace_key
 
-    async with AsyncSessionLocal() as db:
+    async with (
+        AsyncSessionLocal() as db,
+        db_timing.measure(db) if db_timing is not None else nullcontext(),
+    ):
         agent_result = await db.execute(
             select(Agent).where(
                 Agent.name == request.agent_name,
@@ -231,11 +237,13 @@ async def evaluate(
     """
     handler_started = time.perf_counter()
     diagnostic_id = uuid4().hex if _latency_diagnostics_enabled() else None
+    db_timing = None
     if diagnostic_id is not None:
         response.headers["X-Galileo-Diagnostic-ID"] = diagnostic_id
+        db_timing = ControlLoadDatabaseTiming()
 
     controls_started = time.perf_counter()
-    engine_controls = await _load_engine_controls(request, principal)
+    engine_controls = await _load_engine_controls(request, principal, db_timing=db_timing)
     controls_load_ms = (time.perf_counter() - controls_started) * 1000
     engine = ControlEngine(engine_controls)
     try:
@@ -267,7 +275,7 @@ async def evaluate(
 
     sanitize_started = time.perf_counter()
     sanitized_response = _sanitize_evaluation_response(raw_response)
-    if diagnostic_id is not None:
+    if db_timing is not None:
         control_results = [
             *(raw_response.matches or []),
             *(raw_response.non_matches or []),
@@ -278,6 +286,9 @@ async def evaluate(
             extra={
                 "diagnostic_request_id": diagnostic_id,
                 "controls_load_ms": controls_load_ms,
+                "controls_db_checkout_ms": db_timing.checkout_ms,
+                "controls_db_sql_ms": db_timing.sql_ms,
+                "controls_db_sql_count": db_timing.statements,
                 "control_engine_ms": engine_ms,
                 "response_sanitize_ms": (time.perf_counter() - sanitize_started) * 1000,
                 "handler_total_ms": (time.perf_counter() - handler_started) * 1000,
