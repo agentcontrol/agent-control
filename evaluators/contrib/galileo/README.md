@@ -48,3 +48,23 @@ pip install agent-control-evaluator-galileo
 See full documentation in: https://docs.agentcontrol.dev/concepts/evaluators/contributing-evaluator
 
 Example with usage: https://docs.agentcontrol.dev/examples/galileo-luna
+
+## Latency diagnostics
+
+Set `AGENT_CONTROL_LATENCY_DIAGNOSTICS_ENABLED=true` on the server to enable diagnostic logs.
+For target-bound evaluations, Agent Control generates a request ID and returns it in `X-Galileo-Diagnostic-ID`.
+The Luna evaluator forwards that ID and `X-Galileo-Diagnostic-Control-ID` to the scorer endpoint.
+
+`Evaluation latency diagnostics` records handler stages.
+`Evaluation control timing` records each returned control's ID and execution milliseconds as scalar fields.
+The Luna client's `Agent Control scorer-invoke client timing` record measures request preparation, authentication,
+HTTP client acquisition, Runners round trip, response parsing, and total time.
+Set `GALILEO_LUNA_HTTP_DIAGNOSTICS=true` to add HTTPcore connection-pool queue and transport-phase timings
+to that record, including `http_pool_queue_ms` and `http_receive_headers_ms`. The pool adapter is
+version-sensitive and runs only on correlated diagnostic requests.
+Failed HTTP calls retain elapsed time for the failed stage. Unreached stages have no measurement.
+These timing records contain IDs, durations, and status codes without request contents or authentication values.
+
+On an instrumented Orbit Runners build, search `Runners scorer-invoke execution timing` with the same IDs.
+It reports capacity wait, executor wait and execution, and service total time.
+Disable the environment variable after the diagnostic session.

@@ -252,3 +252,31 @@ async def test_precheck_error_has_no_execution_duration(
     assert len(response.errors) == 1
     assert response.errors[0].execution_duration_ms is None
     clock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_opt_in_admission_wait_preserves_control_duration(
+    monkeypatch: pytest.MonkeyPatch,
+    evaluation_request: EvaluationRequest,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Given: diagnostic metadata and separate clock intervals for admission and total execution.
+    clock = Mock(side_effect=[10.0, 10.0, 10.005, 10.02])
+    monkeypatch.setattr("agent_control_engine.core.time.perf_counter", clock)
+    caplog.set_level("INFO", logger="agent_control_engine.core")
+
+    # When: evaluating through the public engine entrypoint with diagnostics enabled.
+    response = await ControlEngine([make_control()]).process(
+        evaluation_request,
+        extensions={"_agent_control_diagnostics": {"request_id": "a" * 32}},
+    )
+
+    # Then: admission wait and the enclosing control duration retain the same IDs and units.
+    assert response.non_matches is not None
+    assert response.non_matches[0].execution_duration_ms == pytest.approx(20.0)
+    records = [r for r in caplog.records if r.msg == "Control evaluator admission wait"]
+    assert len(records) == 1
+    fields = vars(records[0])
+    assert fields["diagnostic_request_id"] == "a" * 32
+    assert fields["diagnostic_control_id"] == "1"
+    assert fields["semaphore_wait_ms"] == pytest.approx(5.0)

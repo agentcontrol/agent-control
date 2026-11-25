@@ -10,7 +10,7 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import time
+from time import perf_counter, time, time_ns
 from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 from ..records import UnsupportedStepTypeError, record_from_step
 from .config import ScorerInvokeConfig, scorer_invoke_runtime_enabled
+from .pool_diagnostics import PoolTiming, begin_pool_diagnostics, pool_diagnostics_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
 # Headers that must never be forwarded to the Luna invoke endpoint (checked case-insensitively).
 _BLOCKED_REQUEST_HEADERS = frozenset({"galileo-api-key"})
+_DIAGNOSTIC_CLIENT_SENT_AT_HEADER = "X-Galileo-Diagnostic-Client-Sent-At-Unix-Ns"
 
 # Keep pooled-connection reuse shorter than typical server keepalive/worker
 # recycle windows so requests do not pick up sockets the server already closed.
@@ -540,6 +542,7 @@ class GalileoLunaClient:
             httpx.HTTPStatusError: If the Luna invoke endpoint returns an error status code.
             httpx.RequestError: If the request fails before a response is received.
         """
+        invoke_started = perf_counter()
         if not (_has_value(input) or _has_value(output)):
             raise ValueError("At least one of input or output must be provided.")
 
@@ -580,7 +583,10 @@ class GalileoLunaClient:
             config=invoke_config,
         ).to_dict()
 
+        request_preparation_ms = (perf_counter() - invoke_started) * 1000
+        auth_started = perf_counter()
         endpoint, auth_header = self._endpoint_and_auth_header()
+        auth_token_ms = (perf_counter() - auth_started) * 1000
         request_headers = {
             k: v for k, v in (headers or {}).items() if k.lower() not in _BLOCKED_REQUEST_HEADERS
         }
@@ -589,20 +595,94 @@ class GalileoLunaClient:
         logger.debug("[GalileoLunaClient] POST %s", endpoint)
         logger.debug("[GalileoLunaClient] Request body: %s", request_body)
 
-        try:
-            client = await self._get_client()
-            response = await client.post(
-                endpoint,
-                json=request_body,
-                headers=request_headers,
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            response_data = response.json()
-            if not isinstance(response_data, dict):
-                raise RuntimeError("Invalid response payload: not a JSON object")
+        diagnostic_id = request_headers.get("X-Galileo-Diagnostic-ID")
+        client_acquire_ms: float | None = None
+        http_round_trip_ms: float | None = None
+        response_parse_ms: float | None = None
+        status_code: int | None = None
+        httpcore_first_event_ms: float | None = None
+        client_submit_unix_ns: int | None = None
+        http_diagnostics_enabled = diagnostic_id is not None and pool_diagnostics_enabled()
+        transport_event_starts: dict[str, float] | None = {} if http_diagnostics_enabled else None
+        transport_event_durations: dict[str, float] | None = {} if http_diagnostics_enabled else None
+        pool_timing: PoolTiming | None = None
+        pool_timing_fields: dict[str, float | None] = {}
 
-            parsed = ScorerInvokeResponse.from_dict(response_data)
+        async def trace_transport(event: str, _info: dict[str, Any]) -> None:
+            nonlocal httpcore_first_event_ms
+            if transport_event_starts is None or transport_event_durations is None:
+                return
+            try:
+                name, _, phase = event.rpartition(".")
+                field_name = {
+                    "connection.connect_tcp": "http_connect_tcp_ms",
+                    "connection.start_tls": "http_start_tls_ms",
+                    "http11.send_request_headers": "http_send_headers_ms",
+                    "http11.send_request_body": "http_send_body_ms",
+                    "http11.receive_response_headers": "http_receive_headers_ms",
+                    "http11.receive_response_body": "http_receive_body_ms",
+                }.get(name)
+                if field_name is None:
+                    return
+                now = perf_counter()
+                if phase == "started":
+                    if httpcore_first_event_ms is None:
+                        httpcore_first_event_ms = (now - http_started) * 1000
+                    transport_event_starts[name] = now
+                elif phase in {"complete", "failed"}:
+                    started = transport_event_starts.pop(name, None)
+                    if started is not None:
+                        transport_event_durations[field_name] = transport_event_durations.get(
+                            field_name, 0.0
+                        ) + (now - started) * 1000
+            except Exception:
+                # Diagnostics must never turn a successful scorer call into a failure.
+                logger.debug("Unable to record Luna HTTP transport timing", exc_info=True)
+
+        try:
+            client_acquire_started = perf_counter()
+            try:
+                client = await self._get_client()
+            finally:
+                client_acquire_ms = (perf_counter() - client_acquire_started) * 1000
+            http_started = perf_counter()
+            try:
+                if diagnostic_id is not None:
+                    request = client.build_request(
+                        "POST",
+                        endpoint,
+                        json=request_body,
+                        headers=request_headers,
+                        timeout=timeout,
+                        extensions={"trace": trace_transport} if http_diagnostics_enabled else {},
+                    )
+                    client_submit_unix_ns = time_ns()
+                    request.headers[_DIAGNOSTIC_CLIENT_SENT_AT_HEADER] = str(client_submit_unix_ns)
+                    if http_diagnostics_enabled:
+                        pool_timing = begin_pool_diagnostics(request.extensions)
+                    response = await client.send(request)
+                else:
+                    response = await client.post(
+                        endpoint,
+                        json=request_body,
+                        headers=request_headers,
+                        timeout=timeout,
+                    )
+            finally:
+                http_round_trip_ms = (perf_counter() - http_started) * 1000
+                if pool_timing is not None:
+                    pool_timing_fields = pool_timing.finish()
+            status_code = response.status_code
+            response.raise_for_status()
+            parse_started = perf_counter()
+            try:
+                response_data = response.json()
+                if not isinstance(response_data, dict):
+                    raise RuntimeError("Invalid response payload: not a JSON object")
+
+                parsed = ScorerInvokeResponse.from_dict(response_data)
+            finally:
+                response_parse_ms = (perf_counter() - parse_started) * 1000
             logger.debug("[GalileoLunaClient] Response: %s", parsed.raw_response)
             return parsed
         except httpx.HTTPStatusError as exc:
@@ -615,6 +695,28 @@ class GalileoLunaClient:
         except httpx.RequestError as exc:
             logger.error("[GalileoLunaClient] Request failed: %s", exc)
             raise
+        finally:
+            if diagnostic_id is not None:
+                logger.info(
+                    "Agent Control scorer-invoke client timing",
+                    extra={
+                        "diagnostic_request_id": diagnostic_id,
+                        "diagnostic_control_id": request_headers.get(
+                            "X-Galileo-Diagnostic-Control-ID"
+                        ),
+                        "request_preparation_ms": request_preparation_ms,
+                        "auth_token_ms": auth_token_ms,
+                        "http_client_acquire_ms": client_acquire_ms,
+                        "runners_http_round_trip_ms": http_round_trip_ms,
+                        "runners_http_submit_unix_ns": client_submit_unix_ns,
+                        "httpcore_first_event_ms": httpcore_first_event_ms,
+                        **(transport_event_durations or {}),
+                        **pool_timing_fields,
+                        "response_parse_ms": response_parse_ms,
+                        "client_total_ms": (perf_counter() - invoke_started) * 1000,
+                        "http_status_code": status_code,
+                    },
+                )
 
     async def close(self) -> None:
         """Close HTTP clients and release resources."""

@@ -1,7 +1,11 @@
 """Evaluation analysis endpoints."""
 
 import json
+import os
+import time
+from contextlib import nullcontext
 from dataclasses import dataclass
+from uuid import uuid4
 
 from agent_control_engine.core import ControlEngine
 from agent_control_models import (
@@ -12,11 +16,11 @@ from agent_control_models import (
     JSONObject,
 )
 from agent_control_models.errors import ErrorCode, ValidationErrorItem
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
 
 from ..auth_framework import Operation, Principal, require_operation
-from ..db import AsyncSessionLocal
+from ..db import AsyncSessionLocal, ControlLoadDatabaseTiming
 from ..errors import APIValidationError, NotFoundError
 from ..logging_utils import get_logger
 from ..models import Agent
@@ -30,6 +34,18 @@ SAFE_EVALUATOR_ERROR = "Evaluation failed due to an internal evaluator error."
 SAFE_EVALUATOR_TIMEOUT_ERROR = "Evaluation timed out before completion."
 SAFE_INVALID_STEP_REGEX_ERROR = "Control configuration error: invalid step name regex."
 SAFE_ENGINE_VALIDATION_MESSAGE = "Invalid evaluation request or control configuration."
+_LATENCY_DIAGNOSTICS_ENV = "AGENT_CONTROL_LATENCY_DIAGNOSTICS_ENABLED"
+_DIAGNOSTIC_EXTENSION = "_agent_control_diagnostics"
+
+
+def _latency_diagnostics_enabled() -> bool:
+    """Return whether opt-in evaluation timing logs are enabled."""
+    return os.getenv(_LATENCY_DIAGNOSTICS_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "enabled",
+    }
 
 
 @dataclass
@@ -155,11 +171,16 @@ async def _evaluation_context(request: Request) -> dict[str, object]:
 async def _load_engine_controls(
     request: EvaluationRequest,
     principal: Principal,
+    *,
+    db_timing: ControlLoadDatabaseTiming | None = None,
 ) -> list[ControlAdapter]:
     """Load and materialize controls before evaluator execution starts."""
     namespace_key = principal.namespace_key
 
-    async with AsyncSessionLocal() as db:
+    async with (
+        AsyncSessionLocal() as db,
+        db_timing.measure(db) if db_timing is not None else nullcontext(),
+    ):
         agent_result = await db.execute(
             select(Agent).where(
                 Agent.name == request.agent_name,
@@ -195,6 +216,7 @@ async def _load_engine_controls(
 )
 async def evaluate(
     request: EvaluationRequest,
+    response: Response,
     principal: Principal = Depends(
         require_operation(Operation.RUNTIME_USE, context_builder=_evaluation_context)
     ),
@@ -213,10 +235,27 @@ async def evaluate(
     on the server; SDKs reconstruct and emit those events separately through
     the observability ingestion endpoint.
     """
-    engine_controls = await _load_engine_controls(request, principal)
+    handler_started = time.perf_counter()
+    diagnostic_id = uuid4().hex if _latency_diagnostics_enabled() else None
+    db_timing = None
+    if diagnostic_id is not None:
+        response.headers["X-Galileo-Diagnostic-ID"] = diagnostic_id
+        db_timing = ControlLoadDatabaseTiming()
+
+    controls_started = time.perf_counter()
+    engine_controls = await _load_engine_controls(request, principal, db_timing=db_timing)
+    controls_load_ms = (time.perf_counter() - controls_started) * 1000
     engine = ControlEngine(engine_controls)
     try:
-        raw_response = await engine.process(request, extensions=_principal_extensions(principal))
+        extensions = _principal_extensions(principal)
+        if diagnostic_id is not None and extensions is not None:
+            extensions = {
+                **extensions,
+                _DIAGNOSTIC_EXTENSION: {"request_id": diagnostic_id},
+            }
+        engine_started = time.perf_counter()
+        raw_response = await engine.process(request, extensions=extensions)
+        engine_ms = (time.perf_counter() - engine_started) * 1000
     except ValueError:
         _logger.exception("Evaluation failed due to invalid configuration or input")
         raise APIValidationError(
@@ -234,4 +273,35 @@ async def evaluate(
             ],
         )
 
-    return _sanitize_evaluation_response(raw_response)
+    sanitize_started = time.perf_counter()
+    sanitized_response = _sanitize_evaluation_response(raw_response)
+    if db_timing is not None:
+        control_results = [
+            *(raw_response.matches or []),
+            *(raw_response.non_matches or []),
+            *(raw_response.errors or []),
+        ]
+        _logger.info(
+            "Evaluation latency diagnostics",
+            extra={
+                "diagnostic_request_id": diagnostic_id,
+                "controls_load_ms": controls_load_ms,
+                "controls_db_checkout_ms": db_timing.checkout_ms,
+                "controls_db_sql_ms": db_timing.sql_ms,
+                "controls_db_sql_count": db_timing.statements,
+                "control_engine_ms": engine_ms,
+                "response_sanitize_ms": (time.perf_counter() - sanitize_started) * 1000,
+                "handler_total_ms": (time.perf_counter() - handler_started) * 1000,
+                "control_count": len(engine_controls),
+            },
+        )
+        for match in control_results:
+            _logger.info(
+                "Evaluation control timing",
+                extra={
+                    "diagnostic_request_id": diagnostic_id,
+                    "diagnostic_control_id": str(match.control_id),
+                    "execution_ms": match.execution_duration_ms,
+                },
+            )
+    return sanitized_response

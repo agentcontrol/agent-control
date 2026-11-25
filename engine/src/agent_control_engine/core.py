@@ -56,6 +56,7 @@ MAX_CONCURRENT_EVALUATIONS = _env_positive_int(
     "MAX_CONCURRENT_EVALUATIONS",
     default=3,
 )
+_DIAGNOSTIC_EXTENSION = "_agent_control_diagnostics"
 
 SELECTED_DATA_PREVIEW_MAX_CHARS = int(
     os.environ.get("AGENT_CONTROL_SELECTED_DATA_PREVIEW_MAX_CHARS", "500")
@@ -315,9 +316,14 @@ class ControlEngine:
 
         selector_path = selector.path or "*"
         data = select_data(request.step, selector_path)
+        diagnostic = extensions.get(_DIAGNOSTIC_EXTENSION) if extensions is not None else None
+        semaphore_wait_started = time.perf_counter() if isinstance(diagnostic, dict) else None
+        semaphore_wait_ms: float | None = None
 
         try:
             async with semaphore:
+                if semaphore_wait_started is not None:
+                    semaphore_wait_ms = (time.perf_counter() - semaphore_wait_started) * 1000
                 evaluator = get_evaluator_instance(evaluator_spec)
                 timeout = evaluator.get_timeout_seconds()
                 if timeout <= 0:
@@ -347,6 +353,24 @@ class ControlEngine:
                 exc_info=True,
             )
             result = self._build_error_result(error_msg)
+        finally:
+            if (
+                isinstance(diagnostic, dict)
+                and semaphore_wait_ms is not None
+                and semaphore_wait_ms >= 1
+            ):
+                request_id = diagnostic.get("request_id")
+                control_id = diagnostic.get("control_id")
+                if isinstance(request_id, str) and isinstance(control_id, str):
+                    logger.info(
+                        "Control evaluator admission wait",
+                        extra={
+                            "diagnostic_request_id": request_id,
+                            "diagnostic_control_id": control_id,
+                            "evaluator_name": evaluator_spec.name,
+                            "semaphore_wait_ms": semaphore_wait_ms,
+                        },
+                    )
 
         trace = {
             "type": "leaf",
@@ -676,13 +700,23 @@ class ControlEngine:
         async def evaluate_control(eval_task: _EvalTask) -> None:
             """Evaluate a single control, respecting cancellation and timeout."""
             started_at = time.perf_counter()
+            control_extensions = extensions
+            diagnostic = extensions.get(_DIAGNOSTIC_EXTENSION) if extensions is not None else None
+            if isinstance(diagnostic, dict) and extensions is not None:
+                control_extensions = {
+                    **extensions,
+                    _DIAGNOSTIC_EXTENSION: {
+                        **diagnostic,
+                        "control_id": str(eval_task.item.id),
+                    },
+                }
             try:
                 evaluation = await self._evaluate_condition(
                     eval_task.item,
                     eval_task.item.control.condition,
                     request,
                     semaphore,
-                    extensions,
+                    control_extensions,
                 )
                 eval_task.result = evaluation.result
 

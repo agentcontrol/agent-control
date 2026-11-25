@@ -285,6 +285,17 @@ class LunaEvaluator(Evaluator[LunaEvaluatorConfig]):
                 scorer_kwargs["selected_data_payload_field"] = self.config.payload_field
             if execution_context is not None:
                 scorer_kwargs["execution_context"] = execution_context
+            diagnostic = (
+                extensions.get("_agent_control_diagnostics") if extensions is not None else None
+            )
+            if isinstance(diagnostic, dict):
+                request_id = diagnostic.get("request_id")
+                control_id = diagnostic.get("control_id")
+                if isinstance(request_id, str) and isinstance(control_id, str):
+                    scorer_kwargs["headers"] = {
+                        "X-Galileo-Diagnostic-ID": request_id,
+                        "X-Galileo-Diagnostic-Control-ID": control_id,
+                    }
             response = await self._get_client().invoke(
                 **scorer_kwargs,
                 input=input_text if _has_text(input_text) else None,
