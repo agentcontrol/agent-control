@@ -10,7 +10,7 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import perf_counter, time
+from time import perf_counter, time, time_ns
 from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
@@ -34,6 +34,7 @@ AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
 # Headers that must never be forwarded to the Luna invoke endpoint (checked case-insensitively).
 _BLOCKED_REQUEST_HEADERS = frozenset({"galileo-api-key"})
+_DIAGNOSTIC_CLIENT_SENT_AT_HEADER = "X-Galileo-Diagnostic-Client-Sent-At-Unix-Ns"
 
 # Keep pooled-connection reuse shorter than typical server keepalive/worker
 # recycle windows so requests do not pick up sockets the server already closed.
@@ -600,6 +601,7 @@ class GalileoLunaClient:
         response_parse_ms: float | None = None
         status_code: int | None = None
         httpcore_first_event_ms: float | None = None
+        client_submit_unix_ns: int | None = None
         http_diagnostics_enabled = diagnostic_id is not None and pool_diagnostics_enabled()
         transport_event_starts: dict[str, float] | None = {} if http_diagnostics_enabled else None
         transport_event_durations: dict[str, float] | None = {} if http_diagnostics_enabled else None
@@ -645,16 +647,19 @@ class GalileoLunaClient:
                 client_acquire_ms = (perf_counter() - client_acquire_started) * 1000
             http_started = perf_counter()
             try:
-                if http_diagnostics_enabled:
+                if diagnostic_id is not None:
                     request = client.build_request(
                         "POST",
                         endpoint,
                         json=request_body,
                         headers=request_headers,
                         timeout=timeout,
-                        extensions={"trace": trace_transport},
+                        extensions={"trace": trace_transport} if http_diagnostics_enabled else {},
                     )
-                    pool_timing = begin_pool_diagnostics(request.extensions)
+                    client_submit_unix_ns = time_ns()
+                    request.headers[_DIAGNOSTIC_CLIENT_SENT_AT_HEADER] = str(client_submit_unix_ns)
+                    if http_diagnostics_enabled:
+                        pool_timing = begin_pool_diagnostics(request.extensions)
                     response = await client.send(request)
                 else:
                     response = await client.post(
@@ -703,6 +708,7 @@ class GalileoLunaClient:
                         "auth_token_ms": auth_token_ms,
                         "http_client_acquire_ms": client_acquire_ms,
                         "runners_http_round_trip_ms": http_round_trip_ms,
+                        "runners_http_submit_unix_ns": client_submit_unix_ns,
                         "httpcore_first_event_ms": httpcore_first_event_ms,
                         **(transport_event_durations or {}),
                         **pool_timing_fields,

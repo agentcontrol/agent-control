@@ -10,7 +10,7 @@ from base64 import urlsafe_b64encode
 from hashlib import sha256
 from hmac import new as hmac_new
 from json import dumps
-from time import perf_counter, time
+from time import perf_counter, time, time_ns
 from typing import Any, Literal, get_args
 from urllib.parse import urlsplit
 
@@ -33,6 +33,7 @@ AUTH_UPSTREAM_CA_FILE_ENV = "AGENT_CONTROL_AUTH_UPSTREAM_CA_FILE"
 
 # Headers that must never be forwarded to the scorer invoke endpoint (checked case-insensitively).
 _BLOCKED_REQUEST_HEADERS = frozenset({"galileo-api-key"})
+_DIAGNOSTIC_CLIENT_SENT_AT_HEADER = "X-Galileo-Diagnostic-Client-Sent-At-Unix-Ns"
 
 # Keep pooled-connection reuse shorter than typical server keepalive/worker
 # recycle windows so requests do not pick up sockets the server already closed.
@@ -579,17 +580,30 @@ class GalileoLLMClient:
         http_round_trip_ms: float | None = None
         response_parse_ms: float | None = None
         status_code: int | None = None
+        client_submit_unix_ns: int | None = None
         try:
             client_acquire_started = perf_counter()
             client = await self._get_client()
             client_acquire_ms = (perf_counter() - client_acquire_started) * 1000
             http_started = perf_counter()
-            response = await client.post(
-                endpoint,
-                json=request_body,
-                headers=request_headers,
-                timeout=timeout,
-            )
+            if diagnostic_id is not None:
+                request = client.build_request(
+                    "POST",
+                    endpoint,
+                    json=request_body,
+                    headers=request_headers,
+                    timeout=timeout,
+                )
+                client_submit_unix_ns = time_ns()
+                request.headers[_DIAGNOSTIC_CLIENT_SENT_AT_HEADER] = str(client_submit_unix_ns)
+                response = await client.send(request)
+            else:
+                response = await client.post(
+                    endpoint,
+                    json=request_body,
+                    headers=request_headers,
+                    timeout=timeout,
+                )
             http_round_trip_ms = (perf_counter() - http_started) * 1000
             status_code = response.status_code
             response.raise_for_status()
@@ -627,6 +641,7 @@ class GalileoLLMClient:
                             "auth_token_ms": auth_token_ms,
                             "http_client_acquire_ms": client_acquire_ms,
                             "runners_http_round_trip_ms": http_round_trip_ms,
+                            "runners_http_submit_unix_ns": client_submit_unix_ns,
                             "response_parse_ms": response_parse_ms,
                             "client_total_ms": client_total_ms,
                             "http_status_code": status_code,

@@ -35,6 +35,7 @@ _LATENCY_DIAGNOSTIC_FIELDS = (
     "auth_token_ms",
     "http_client_acquire_ms",
     "runners_http_round_trip_ms",
+    "runners_http_submit_unix_ns",
     "response_parse_ms",
     "client_total_ms",
     "http_status_code",
